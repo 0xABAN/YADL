@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import Grainient from "./Grainient";
 
 export default function Classes() {
+  const [tab, setTab] = useState<"labels" | "objects">("labels");
   return (
     <aside>
       <Grainient
@@ -30,8 +34,11 @@ export default function Classes() {
       <div className="rail-ui">
         <span className="brand">YADL</span>
         <p className="lede">Agent authors the pose. You review. The product is labeled data.</p>
-        <p className="eyebrow">Dataset</p>
-        <h1>Classes</h1>
+        <nav className="tabs">
+          <button type="button" aria-pressed={tab === "labels"} onClick={() => setTab("labels")}>Labels</button>
+          <button type="button" aria-pressed={tab === "objects"} onClick={() => setTab("objects")}>Objects</button>
+        </nav>
+        <div className="pane" />
       </div>
     </aside>
   );
