@@ -1,8 +1,8 @@
 export default function Header() {
   return (
     <header>
-      <span>Imigen</span>
-      <nav>
+      <span className="brand">Imigen</span>
+      <nav className="pager">
         <button type="button" disabled>
           &lt;
         </button>
@@ -11,7 +11,9 @@ export default function Header() {
           &gt;
         </button>
       </nav>
-      <button type="button">Commit</button>
+      <button className="commit" type="button">
+        Commit
+      </button>
     </header>
   );
 }
