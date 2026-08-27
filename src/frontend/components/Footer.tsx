@@ -1,6 +1,6 @@
-export default function Header() {
+export default function Footer() {
   return (
-    <header>
+    <footer>
       <nav className="pager">
         <button type="button" disabled>
           &lt;
@@ -13,6 +13,6 @@ export default function Header() {
       <button className="commit" type="button">
         Commit
       </button>
-    </header>
+    </footer>
   );
 }
