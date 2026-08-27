@@ -37,7 +37,6 @@ export default function Canvas() {
       >
         <div className="dots" aria-hidden="true" />
         <div className="frame">
-          <i /><i /><i /><i />
           <img src="/default.jpg" alt="" draggable={false} />
         </div>
       </div>
@@ -45,6 +44,7 @@ export default function Canvas() {
     <div className="zoom">
         <button
           type="button"
+          className="step"
           disabled={locked || zoom <= MIN}
           onClick={() => setZoom((z) => Math.max(MIN, z - STEP))}
           aria-label="Zoom out"
@@ -54,6 +54,7 @@ export default function Canvas() {
         <span>{zoom}%</span>
         <button
           type="button"
+          className="step"
           disabled={locked || zoom >= MAX}
           onClick={() => setZoom((z) => Math.min(MAX, z + STEP))}
           aria-label="Zoom in"
