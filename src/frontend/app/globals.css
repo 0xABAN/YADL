@@ -38,7 +38,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px }
   grid-template: 1fr auto / var(--rail) 1fr;
 }
 
-aside, footer, .zoom { z-index: 1 }
+aside, footer, .stack { z-index: 1 }
 
 footer {
   position: relative;
@@ -174,37 +174,35 @@ main:active { cursor: grabbing }
 }
 .world img { display: block; max-width: none; user-select: none; pointer-events: none }
 
-.frame {
-  --m: 12px;
-  position: relative;
-  z-index: 1;
-}
-.frame::before {
-  content: "";
+.frame { position: relative; z-index: 1 }
+.frame i {
   position: absolute;
-  inset: calc(var(--m) / -2);
+  width: 12px;
+  height: 12px;
   pointer-events: none;
-  background-image: linear-gradient(#fff, #fff), linear-gradient(#fff, #fff),
-    linear-gradient(#fff, #fff), linear-gradient(#fff, #fff),
-    linear-gradient(#fff, #fff), linear-gradient(#fff, #fff),
-    linear-gradient(#fff, #fff), linear-gradient(#fff, #fff);
-  background-size: var(--m) 1px, 1px var(--m), var(--m) 1px, 1px var(--m),
-    var(--m) 1px, 1px var(--m), var(--m) 1px, 1px var(--m);
-  background-repeat: no-repeat;
-  background-position:
-    0 calc(var(--m) / 2), calc(var(--m) / 2) 0,
-    right 0 top calc(var(--m) / 2), right calc(var(--m) / 2) top 0,
-    0 bottom calc(var(--m) / 2), calc(var(--m) / 2) bottom 0,
-    right 0 bottom calc(var(--m) / 2), right calc(var(--m) / 2) bottom 0;
+  background:
+    linear-gradient(#fff, #fff) center / 12px 1px no-repeat,
+    linear-gradient(#fff, #fff) center / 1px 12px no-repeat;
+  transform: translate(-50%, -50%);
 }
+.frame i:nth-child(1) { top: 0; left: 0 }
+.frame i:nth-child(2) { top: 0; left: 100% }
+.frame i:nth-child(3) { top: 100%; left: 0 }
+.frame i:nth-child(4) { top: 100%; left: 100% }
 
-.zoom {
-  position: relative;
+.stack {
   grid-column: 2;
   grid-row: 1;
   justify-self: start;
   align-self: end;
   margin: 0 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -219,13 +217,38 @@ main:active { cursor: grabbing }
   letter-spacing: 0.04em;
 }
 
-.zoom button { padding: 2px 4px; line-height: 1 }
-.zoom .step, .zoom button[aria-pressed="true"] { color: var(--lime) }
+.panel button { padding: 2px 4px; line-height: 1 }
+.panel .step, .panel button[aria-pressed="true"] { color: var(--lime) }
 .zoom span { color: var(--text) }
+
+.tools hr {
+  align-self: stretch;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.tools button { position: relative }
+.tools button:hover::after {
+  content: attr(aria-label);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
 
 aside::after,
 footer::after,
-.zoom::after {
+.panel::after {
   content: "";
   position: absolute;
   inset: 0;
