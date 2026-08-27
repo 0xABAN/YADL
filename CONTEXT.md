@@ -32,7 +32,7 @@ The page is a 21-point hand driven by **FK joints**, not raw dots.
 
 ## v1 (build this)
 
-Localhost web app. No login, no cloud, no rate limits.
+Localhost web app in `src/frontend` (Next.js + TypeScript). No login, no cloud, no rate limits.
 
 WebMCP tools:
 

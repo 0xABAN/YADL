@@ -1,0 +1,18 @@
+:root { --bg:#111; --panel:#181818; --line:#2a2a2a; --text:#ececec; --muted:#8a8a8a; --accent:#7c5cff }
+* { box-sizing:border-box; margin:0 }
+html,body { height:100%; background:var(--bg); color:var(--text); font:13px/1.4 system-ui,sans-serif }
+.shell { height:100%; display:grid; grid-template:48px 1fr / 220px 1fr }
+header { grid-column:1/-1; display:grid; grid-template-columns:220px 1fr auto; align-items:center; border-bottom:1px solid var(--line); padding:0 12px }
+header > span { font-weight:600 }
+nav { justify-self:center; display:flex; align-items:center; gap:12px; border:1px solid var(--line); border-radius:999px; padding:4px 10px }
+nav span { min-width:3.5em; text-align:center; color:var(--muted) }
+button { background:transparent; color:var(--text); border:0; cursor:pointer; font:inherit }
+nav button { color:var(--muted); padding:2px 6px }
+nav button:disabled { opacity:.35; cursor:default }
+header > button { background:var(--accent); color:#fff; border-radius:8px; padding:6px 12px; font-weight:600 }
+aside { background:var(--panel); border-right:1px solid var(--line); padding:16px }
+h1 { font-size:13px; font-weight:600; padding-bottom:8px; border-bottom:2px solid var(--accent); display:inline-block }
+main { display:grid; place-items:center }
+svg { width:min(52vh,360px); overflow:visible }
+svg line { stroke:#c8c4ff; stroke-width:3; stroke-linecap:round }
+svg circle { fill:#fff }
