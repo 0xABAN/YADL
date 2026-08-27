@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "next": "latest",
+    "ogl": "latest",
     "react": "latest",
     "react-dom": "latest"
   },

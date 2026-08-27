@@ -97,11 +97,25 @@ footer {
 .commit:active { transform: scale(0.98) }
 
 aside {
+  position: relative;
+  overflow: hidden;
   grid-column: 1;
   grid-row: 1 / -1;
   border-right: 1px solid var(--line);
-  padding: clamp(18px, 2.8vh, 28px);
   background: var(--panel);
+}
+
+aside .grainient-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rail-ui {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  padding: clamp(18px, 2.8vh, 28px);
 }
 
 .lede {
