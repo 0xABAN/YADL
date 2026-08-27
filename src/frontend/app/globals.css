@@ -84,6 +84,8 @@ footer {
 
 .pager button { color: var(--text); padding: 2px 8px; font-weight: 500 }
 
+.actions { display: flex; align-items: center; gap: 12px }
+
 .commit {
   height: 40px;
   padding: 0 16px;
@@ -215,6 +217,7 @@ main:active { cursor: grabbing }
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 56px;
 }
 
 .panel {
@@ -234,7 +237,7 @@ main:active { cursor: grabbing }
 }
 
 .panel button { padding: 2px 1px; line-height: 1 }
-.panel svg { width: 11px; height: 11px }
+.panel svg { width: 14px; height: 14px }
 .panel .step, .panel button[aria-pressed="true"] { color: var(--lime) }
 .zoom span { color: var(--text) }
 
@@ -245,12 +248,10 @@ main:active { cursor: grabbing }
   border-top: 1px solid var(--line);
 }
 .tools button { position: relative }
-.tools button:hover::after {
+.tools button:hover::after,
+.extra button:hover::after {
   content: attr(aria-label);
   position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%);
   z-index: 3;
   padding: 4px 8px;
   border-radius: var(--radius);
@@ -261,6 +262,23 @@ main:active { cursor: grabbing }
   letter-spacing: 0;
   white-space: nowrap;
   pointer-events: none;
+}
+.tools button:hover::after {
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+.extra {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.extra button { position: relative; color: #fff }
+.extra svg { width: 22px; height: 22px; display: block }
+.extra button:hover::after {
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
 }
 
 aside::after,
