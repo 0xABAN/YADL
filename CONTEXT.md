@@ -1,10 +1,10 @@
-# Imigen — Project Context
+# YADL — Project Context
 
 ## Identity
 
-- **Name:** Imigen
+- **Name:** YADL (yet another data labeler)
 - **Local path:** `/Users/adam/dev/imigen`
-- **GitHub:** https://github.com/0xABAN/imigen
+- **GitHub:** https://github.com/0xABAN/YADL
 - **Owner:** `0xABAN` (Adam T.)
 - **Purpose:** A WebMCP-powered hand-pose studio. An agent authors labeled landmark samples by moving a constrained hand rig. A human reviews. The product is the data, not a detector.
 
