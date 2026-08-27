@@ -13,6 +13,7 @@ export default function Canvas() {
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
 
   return (
+    <>
     <main
       onPointerDown={(e) => {
         if (locked) return;
@@ -34,12 +35,14 @@ export default function Canvas() {
         className="world"
         style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom / 100})` }}
       >
-        <img src="/default.jpg" alt="" draggable={false} />
+        <div className="dots" aria-hidden="true" />
+        <div className="frame">
+          <i /><i /><i /><i />
+          <img src="/default.jpg" alt="" draggable={false} />
+        </div>
       </div>
-      <div
-        className="zoom"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
+    </main>
+    <div className="zoom">
         <button
           type="button"
           disabled={locked || zoom <= MIN}
@@ -49,6 +52,14 @@ export default function Canvas() {
           −
         </button>
         <span>{zoom}%</span>
+        <button
+          type="button"
+          disabled={locked || zoom >= MAX}
+          onClick={() => setZoom((z) => Math.min(MAX, z + STEP))}
+          aria-label="Zoom in"
+        >
+          +
+        </button>
         <button
           type="button"
           aria-label="Lock canvas"
@@ -67,14 +78,6 @@ export default function Canvas() {
         </button>
         <button
           type="button"
-          disabled={locked || zoom >= MAX}
-          onClick={() => setZoom((z) => Math.min(MAX, z + STEP))}
-          aria-label="Zoom in"
-        >
-          +
-        </button>
-        <button
-          type="button"
           disabled={locked}
           onClick={() => {
             setZoom(100);
@@ -84,6 +87,6 @@ export default function Canvas() {
           RESET
         </button>
       </div>
-    </main>
+    </>
   );
 }

@@ -9,7 +9,7 @@
   --lime: #bfff00;
   --radius: 6px;
   --radius-lg: 12px;
-  --rail: minmax(272px, 332px);
+  --rail: 332px;
   --font: ui-sans-serif, system-ui, sans-serif;
   --font-display: "SF Pro Display", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
 }
@@ -35,11 +35,12 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px }
   height: 100%;
   display: grid;
   grid-template: 1fr auto / var(--rail) 1fr;
-  background: #050505;
+  background-color: #030303;
 }
 
 footer {
   position: relative;
+  z-index: 1;
   grid-column: 2;
   grid-row: 2;
   display: grid;
@@ -97,6 +98,7 @@ footer {
 
 aside {
   position: relative;
+  z-index: 1;
   overflow: hidden;
   grid-column: 1;
   grid-row: 1 / -1;
@@ -143,24 +145,59 @@ aside h1 {
 
 main {
   position: relative;
-  grid-column: 2;
-  grid-row: 1;
+  z-index: 0;
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
   overflow: hidden;
   cursor: grab;
   touch-action: none;
-  background: #050505;
+  background: #030303;
 }
 
 main:active { cursor: grabbing }
 
-.world { display: grid; place-items: center; width: 100%; height: 100% }
-.world img { max-width: none; user-select: none; pointer-events: none }
+.world {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding-left: var(--rail);
+  transform-origin: calc(50% + var(--rail) / 2) 50%;
+}
+.dots {
+  position: absolute;
+  inset: -200vmax;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.world img { display: block; max-width: none; user-select: none; pointer-events: none }
+
+.frame { position: relative; z-index: 1 }
+.frame i {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  background:
+    linear-gradient(#fff, #fff) center / 12px 1px no-repeat,
+    linear-gradient(#fff, #fff) center / 1px 12px no-repeat;
+  transform: translate(-50%, -50%);
+}
+.frame i:nth-child(1) { top: 0; left: 0 }
+.frame i:nth-child(2) { top: 0; left: 100% }
+.frame i:nth-child(3) { top: 100%; left: 0 }
+.frame i:nth-child(4) { top: 100%; left: 100% }
 
 .zoom {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
+  position: relative;
   z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  align-self: end;
+  margin: 0 0 16px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -175,7 +212,9 @@ main:active { cursor: grabbing }
   letter-spacing: 0.04em;
 }
 
-.zoom button { color: var(--cyan); padding: 2px 4px; line-height: 1 }
+.zoom button { color: var(--lime); padding: 2px 4px; line-height: 1 }
+.zoom button[aria-label="Lock canvas"],
+.zoom button:last-child { color: #fff }
 .zoom button[aria-pressed="true"] { color: var(--lime) }
 .zoom span { color: var(--text) }
 
