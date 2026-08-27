@@ -1,7 +1,6 @@
 export default function Header() {
   return (
     <header>
-      <span className="brand">Imigen</span>
       <nav className="pager">
         <button type="button" disabled>
           &lt;
