@@ -207,17 +207,18 @@ main:active { cursor: grabbing }
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  border-radius: var(--radius-lg);
-  padding: 22px 8px;
+  border-radius: var(--radius);
+  padding: 22px 7px;
   background: var(--bg);
   color: #fff;
   font-family: var(--font);
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 500;
   letter-spacing: 0.04em;
 }
 
-.panel button { padding: 2px 4px; line-height: 1 }
+.panel button { padding: 2px 1px; line-height: 1 }
+.panel svg { width: 11px; height: 11px }
 .panel .step, .panel button[aria-pressed="true"] { color: var(--lime) }
 .zoom span { color: var(--text) }
 
@@ -256,8 +257,8 @@ footer::after,
   pointer-events: none;
   border-radius: inherit;
   border: 1px solid var(--line);
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 12%, transparent 50%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 12%, transparent 50%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 12%, transparent 50%, transparent 75%, #000 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 12%, transparent 50%, transparent 75%, #000 100%);
 }
 
 aside::after { border-left: 0; border-bottom: 0 }
