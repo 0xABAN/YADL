@@ -111,6 +111,13 @@ aside {
   backdrop-filter: blur(18px);
 }
 
+.lede {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: var(--lime);
