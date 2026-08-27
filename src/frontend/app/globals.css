@@ -3,8 +3,8 @@
   --text: #fff;
   --muted: #a3a3a3;
   --subtle: #737373;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.12);
+  --line: rgba(255, 255, 255, 0.22);
+  --line-strong: rgba(255, 255, 255, 0.3);
   --cyan: #99edff;
   --lime: #bfff00;
   --radius: 6px;
@@ -45,8 +45,6 @@ footer {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  border: 1px solid var(--line);
-  border-bottom: 0;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   margin: 0 16px;
   padding: 12px 16px;
@@ -103,8 +101,6 @@ aside {
   grid-column: 1;
   grid-row: 1 / -1;
   margin-top: 16px;
-  border-top: 1px solid var(--line);
-  border-right: 1px solid var(--line);
   border-radius: 0 var(--radius-lg) 0 0;
   background: var(--bg);
 }
@@ -169,7 +165,6 @@ main:active { cursor: grabbing }
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 22px 8px;
   background: var(--bg);
@@ -183,3 +178,20 @@ main:active { cursor: grabbing }
 .zoom button { color: var(--cyan); padding: 2px 4px; line-height: 1 }
 .zoom button[aria-pressed="true"] { color: var(--lime) }
 .zoom span { color: var(--text) }
+
+aside::after,
+footer::after,
+.zoom::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  border: 1px solid var(--line);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 12%, transparent 50%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 12%, transparent 50%);
+}
+
+aside::after { border-left: 0; border-bottom: 0 }
+footer::after { border-bottom: 0 }
