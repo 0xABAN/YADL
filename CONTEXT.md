@@ -1,8 +1,8 @@
-# YADL — Project Context
+# YADL+ — Project Context
 
 ## Identity
 
-- **Name:** YADL (yet another data labeler)
+- **Name:** YADL+ (yet another data labeler)
 - **Local path:** `/Users/adam/dev/imigen`
 - **GitHub:** https://github.com/0xABAN/YADL
 - **Owner:** `0xABAN` (Adam T.)

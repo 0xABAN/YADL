@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "YADL" };
+export const metadata: Metadata = { title: "YADL+" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

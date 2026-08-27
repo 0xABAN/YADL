@@ -32,7 +32,7 @@ export default function Classes() {
         zoom={1}
       />
       <div className="rail-ui">
-        <span className="brand">YADL</span>
+        <span className="brand">YADL+</span>
         <p className="lede">Agent authors the pose. You review. The product is labeled data.</p>
         <nav className="tabs">
           <button type="button" aria-pressed={tab === "labels"} onClick={() => setTab("labels")}>Labels</button>
