@@ -12,7 +12,6 @@ nav button:disabled { opacity:.35; cursor:default }
 header > button { background:var(--accent); color:#fff; border-radius:8px; padding:6px 12px; font-weight:600 }
 aside { background:var(--panel); border-right:1px solid var(--line); padding:16px }
 h1 { font-size:13px; font-weight:600; padding-bottom:8px; border-bottom:2px solid var(--accent); display:inline-block }
-main { display:grid; place-items:center }
-svg { width:min(52vh,360px); overflow:visible }
-svg line { stroke:#c8c4ff; stroke-width:3; stroke-linecap:round }
-svg circle { fill:#fff }
+main { display:grid; place-items:center; overflow:hidden; cursor:grab; touch-action:none }
+main:active { cursor:grabbing }
+main img { max-width:none; user-select:none }
