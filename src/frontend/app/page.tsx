@@ -40,12 +40,9 @@ export default function Home() {
           drag.current = null;
         }}
       >
-        <img
-          src="/default.jpg"
-          alt=""
-          draggable={false}
-          style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-        />
+        <div className="world" style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}>
+          <img src="/default.jpg" alt="" draggable={false} />
+        </div>
       </main>
     </div>
   );
