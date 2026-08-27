@@ -6,15 +6,22 @@ const EXTRA = [
 export default function Footer() {
   return (
     <footer>
-      <nav className="pager">
-        <button type="button" disabled>
-          &lt;
+      <div className="pager-wrap">
+        <span className="file" title="/default.jpg">/default.jpg</span>
+        <nav className="pager">
+        <button type="button" disabled aria-label="Previous">
+          <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+            <path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z" fill="currentColor" />
+          </svg>
         </button>
-        <span>0 / 0</span>
-        <button type="button" disabled>
-          &gt;
+        <span>0/0</span>
+        <button type="button" disabled aria-label="Next">
+          <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+            <path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z" fill="currentColor" />
+          </svg>
         </button>
       </nav>
+      </div>
       <div className="actions">
         <div className="extra">
           {EXTRA.map((t) => (

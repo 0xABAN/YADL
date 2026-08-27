@@ -63,26 +63,49 @@ footer {
   line-height: 0.92;
 }
 
-.pager {
+.pager-wrap {
   justify-self: center;
+  position: relative;
+}
+.file {
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 14px;
+}
+.pager {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  padding: 4px 8px;
-  background: transparent;
+  align-items: stretch;
+  height: 40px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: #fff;
 }
-
+.pager button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  padding: 0;
+  background: #e5e5e5;
+  color: #111;
+}
+.pager button:disabled { opacity: 1 }
 .pager span {
-  min-width: 3.5em;
-  text-align: center;
-  color: var(--subtle);
-  font-family: var(--font);
-  font-size: 11px;
+  min-width: 5.5em;
+  padding: 0 24px;
+  display: grid;
+  place-items: center;
+  color: #111;
+  font-size: 14px;
+  font-weight: 500;
 }
-
-.pager button { color: var(--text); padding: 2px 8px; font-weight: 500 }
+.pager svg { width: 16px; height: 16px }
 
 .actions { display: flex; align-items: center; gap: 12px }
 
@@ -238,7 +261,8 @@ main:active { cursor: grabbing }
 
 .panel button { padding: 2px 1px; line-height: 1 }
 .panel svg { width: 14px; height: 14px }
-.panel .step, .panel button[aria-pressed="true"] { color: var(--lime) }
+.panel .step { color: var(--cyan) }
+.panel button[aria-pressed="true"] { color: var(--lime) }
 .zoom span { color: var(--text) }
 
 .tools hr {
