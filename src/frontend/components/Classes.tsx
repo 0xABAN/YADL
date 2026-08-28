@@ -2,13 +2,9 @@
 
 import { useState } from "react";
 import Grainient from "./Grainient";
-import { REGION_COLOR } from "@/lib/hand";
+import { HAND_COLOR, NAMES, PRESETS } from "@/lib/hand";
 
-const LABELS = [
-  { name: "wrist", color: REGION_COLOR.wrist, n: 1 },
-  { name: "joint", color: REGION_COLOR.joint, n: 15 },
-  { name: "tip", color: REGION_COLOR.tip, n: 5 },
-];
+const POSES = Object.keys(PRESETS);
 
 export default function Classes() {
   const [tab, setTab] = useState<"labels" | "objects">("labels");
@@ -47,14 +43,25 @@ export default function Classes() {
         </nav>
         <div className="pane">
           {tab === "labels" && (
-            <ul className="labels">
-              {LABELS.map((l) => (
-                <li key={l.name}>
-                  <span className="swatch" style={{ background: l.color }} />
-                  {l.name}
-                  <b>{l.n}</b>
+            <ul className="labels poses">
+              {POSES.map((id) => (
+                <li key={id}>
+                  {id.replaceAll("_", " ")}
+                  <b>{id === "open" ? 1 : 0}</b>
                 </li>
               ))}
+            </ul>
+          )}
+          {tab === "objects" && (
+            <ul className="labels">
+              {HAND_COLOR.flatMap((color, h) =>
+                NAMES.map((name, i) => (
+                  <li key={`${h}-${i}`}>
+                    <span className="swatch" style={{ background: color }} />
+                    {i} {name}
+                  </li>
+                )),
+              )}
             </ul>
           )}
         </div>

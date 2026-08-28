@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE } from "react";
-import { CONNECTIONS, PRESETS, REGION_COLOR, pose, region, type Landmark } from "@/lib/hand";
+import { CONNECTIONS, HAND_COLOR, PRESETS, pose, region, type Landmark } from "@/lib/hand";
 
 const OPEN = pose(PRESETS.open);
 const STEP = 10;
@@ -654,7 +654,7 @@ export default function Canvas() {
               />
             ))}
           </div>
-          <div className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`}>
+          <div className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`} style={{ "--c": HAND_COLOR[0] } as CSSProperties}>
             <svg viewBox="0 0 1 1" preserveAspectRatio="none">
               {CONNECTIONS.map(([a, b]) => (
                 <line key={`${a}-${b}`} x1={hand[a].x} y1={hand[a].y} x2={hand[b].x} y2={hand[b].y} />
@@ -664,7 +664,7 @@ export default function Canvas() {
               <span
                 key={i}
                 className={`pt${hold === i ? " on" : ""}`}
-                style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%`, "--c": REGION_COLOR[region(i)] } as CSSProperties}
+                style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
                 onPointerDown={(e) => {
                   if (locked || tool !== "landmarks") return;
                   e.stopPropagation();

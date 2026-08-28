@@ -41,11 +41,7 @@ export function region(i: number): Region {
   return "joint";
 }
 
-export const REGION_COLOR = {
-  wrist: "#fff",
-  joint: "#99edff",
-  tip: "#bfff00",
-} as const;
+export const HAND_COLOR = ["#99edff", "#bfff00"] as const;
 
 export type FingerJ = { spread: number; mcp: number; pip: number };
 export type Joints = {
