@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE } from "react";
 import { CONNECTIONS, PRESETS, REGION_COLOR, pose, region, type Landmark } from "@/lib/hand";
 
 const OPEN = pose(PRESETS.open);
@@ -8,6 +8,48 @@ const STEP = 10;
 const MIN = 25;
 const MAX = 400;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+type Box = { x: number; y: number; w: number; h: number };
+type Gest =
+  | { t: "draw"; x0: number; y0: number }
+  | { t: "resize"; i: number; ax: number | null; ay: number | null; start: Box }
+  | { t: "move"; i: number; x0: number; y0: number; start: Box };
+
+const HANDLES: { c: string; ax: (b: Box) => number | null; ay: (b: Box) => number | null }[] = [
+  { c: "nw", ax: (b) => b.x + b.w, ay: (b) => b.y + b.h },
+  { c: "n", ax: () => null, ay: (b) => b.y + b.h },
+  { c: "ne", ax: (b) => b.x, ay: (b) => b.y + b.h },
+  { c: "e", ax: (b) => b.x, ay: () => null },
+  { c: "se", ax: (b) => b.x, ay: (b) => b.y },
+  { c: "s", ax: () => null, ay: (b) => b.y },
+  { c: "sw", ax: (b) => b.x + b.w, ay: (b) => b.y },
+  { c: "w", ax: (b) => b.x + b.w, ay: () => null },
+];
+
+const boxFrom = (x0: number, y0: number, x1: number, y1: number): Box => {
+  const x = Math.min(x0, x1), y = Math.min(y0, y1);
+  return { x, y, w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
+};
+const shiftBox = (b: Box, dx: number, dy: number): Box => ({
+  ...b,
+  x: Math.min(Math.max(0, b.x + dx), 1 - b.w),
+  y: Math.min(Math.max(0, b.y + dy), 1 - b.h),
+});
+const eqBox = (a: Box, b: Box) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+const tiny = (b: Box, r: DOMRect) => b.w * r.width < 4 && b.h * r.height < 4;
+const resizeBox = (g: Extract<Gest, { t: "resize" }>, p: { x: number; y: number }) =>
+  boxFrom(
+    g.ax ?? g.start.x,
+    g.ay ?? g.start.y,
+    g.ax != null ? p.x : g.start.x + g.start.w,
+    g.ay != null ? p.y : g.start.y + g.start.h,
+  );
+const boxStyle = (b: Box): CSSProperties => ({
+  left: `${b.x * 100}%`,
+  top: `${b.y * 100}%`,
+  width: `${b.w * 100}%`,
+  height: `${b.h * 100}%`,
+});
 
 const TOOLS = [
   { id: "move", label: "Move Tool", d: "M168,132.69,214.08,115l.33-.13A16,16,0,0,0,213,85.07L52.92,32.8A15.95,15.95,0,0,0,32.8,52.92L85.07,213a15.82,15.82,0,0,0,14.41,11l.78,0a15.84,15.84,0,0,0,14.61-9.59l.13-.33L132.69,168,184,219.31a16,16,0,0,0,22.63,0l12.68-12.68a16,16,0,0,0,0-22.63ZM195.31,208,144,156.69a16,16,0,0,0-26,4.93c0,.11-.09.22-.13.32l-17.65,46L48,48l159.85,52.2-45.95,17.64-.32.13a16,16,0,0,0-4.93,26h0L208,195.31Z" },
@@ -24,31 +66,81 @@ export default function Canvas() {
   const [tool, setTool] = useState<(typeof TOOLS)[number]["id"]>("landmarks");
   const [hand, setHand] = useState<Landmark[]>(OPEN);
   const [hold, setHold] = useState<number | null>(null);
+  const [boxes, setBoxes] = useState<Box[]>([]);
+  const [draft, setDraft] = useState<Box | null>(null);
+  const [boxHold, setBoxHold] = useState<number | "draw" | null>(null);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
   const live = useRef(hand);
   const sel = useRef<number | null>(null);
   const dragPt = useRef<{ i: number; start: Landmark[] } | null>(null);
-  const box = useRef<DOMRect | null>(null);
+  const frameR = useRef<DOMRect | null>(null);
   const undo = useRef<Landmark[][]>([]);
   const redo = useRef<Landmark[][]>([]);
+  const liveBoxes = useRef(boxes);
+  const gest = useRef<Gest | null>(null);
+  const snap = useRef<Box[]>([]);
+  const draftRef = useRef<Box | null>(null);
+  const boxUndo = useRef<Box[][]>([]);
+  const boxRedo = useRef<Box[][]>([]);
   live.current = hand;
+  liveBoxes.current = boxes;
 
   const apply = (next: Landmark[]) => {
     live.current = next;
     setHand(next);
+  };
+  const applyBoxes = (next: Box[]) => {
+    liveBoxes.current = next;
+    setBoxes(next);
   };
   const pushUndo = (prev: Landmark[]) => {
     undo.current.push(prev);
     if (undo.current.length > 50) undo.current.shift();
     redo.current = [];
   };
+  const pushBoxUndo = (prev: Box[]) => {
+    boxUndo.current.push(prev);
+    if (boxUndo.current.length > 50) boxUndo.current.shift();
+    boxRedo.current = [];
+  };
+  const abortBox = () => {
+    if (gest.current && gest.current.t !== "draw") applyBoxes(snap.current);
+    gest.current = null;
+    frameR.current = null;
+    draftRef.current = null;
+    setDraft(null);
+    setBoxHold(null);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Escape" && gest.current) {
+        e.preventDefault();
+        abortBox();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
+        if (gest.current) {
+          abortBox();
+          return;
+        }
+        if (tool === "box") {
+          if (e.shiftKey) {
+            const n = boxRedo.current.pop();
+            if (!n) return;
+            boxUndo.current.push(liveBoxes.current);
+            applyBoxes(n);
+          } else {
+            const n = boxUndo.current.pop();
+            if (!n) return;
+            boxRedo.current.push(liveBoxes.current);
+            applyBoxes(n);
+          }
+          return;
+        }
         if (e.shiftKey) {
           const n = redo.current.pop();
           if (!n) return;
@@ -62,7 +154,7 @@ export default function Canvas() {
         }
         return;
       }
-      if (locked || sel.current == null || !e.key.startsWith("Arrow")) return;
+      if (tool !== "landmarks" || locked || sel.current == null || !e.key.startsWith("Arrow")) return;
       e.preventDefault();
       const r = frame.current?.getBoundingClientRect();
       const dx = (e.shiftKey ? 10 : 1) / (r?.width || 500);
@@ -77,13 +169,13 @@ export default function Canvas() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [locked]);
+  }, [locked, tool]);
 
   useEffect(() => {
     if (hold == null) return;
     const move = (e: PointerEvent) => {
       const d = dragPt.current;
-      const r = box.current;
+      const r = frameR.current;
       if (!d || !r) return;
       const x = clamp01((e.clientX - r.left) / r.width);
       const y = clamp01((e.clientY - r.top) / r.height);
@@ -92,7 +184,7 @@ export default function Canvas() {
     const up = () => {
       const d = dragPt.current;
       dragPt.current = null;
-      box.current = null;
+      frameR.current = null;
       setHold(null);
       if (!d) return;
       const p = live.current[d.i];
@@ -107,11 +199,100 @@ export default function Canvas() {
     };
   }, [hold]);
 
+  useEffect(() => {
+    if (tool === "box" && !locked) return;
+    if (gest.current) abortBox();
+  }, [tool, locked]);
+
+  useEffect(() => {
+    if (boxHold == null) return;
+    const at = (e: PointerEvent) => {
+      const r = frameR.current!;
+      return { x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) };
+    };
+    const move = (e: PointerEvent) => {
+      const g = gest.current;
+      if (!g) return;
+      const p = at(e);
+      if (g.t === "draw") {
+        const b = boxFrom(g.x0, g.y0, p.x, p.y);
+        draftRef.current = b;
+        setDraft(b);
+      } else if (g.t === "resize") {
+        applyBoxes(liveBoxes.current.map((b, i) => (i === g.i ? resizeBox(g, p) : b)));
+      } else {
+        applyBoxes(liveBoxes.current.map((b, i) => (i === g.i ? shiftBox(g.start, p.x - g.x0, p.y - g.y0) : b)));
+      }
+    };
+    const up = () => {
+      const g = gest.current;
+      const r = frameR.current;
+      gest.current = null;
+      frameR.current = null;
+      setBoxHold(null);
+      if (!g || !r) {
+        draftRef.current = null;
+        setDraft(null);
+        return;
+      }
+      if (g.t === "draw") {
+        const b = draftRef.current;
+        draftRef.current = null;
+        setDraft(null);
+        if (!b || tiny(b, r)) return;
+        pushBoxUndo(snap.current);
+        applyBoxes([...snap.current, b]);
+        return;
+      }
+      const b = liveBoxes.current[g.i];
+      if (g.t === "resize" && tiny(b, r)) {
+        applyBoxes(snap.current);
+        return;
+      }
+      if (eqBox(b, snap.current[g.i])) return;
+      pushBoxUndo(snap.current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [boxHold]);
+
+  const startBox = (e: PE<HTMLElement>, g: Gest) => {
+    if (locked || tool !== "box") return;
+    e.stopPropagation();
+    const r = frame.current!.getBoundingClientRect();
+    frameR.current = r;
+    snap.current = liveBoxes.current;
+    if (g.t === "move") {
+      g.x0 = clamp01((e.clientX - r.left) / r.width);
+      g.y0 = clamp01((e.clientY - r.top) / r.height);
+    }
+    gest.current = g;
+    setBoxHold(g.t === "draw" ? "draw" : g.i);
+  };
+
   return (
     <>
     <main
+      className={tool === "box" && !locked ? "cross" : undefined}
       onPointerDown={(e) => {
-        if (locked || hold != null) return;
+        if (locked || hold != null || boxHold != null) return;
+        if (tool === "box") {
+          const r = frame.current!.getBoundingClientRect();
+          frameR.current = r;
+          const x = clamp01((e.clientX - r.left) / r.width);
+          const y = clamp01((e.clientY - r.top) / r.height);
+          snap.current = liveBoxes.current;
+          gest.current = { t: "draw", x0: x, y0: y };
+          const z = { x, y, w: 0, h: 0 };
+          draftRef.current = z;
+          setDraft(z);
+          setBoxHold("draw");
+          return;
+        }
         e.currentTarget.setPointerCapture(e.pointerId);
         drag.current = { x: pos.x, y: pos.y, px: e.clientX, py: e.clientY };
       }}
@@ -134,6 +315,25 @@ export default function Canvas() {
         <div className="frame" ref={frame}>
           <i /><i /><i /><i />
           <img src="/default.jpg" alt="" draggable={false} />
+          <div className={`boxes${tool === "box" && !locked ? " edit" : ""}`}>
+            {boxes.map((b, i) => (
+              <div
+                key={i}
+                className={`box${boxHold === i ? " on" : ""}`}
+                style={boxStyle(b)}
+                onPointerDown={(e) => startBox(e, { t: "move", i, x0: 0, y0: 0, start: b })}
+              >
+                {HANDLES.map((h) => (
+                  <span
+                    key={h.c}
+                    className={`h ${h.c}`}
+                    onPointerDown={(e) => startBox(e, { t: "resize", i, ax: h.ax(b), ay: h.ay(b), start: b })}
+                  />
+                ))}
+              </div>
+            ))}
+            {draft && <div className="box draft" style={boxStyle(draft)} />}
+          </div>
           <div className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`}>
             <svg viewBox="0 0 1 1" preserveAspectRatio="none">
               {CONNECTIONS.map(([a, b]) => (
@@ -148,7 +348,7 @@ export default function Canvas() {
                 onPointerDown={(e) => {
                   if (locked || tool !== "landmarks") return;
                   e.stopPropagation();
-                  box.current = frame.current!.getBoundingClientRect();
+                  frameR.current = frame.current!.getBoundingClientRect();
                   sel.current = i;
                   dragPt.current = { i, start: live.current };
                   setHold(i);

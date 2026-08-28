@@ -235,6 +235,7 @@ main {
 }
 
 main:active { cursor: grabbing }
+main.cross, main.cross:active { cursor: crosshair }
 
 .world {
   position: relative;
@@ -255,7 +256,7 @@ main:active { cursor: grabbing }
 .world img { display: block; max-width: none; user-select: none; pointer-events: none; box-shadow: var(--shadow) }
 
 .frame { position: relative; z-index: 1 }
-.frame i {
+.frame > i {
   position: absolute;
   width: 12px;
   height: 12px;
@@ -265,10 +266,10 @@ main:active { cursor: grabbing }
     linear-gradient(#fff, #fff) center / 1px 12px no-repeat;
   transform: translate(-50%, -50%);
 }
-.frame i:nth-child(1) { top: 0; left: 0 }
-.frame i:nth-child(2) { top: 0; left: 100% }
-.frame i:nth-child(3) { top: 100%; left: 0 }
-.frame i:nth-child(4) { top: 100%; left: 100% }
+.frame > i:nth-child(1) { top: 0; left: 0 }
+.frame > i:nth-child(2) { top: 0; left: 100% }
+.frame > i:nth-child(3) { top: 100%; left: 0 }
+.frame > i:nth-child(4) { top: 100%; left: 100% }
 
 .hand { position: absolute; inset: 0; pointer-events: none; user-select: none }
 .hand svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible }
@@ -311,6 +312,62 @@ main:active { cursor: grabbing }
   font-weight: 500;
   white-space: nowrap;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+}
+
+.boxes { position: absolute; inset: 0; pointer-events: none; user-select: none }
+.box {
+  position: absolute;
+  border: 1.5px solid var(--cyan);
+  background: rgba(153, 237, 255, 0.12);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+.boxes.edit .box { pointer-events: auto; cursor: grab }
+.boxes.edit .box.on { cursor: grabbing }
+.box.draft { pointer-events: none }
+.box .h {
+  position: absolute;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.box .nw { left: 0; top: 0 }
+.box .ne { left: 100%; top: 0 }
+.box .se { left: 100%; top: 100% }
+.box .sw { left: 0; top: 100% }
+.box .n, .box .s, .box .e, .box .w {
+  z-index: 1;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+.box .n, .box .s { left: 0; width: 100%; height: 10px; transform: translateY(-50%) }
+.box .n { top: 0 }
+.box .s { top: 100% }
+.box .e, .box .w { top: 0; width: 10px; height: 100%; transform: translateX(-50%) }
+.box .e { left: 100% }
+.box .w { left: 0 }
+.boxes.edit .h { pointer-events: auto; touch-action: none }
+.boxes.edit .nw, .boxes.edit .se { cursor: nwse-resize }
+.boxes.edit .ne, .boxes.edit .sw { cursor: nesw-resize }
+.boxes.edit .n, .boxes.edit .s { cursor: ns-resize }
+.boxes.edit .e, .boxes.edit .w { cursor: ew-resize }
+.boxes.edit .nw::before,
+.boxes.edit .ne::before,
+.boxes.edit .se::before,
+.boxes.edit .sw::before { content: ""; position: absolute; inset: -8px }
+.boxes.edit .nw:hover,
+.boxes.edit .ne:hover,
+.boxes.edit .se:hover,
+.boxes.edit .sw:hover,
+.box.on .nw, .box.on .ne, .box.on .se, .box.on .sw {
+  z-index: 3;
+  transform: translate(-50%, -50%) scale(1.3);
 }
 
 .stack {
