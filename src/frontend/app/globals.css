@@ -317,39 +317,27 @@ main.cross, main.cross:active { cursor: crosshair }
 .boxes { position: absolute; inset: 0; pointer-events: none; user-select: none }
 .box {
   position: absolute;
-  border: 1.5px solid var(--cyan);
-  background: rgba(153, 237, 255, 0.12);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  border: 2px solid var(--cyan);
+  background: transparent;
   pointer-events: none;
 }
 .boxes.edit .box { pointer-events: auto; cursor: grab }
 .boxes.edit .box.on { cursor: grabbing }
 .box.draft { pointer-events: none }
-.box .h {
-  position: absolute;
-  z-index: 2;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+.box .h { position: absolute; z-index: 2; pointer-events: none }
+.box .nw, .box .ne, .box .se, .box .sw {
+  width: 12px;
+  height: 12px;
   transform: translate(-50%, -50%);
-  pointer-events: none;
 }
 .box .nw { left: 0; top: 0 }
 .box .ne { left: 100%; top: 0 }
 .box .se { left: 100%; top: 100% }
 .box .sw { left: 0; top: 100% }
-.box .n, .box .s, .box .e, .box .w {
-  z-index: 1;
-  background: none;
-  box-shadow: none;
-  border-radius: 0;
-}
-.box .n, .box .s { left: 0; width: 100%; height: 10px; transform: translateY(-50%) }
+.box .n, .box .s { z-index: 1; left: 0; width: 100%; height: 10px; transform: translateY(-50%) }
 .box .n { top: 0 }
 .box .s { top: 100% }
-.box .e, .box .w { top: 0; width: 10px; height: 100%; transform: translateX(-50%) }
+.box .e, .box .w { z-index: 1; top: 0; width: 10px; height: 100%; transform: translateX(-50%) }
 .box .e { left: 100% }
 .box .w { left: 0 }
 .boxes.edit .h { pointer-events: auto; touch-action: none }
@@ -357,18 +345,6 @@ main.cross, main.cross:active { cursor: crosshair }
 .boxes.edit .ne, .boxes.edit .sw { cursor: nesw-resize }
 .boxes.edit .n, .boxes.edit .s { cursor: ns-resize }
 .boxes.edit .e, .boxes.edit .w { cursor: ew-resize }
-.boxes.edit .nw::before,
-.boxes.edit .ne::before,
-.boxes.edit .se::before,
-.boxes.edit .sw::before { content: ""; position: absolute; inset: -8px }
-.boxes.edit .nw:hover,
-.boxes.edit .ne:hover,
-.boxes.edit .se:hover,
-.boxes.edit .sw:hover,
-.box.on .nw, .box.on .ne, .box.on .se, .box.on .sw {
-  z-index: 3;
-  transform: translate(-50%, -50%) scale(1.3);
-}
 
 .stack {
   grid-column: 2;
