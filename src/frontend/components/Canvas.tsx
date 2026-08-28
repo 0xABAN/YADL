@@ -10,10 +10,16 @@ const MAX = 400;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 type Box = { x: number; y: number; w: number; h: number };
+type Pt = { x: number; y: number };
+type Poly = { pts: Pt[] };
 type Gest =
   | { t: "draw"; x0: number; y0: number }
   | { t: "resize"; i: number; ax: number | null; ay: number | null; start: Box }
   | { t: "move"; i: number; x0: number; y0: number; start: Box };
+type PolyGest =
+  | { t: "draw" }
+  | { t: "vertex"; i: number; j: number }
+  | { t: "move"; i: number; x0: number; y0: number; start: Poly };
 
 const HANDLES: { c: string; ax: (b: Box) => number | null; ay: (b: Box) => number | null }[] = [
   { c: "nw", ax: (b) => b.x + b.w, ay: (b) => b.y + b.h },
@@ -50,6 +56,45 @@ const boxStyle = (b: Box): CSSProperties => ({
   width: `${b.w * 100}%`,
   height: `${b.h * 100}%`,
 });
+const ptsStr = (pts: Pt[]) => pts.map((p) => `${p.x},${p.y}`).join(" ");
+const eqPoly = (a: Poly, b: Poly) =>
+  a.pts.length === b.pts.length && a.pts.every((p, i) => p.x === b.pts[i].x && p.y === b.pts[i].y);
+const tinyPoly = (pts: Pt[], r: DOMRect) => {
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  for (const p of pts) {
+    if (p.x < x0) x0 = p.x;
+    if (p.y < y0) y0 = p.y;
+    if (p.x > x1) x1 = p.x;
+    if (p.y > y1) y1 = p.y;
+  }
+  return tiny({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, r);
+};
+const shiftPoly = (p: Poly, dx: number, dy: number): Poly => {
+  let loX = -Infinity, hiX = Infinity, loY = -Infinity, hiY = Infinity;
+  for (const q of p.pts) {
+    loX = Math.max(loX, -q.x);
+    hiX = Math.min(hiX, 1 - q.x);
+    loY = Math.max(loY, -q.y);
+    hiY = Math.min(hiY, 1 - q.y);
+  }
+  const x = Math.min(Math.max(dx, loX), hiX);
+  const y = Math.min(Math.max(dy, loY), hiY);
+  return { pts: p.pts.map((q) => ({ x: q.x + x, y: q.y + y })) };
+};
+const nearPx = (a: Pt, b: Pt, r: DOMRect, px: number) => {
+  const dx = (a.x - b.x) * r.width, dy = (a.y - b.y) * r.height;
+  return dx * dx + dy * dy < px * px;
+};
+const onSeg = (a: Pt, b: Pt, p: Pt): Pt => {
+  const abx = b.x - a.x, aby = b.y - a.y;
+  const l2 = abx * abx + aby * aby;
+  const t = l2 === 0 ? 0 : Math.min(1, Math.max(0, ((p.x - a.x) * abx + (p.y - a.y) * aby) / l2));
+  return { x: a.x + abx * t, y: a.y + aby * t };
+};
+const atRect = (e: { clientX: number; clientY: number }, r: DOMRect): Pt => ({
+  x: clamp01((e.clientX - r.left) / r.width),
+  y: clamp01((e.clientY - r.top) / r.height),
+});
 
 const TOOLS = [
   { id: "move", label: "Move Tool", d: "M168,132.69,214.08,115l.33-.13A16,16,0,0,0,213,85.07L52.92,32.8A15.95,15.95,0,0,0,32.8,52.92L85.07,213a15.82,15.82,0,0,0,14.41,11l.78,0a15.84,15.84,0,0,0,14.61-9.59l.13-.33L132.69,168,184,219.31a16,16,0,0,0,22.63,0l12.68-12.68a16,16,0,0,0,0-22.63ZM195.31,208,144,156.69a16,16,0,0,0-26,4.93c0,.11-.09.22-.13.32l-17.65,46L48,48l159.85,52.2-45.95,17.64-.32.13a16,16,0,0,0-4.93,26h0L208,195.31Z" },
@@ -69,6 +114,11 @@ export default function Canvas() {
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [draft, setDraft] = useState<Box | null>(null);
   const [boxHold, setBoxHold] = useState<number | "draw" | null>(null);
+  const [polys, setPolys] = useState<Poly[]>([]);
+  const [polyDraft, setPolyDraft] = useState<Pt[] | null>(null);
+  const [cursor, setCursor] = useState<Pt | null>(null);
+  const [polyHold, setPolyHold] = useState<number | "draw" | null>(null);
+  const [vertHold, setVertHold] = useState<number | null>(null);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
   const live = useRef(hand);
@@ -83,8 +133,16 @@ export default function Canvas() {
   const draftRef = useRef<Box | null>(null);
   const boxUndo = useRef<Box[][]>([]);
   const boxRedo = useRef<Box[][]>([]);
+  const livePolys = useRef(polys);
+  const polyGest = useRef<PolyGest | null>(null);
+  const polySnap = useRef<Poly[]>([]);
+  const polyDraftRef = useRef<Pt[] | null>(null);
+  const polyUndo = useRef<Poly[][]>([]);
+  const polyRedo = useRef<Poly[][]>([]);
+  const selVert = useRef<{ i: number; j: number } | null>(null);
   live.current = hand;
   liveBoxes.current = boxes;
+  livePolys.current = polys;
 
   const apply = (next: Landmark[]) => {
     live.current = next;
@@ -93,6 +151,10 @@ export default function Canvas() {
   const applyBoxes = (next: Box[]) => {
     liveBoxes.current = next;
     setBoxes(next);
+  };
+  const applyPolys = (next: Poly[]) => {
+    livePolys.current = next;
+    setPolys(next);
   };
   const pushUndo = (prev: Landmark[]) => {
     undo.current.push(prev);
@@ -104,6 +166,11 @@ export default function Canvas() {
     if (boxUndo.current.length > 50) boxUndo.current.shift();
     boxRedo.current = [];
   };
+  const pushPolyUndo = (prev: Poly[]) => {
+    polyUndo.current.push(prev);
+    if (polyUndo.current.length > 50) polyUndo.current.shift();
+    polyRedo.current = [];
+  };
   const abortBox = () => {
     if (gest.current && gest.current.t !== "draw") applyBoxes(snap.current);
     gest.current = null;
@@ -112,17 +179,100 @@ export default function Canvas() {
     setDraft(null);
     setBoxHold(null);
   };
+  const abortPoly = () => {
+    if (polyGest.current && polyGest.current.t !== "draw") applyPolys(polySnap.current);
+    polyGest.current = null;
+    polyDraftRef.current = null;
+    frameR.current = null;
+    setPolyDraft(null);
+    setCursor(null);
+    setPolyHold(null);
+    setVertHold(null);
+  };
+  const closePoly = () => {
+    const d = polyDraftRef.current;
+    const r = frame.current?.getBoundingClientRect();
+    polyGest.current = null;
+    polyDraftRef.current = null;
+    setPolyDraft(null);
+    setCursor(null);
+    setPolyHold(null);
+    setVertHold(null);
+    if (!d || d.length < 3 || !r || tinyPoly(d, r)) return;
+    pushPolyUndo(livePolys.current);
+    applyPolys([...livePolys.current, { pts: d }]);
+  };
+  const popDraft = () => {
+    const d = polyDraftRef.current;
+    if (!d) return;
+    if (d.length <= 1) {
+      abortPoly();
+      return;
+    }
+    const n = d.slice(0, -1);
+    polyDraftRef.current = n;
+    setPolyDraft(n);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "Escape" && gest.current) {
+      if (e.key === "Escape") {
+        if (gest.current) {
+          e.preventDefault();
+          abortBox();
+        } else if (polyGest.current || polyDraftRef.current) {
+          e.preventDefault();
+          abortPoly();
+        }
+        return;
+      }
+      if (tool === "polygon" && (e.key === "Enter" || e.key === "Backspace" || e.key === "Delete")) {
+        if (e.key === "Enter") {
+          if (polyDraftRef.current && polyDraftRef.current.length >= 3) {
+            e.preventDefault();
+            closePoly();
+          }
+          return;
+        }
         e.preventDefault();
-        abortBox();
+        if (polyDraftRef.current) {
+          popDraft();
+          return;
+        }
+        const s = selVert.current;
+        if (!s || locked) return;
+        const p = livePolys.current[s.i];
+        if (!p || p.pts.length <= 3) return;
+        pushPolyUndo(livePolys.current);
+        applyPolys(livePolys.current.map((q, k) => (k !== s.i ? q : { pts: q.pts.filter((_, j) => j !== s.j) })));
+        selVert.current = null;
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
+        if (tool === "polygon") {
+          if (polyDraftRef.current) {
+            popDraft();
+            return;
+          }
+          if (polyGest.current) {
+            abortPoly();
+            return;
+          }
+          if (e.shiftKey) {
+            const n = polyRedo.current.pop();
+            if (!n) return;
+            polyUndo.current.push(livePolys.current);
+            applyPolys(n);
+          } else {
+            const n = polyUndo.current.pop();
+            if (!n) return;
+            polyRedo.current.push(livePolys.current);
+            applyPolys(n);
+          }
+          return;
+        }
         if (gest.current) {
           abortBox();
           return;
@@ -205,15 +355,17 @@ export default function Canvas() {
   }, [tool, locked]);
 
   useEffect(() => {
+    if (tool === "polygon" && !locked) return;
+    if (polyGest.current || polyDraftRef.current) abortPoly();
+  }, [tool, locked]);
+
+  useEffect(() => {
     if (boxHold == null) return;
-    const at = (e: PointerEvent) => {
-      const r = frameR.current!;
-      return { x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) };
-    };
     const move = (e: PointerEvent) => {
       const g = gest.current;
-      if (!g) return;
-      const p = at(e);
+      const r = frameR.current;
+      if (!g || !r) return;
+      const p = atRect(e, r);
       if (g.t === "draw") {
         const b = boxFrom(g.x0, g.y0, p.x, p.y);
         draftRef.current = b;
@@ -260,6 +412,54 @@ export default function Canvas() {
     };
   }, [boxHold]);
 
+  useEffect(() => {
+    if (polyHold !== "draw") return;
+    const move = (e: PointerEvent) => {
+      const el = frame.current;
+      if (!el) return;
+      setCursor(atRect(e, el.getBoundingClientRect()));
+    };
+    window.addEventListener("pointermove", move);
+    return () => window.removeEventListener("pointermove", move);
+  }, [polyHold]);
+
+  useEffect(() => {
+    if (polyHold == null || polyHold === "draw") return;
+    const move = (e: PointerEvent) => {
+      const g = polyGest.current;
+      const r = frameR.current;
+      if (!g || g.t === "draw" || !r) return;
+      const p = atRect(e, r);
+      if (g.t === "vertex") {
+        applyPolys(livePolys.current.map((q, i) => (i !== g.i ? q : { pts: q.pts.map((pt, j) => (j === g.j ? p : pt)) })));
+      } else {
+        applyPolys(livePolys.current.map((q, i) => (i !== g.i ? q : shiftPoly(g.start, p.x - g.x0, p.y - g.y0))));
+      }
+    };
+    const up = () => {
+      const g = polyGest.current;
+      const r = frameR.current;
+      polyGest.current = null;
+      frameR.current = null;
+      setPolyHold(null);
+      setVertHold(null);
+      if (!g || g.t === "draw" || !r) return;
+      const p = livePolys.current[g.i];
+      if (tinyPoly(p.pts, r)) {
+        applyPolys(polySnap.current);
+        return;
+      }
+      if (eqPoly(p, polySnap.current[g.i])) return;
+      pushPolyUndo(polySnap.current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [polyHold]);
+
   const startBox = (e: PE<HTMLElement>, g: Gest) => {
     if (locked || tool !== "box") return;
     e.stopPropagation();
@@ -274,12 +474,56 @@ export default function Canvas() {
     setBoxHold(g.t === "draw" ? "draw" : g.i);
   };
 
+  const startPoly = (e: PE<Element>, g: Exclude<PolyGest, { t: "draw" }>) => {
+    if (locked || tool !== "polygon" || polyDraftRef.current) return;
+    e.stopPropagation();
+    const r = frame.current!.getBoundingClientRect();
+    frameR.current = r;
+    polySnap.current = livePolys.current;
+    if (g.t === "move") {
+      g.x0 = clamp01((e.clientX - r.left) / r.width);
+      g.y0 = clamp01((e.clientY - r.top) / r.height);
+    }
+    if (g.t === "vertex") {
+      selVert.current = { i: g.i, j: g.j };
+      setVertHold(g.j);
+    }
+    polyGest.current = g;
+    setPolyHold(g.i);
+  };
+
+  const plant = (e: PE<HTMLElement>) => {
+    const r = frame.current!.getBoundingClientRect();
+    const p = atRect(e, r);
+    const d = polyDraftRef.current;
+    if (!d) {
+      polyDraftRef.current = [p];
+      polyGest.current = { t: "draw" };
+      setPolyDraft([p]);
+      setCursor(p);
+      setPolyHold("draw");
+      return;
+    }
+    if (d.length >= 3 && nearPx(p, d[0], r, 12)) {
+      closePoly();
+      return;
+    }
+    if (nearPx(p, d[d.length - 1], r, 4)) return;
+    const n = [...d, p];
+    polyDraftRef.current = n;
+    setPolyDraft(n);
+  };
+
+  const polyEdit = tool === "polygon" && !locked;
+  const drawing = polyHold === "draw";
+
   return (
     <>
     <main
-      className={tool === "box" && !locked ? "cross" : undefined}
+      className={!locked && (tool === "box" || tool === "polygon") ? "cross" : undefined}
       onPointerDown={(e) => {
         if (locked || hold != null || boxHold != null) return;
+        if (typeof polyHold === "number") return;
         if (tool === "box") {
           const r = frame.current!.getBoundingClientRect();
           frameR.current = r;
@@ -293,8 +537,17 @@ export default function Canvas() {
           setBoxHold("draw");
           return;
         }
+        if (tool === "polygon") {
+          plant(e);
+          return;
+        }
         e.currentTarget.setPointerCapture(e.pointerId);
         drag.current = { x: pos.x, y: pos.y, px: e.clientX, py: e.clientY };
+      }}
+      onDoubleClick={(e) => {
+        if (tool !== "polygon" || locked) return;
+        e.preventDefault();
+        if (polyDraftRef.current && polyDraftRef.current.length >= 3) closePoly();
       }}
       onPointerMove={(e) => {
         if (!drag.current) return;
@@ -333,6 +586,73 @@ export default function Canvas() {
               </div>
             ))}
             {draft && <div className="box draft" style={boxStyle(draft)} />}
+          </div>
+          <div className={`polys${polyEdit ? " edit" : ""}`}>
+            <svg viewBox="0 0 1 1" preserveAspectRatio="none">
+              {polys.map((p, i) => (
+                <g key={i}>
+                  <polygon
+                    className={`poly${polyHold === i ? " on" : ""}`}
+                    points={ptsStr(p.pts)}
+                    onPointerDown={(e) => startPoly(e, { t: "move", i, x0: 0, y0: 0, start: p })}
+                  />
+                  {polyEdit && !drawing && p.pts.map((a, j) => {
+                    const b = p.pts[(j + 1) % p.pts.length];
+                    return (
+                      <line
+                        key={j}
+                        className="edge"
+                        x1={a.x}
+                        y1={a.y}
+                        x2={b.x}
+                        y2={b.y}
+                        onPointerDown={(e) => {
+                          if (locked || tool !== "polygon") return;
+                          e.stopPropagation();
+                          const r = frame.current!.getBoundingClientRect();
+                          const pt = onSeg(a, b, atRect(e, r));
+                          const next = { pts: [...p.pts.slice(0, j + 1), pt, ...p.pts.slice(j + 1)] };
+                          polySnap.current = livePolys.current;
+                          frameR.current = r;
+                          applyPolys(livePolys.current.map((q, k) => (k === i ? next : q)));
+                          selVert.current = { i, j: j + 1 };
+                          polyGest.current = { t: "vertex", i, j: j + 1 };
+                          setPolyHold(i);
+                          setVertHold(j + 1);
+                        }}
+                      />
+                    );
+                  })}
+                </g>
+              ))}
+              {polyDraft && cursor && (
+                <polyline className="poly draft" points={ptsStr([...polyDraft, cursor])} />
+              )}
+              {polyDraft && polyDraft.length >= 2 && cursor && (
+                <line className="ghost" x1={cursor.x} y1={cursor.y} x2={polyDraft[0].x} y2={polyDraft[0].y} />
+              )}
+            </svg>
+            {polyEdit && !drawing && polys.map((p, i) =>
+              p.pts.map((pt, j) => (
+                <span
+                  key={`${i}-${j}`}
+                  className={`pv${polyHold === i && vertHold === j ? " on" : ""}`}
+                  style={{ left: `${pt.x * 100}%`, top: `${pt.y * 100}%` }}
+                  onPointerDown={(e) => startPoly(e, { t: "vertex", i, j })}
+                />
+              )),
+            )}
+            {drawing && polyDraft?.map((pt, j) => (
+              <span
+                key={`d-${j}`}
+                className={`pv${j === 0 && polyDraft.length >= 3 ? " close" : ""}`}
+                style={{ left: `${pt.x * 100}%`, top: `${pt.y * 100}%` }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  if (j === 0 && polyDraft.length >= 3) closePoly();
+                }}
+              />
+            ))}
           </div>
           <div className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`}>
             <svg viewBox="0 0 1 1" preserveAspectRatio="none">
