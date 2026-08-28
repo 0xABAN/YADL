@@ -33,7 +33,7 @@ export default function Classes() {
       />
       <div className="rail-ui">
         <span className="brand">YADL+</span>
-        <p className="lede">Agent authors the pose. You review. The product is labeled data.</p>
+        <p className="lede">Most tools augment humans with AI. This one augments AI with humans.</p>
         <nav className="tabs">
           <button type="button" aria-pressed={tab === "labels"} onClick={() => setTab("labels")}>Labels</button>
           <button type="button" aria-pressed={tab === "objects"} onClick={() => setTab("objects")}>Objects</button>
