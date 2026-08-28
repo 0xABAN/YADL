@@ -270,6 +270,43 @@ main:active { cursor: grabbing }
 .frame i:nth-child(3) { top: 100%; left: 0 }
 .frame i:nth-child(4) { top: 100%; left: 100% }
 
+.hand { position: absolute; inset: 0; pointer-events: none; user-select: none }
+.hand svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible }
+.hand line {
+  stroke: var(--muted);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.hand .pt {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+}
+.hand .dot {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--c);
+}
+.hand.edit .dot { pointer-events: auto; cursor: grab; touch-action: none }
+.hand.edit .dot::before { content: ""; position: absolute; inset: -8px }
+.hand .pt.on .dot { cursor: grabbing; transform: scale(1.4) }
+.hand .chip {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translate(6px, -50%);
+  padding: 1px 5px;
+  border-radius: var(--radius);
+  background: var(--c);
+  color: #000;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .stack {
   grid-column: 2;
   grid-row: 1;

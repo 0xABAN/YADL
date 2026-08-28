@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import Grainient from "./Grainient";
+import { REGION_COLOR } from "@/lib/hand";
 
 const LABELS = [
-  { name: "open", color: "var(--cyan)", n: 0 },
-  { name: "fist", color: "var(--lime)", n: 0 },
-  { name: "point", color: "#fff", n: 0 },
-  { name: "pinch", color: "var(--muted)", n: 0 },
-  { name: "thumbs_up", color: "var(--cyan)", n: 0 },
-  { name: "ok", color: "var(--lime)", n: 0 },
+  { name: "wrist", color: REGION_COLOR.wrist, n: 1 },
+  { name: "joint", color: REGION_COLOR.joint, n: 15 },
+  { name: "tip", color: REGION_COLOR.tip, n: 5 },
 ];
 
 export default function Classes() {

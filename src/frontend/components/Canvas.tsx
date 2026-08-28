@@ -1,10 +1,13 @@
 "use client";
 
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
+import { CONNECTIONS, PRESETS, REGION_COLOR, pose, region, type Landmark } from "@/lib/hand";
 
+const OPEN = pose(PRESETS.open);
 const STEP = 10;
 const MIN = 25;
 const MAX = 400;
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 const TOOLS = [
   { id: "move", label: "Move Tool", d: "M168,132.69,214.08,115l.33-.13A16,16,0,0,0,213,85.07L52.92,32.8A15.95,15.95,0,0,0,32.8,52.92L85.07,213a15.82,15.82,0,0,0,14.41,11l.78,0a15.84,15.84,0,0,0,14.61-9.59l.13-.33L132.69,168,184,219.31a16,16,0,0,0,22.63,0l12.68-12.68a16,16,0,0,0,0-22.63ZM195.31,208,144,156.69a16,16,0,0,0-26,4.93c0,.11-.09.22-.13.32l-17.65,46L48,48l159.85,52.2-45.95,17.64-.32.13a16,16,0,0,0-4.93,26h0L208,195.31Z" },
@@ -19,13 +22,96 @@ export default function Canvas() {
   const [zoom, setZoom] = useState(100);
   const [locked, setLocked] = useState(false);
   const [tool, setTool] = useState<(typeof TOOLS)[number]["id"]>("landmarks");
+  const [hand, setHand] = useState<Landmark[]>(OPEN);
+  const [hold, setHold] = useState<number | null>(null);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const frame = useRef<HTMLDivElement>(null);
+  const live = useRef(hand);
+  const sel = useRef<number | null>(null);
+  const dragPt = useRef<{ i: number; start: Landmark[] } | null>(null);
+  const box = useRef<DOMRect | null>(null);
+  const undo = useRef<Landmark[][]>([]);
+  const redo = useRef<Landmark[][]>([]);
+  live.current = hand;
+
+  const apply = (next: Landmark[]) => {
+    live.current = next;
+    setHand(next);
+  };
+  const pushUndo = (prev: Landmark[]) => {
+    undo.current.push(prev);
+    if (undo.current.length > 50) undo.current.shift();
+    redo.current = [];
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          const n = redo.current.pop();
+          if (!n) return;
+          undo.current.push(live.current);
+          apply(n);
+        } else {
+          const n = undo.current.pop();
+          if (!n) return;
+          redo.current.push(live.current);
+          apply(n);
+        }
+        return;
+      }
+      if (locked || sel.current == null || !e.key.startsWith("Arrow")) return;
+      e.preventDefault();
+      const r = frame.current?.getBoundingClientRect();
+      const dx = (e.shiftKey ? 10 : 1) / (r?.width || 500);
+      const dy = (e.shiftKey ? 10 : 1) / (r?.height || 500);
+      const i = sel.current;
+      const p = live.current[i];
+      const x = clamp01(p.x + (e.key === "ArrowRight" ? dx : e.key === "ArrowLeft" ? -dx : 0));
+      const y = clamp01(p.y + (e.key === "ArrowDown" ? dy : e.key === "ArrowUp" ? -dy : 0));
+      if (x === p.x && y === p.y) return;
+      pushUndo(live.current);
+      apply(live.current.map((q, j) => (j === i ? { ...q, x, y } : q)));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [locked]);
+
+  useEffect(() => {
+    if (hold == null) return;
+    const move = (e: PointerEvent) => {
+      const d = dragPt.current;
+      const r = box.current;
+      if (!d || !r) return;
+      const x = clamp01((e.clientX - r.left) / r.width);
+      const y = clamp01((e.clientY - r.top) / r.height);
+      apply(live.current.map((p, j) => (j === d.i ? { ...p, x, y } : p)));
+    };
+    const up = () => {
+      const d = dragPt.current;
+      dragPt.current = null;
+      box.current = null;
+      setHold(null);
+      if (!d) return;
+      const p = live.current[d.i];
+      if (p.x === d.start[d.i].x && p.y === d.start[d.i].y) return;
+      pushUndo(d.start);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [hold]);
 
   return (
     <>
     <main
       onPointerDown={(e) => {
-        if (locked) return;
+        if (locked || hold != null) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         drag.current = { x: pos.x, y: pos.y, px: e.clientX, py: e.clientY };
       }}
@@ -45,9 +131,36 @@ export default function Canvas() {
         style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom / 100})` }}
       >
         <div className="dots" aria-hidden="true" />
-        <div className="frame">
+        <div className="frame" ref={frame}>
           <i /><i /><i /><i />
           <img src="/default.jpg" alt="" draggable={false} />
+          <div className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`}>
+            <svg viewBox="0 0 1 1" preserveAspectRatio="none">
+              {CONNECTIONS.map(([a, b]) => (
+                <line key={`${a}-${b}`} x1={hand[a].x} y1={hand[a].y} x2={hand[b].x} y2={hand[b].y} />
+              ))}
+            </svg>
+            {hand.map((p, i) => (
+              <span
+                key={i}
+                className={`pt${hold === i ? " on" : ""}`}
+                style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%`, "--c": REGION_COLOR[region(i)] } as CSSProperties}
+              >
+                <span className="chip">{i} {region(i).toUpperCase()}</span>
+                <span
+                  className="dot"
+                  onPointerDown={(e) => {
+                    if (locked || tool !== "landmarks") return;
+                    e.stopPropagation();
+                    box.current = frame.current!.getBoundingClientRect();
+                    sel.current = i;
+                    dragPt.current = { i, start: live.current };
+                    setHold(i);
+                  }}
+                />
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </main>

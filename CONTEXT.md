@@ -32,9 +32,14 @@ The page is a 21-point hand driven by **FK joints**, not raw dots.
 
 ## v1 (build this)
 
-Localhost web app in `src/frontend` (Next.js + TypeScript). No login, no cloud, no rate limits.
+Localhost. No login, no cloud, no rate limits.
 
-WebMCP tools:
+- **Frontend:** `src/frontend` — Next.js + TypeScript
+- **Backend:** `src/backend` — Python + uv + FastAPI. Writes `./data/`.
+
+Landmarks match MediaPipe Hands: 21 points, `{x, y, z}`, `x,y ∈ [0,1]` of the image, `z` wrist-relative, MediaPipe index order. Joints are the authoring type; landmarks are derived. WebMCP comes last.
+
+WebMCP tools (later):
 
 | Tool | Role |
 |---|---|
