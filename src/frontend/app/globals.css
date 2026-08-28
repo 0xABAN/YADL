@@ -185,7 +185,38 @@ aside .grainient-container {
 .pane {
   flex: 1 1 0;
   min-height: 0;
+  overflow: auto;
   background: var(--canvas);
+}
+.labels {
+  list-style: none;
+  padding: 8px 12px;
+}
+.labels li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  color: var(--text);
+  font-size: 14px;
+}
+.labels .swatch {
+  width: 1.6em;
+  height: 1.6em;
+  padding: 0;
+  border-radius: var(--radius);
+}
+.labels b {
+  width: 1.6em;
+  height: 1.6em;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 .rail-ui::after {
   content: "";
