@@ -145,19 +145,17 @@ export default function Canvas() {
                 key={i}
                 className={`pt${hold === i ? " on" : ""}`}
                 style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%`, "--c": REGION_COLOR[region(i)] } as CSSProperties}
+                onPointerDown={(e) => {
+                  if (locked || tool !== "landmarks") return;
+                  e.stopPropagation();
+                  box.current = frame.current!.getBoundingClientRect();
+                  sel.current = i;
+                  dragPt.current = { i, start: live.current };
+                  setHold(i);
+                }}
               >
                 <span className="chip">{i} {region(i).toUpperCase()}</span>
-                <span
-                  className="dot"
-                  onPointerDown={(e) => {
-                    if (locked || tool !== "landmarks") return;
-                    e.stopPropagation();
-                    box.current = frame.current!.getBoundingClientRect();
-                    sel.current = i;
-                    dragPt.current = { i, start: live.current };
-                    setHold(i);
-                  }}
-                />
+                <span className="dot" />
               </span>
             ))}
           </div>
