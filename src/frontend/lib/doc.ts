@@ -12,9 +12,18 @@ export type Doc = {
   id: string;
   image: string;
   objects: HandObj[];
+  url?: string | null;
 };
 
 export type Project = {
+  id: string;
+  name: string;
   type: "boxes" | "polygons" | "hands";
   classes: string[];
+};
+
+export const SHOWN: Record<Project["type"], string[]> = {
+  hands: ["move", "landmarks", "assist"],
+  boxes: ["move", "box"],
+  polygons: ["move", "polygon"],
 };
