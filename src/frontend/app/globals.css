@@ -9,7 +9,8 @@
   --lime: #bfff00;
   --radius: 6px;
   --radius-lg: 12px;
-  --rail: 332px;
+  --rail: 249px;
+  --rail-pad: clamp(9px, 1.4vh, 14px);
   --canvas: #0c0c0c;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   --font: ui-sans-serif, system-ui, sans-serif;
@@ -49,9 +50,9 @@ footer {
   grid-template-columns: 1fr auto 1fr;
   align-items: stretch;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  height: 56px;
-  margin: 0 16px;
-  padding: 10px 16px;
+  height: 50px;
+  margin: 0 16px 0 var(--rail-pad);
+  padding: 9px 14px;
   background: var(--bg);
   box-shadow: var(--shadow);
 }
@@ -60,7 +61,7 @@ footer {
   display: block;
   margin: 8px 0 12px;
   font-family: var(--font-display);
-  font-size: clamp(38px, 5.4vw, 66px);
+  font-size: clamp(26px, 3.6vw, 42px);
   font-weight: 850;
   letter-spacing: -0.075em;
   line-height: 0.92;
@@ -70,14 +71,14 @@ footer {
   grid-column: 1;
   justify-self: end;
   align-self: center;
-  margin-right: 12px;
+  margin-right: 11px;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 .pager {
   grid-column: 2;
@@ -90,7 +91,7 @@ footer {
 .pager button {
   display: grid;
   place-items: center;
-  width: 24px;
+  width: 22px;
   padding: 0;
   background: #e5e5e5;
   color: #111;
@@ -98,29 +99,29 @@ footer {
 .pager button:disabled { opacity: 1 }
 .pager span {
   min-width: 3em;
-  padding: 0 12px;
+  padding: 0 11px;
   display: grid;
   place-items: center;
   color: #111;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
-.pager svg { width: 16px; height: 16px }
+.pager svg { width: 14px; height: 14px }
 
 .actions {
   grid-column: 3;
   justify-self: end;
   display: flex;
   align-items: stretch;
-  gap: 16px;
+  gap: 14px;
 }
 
 .commit {
-  padding: 0 12px;
+  padding: 0 11px;
   border-radius: var(--radius);
   background: #fff;
   color: #000;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 
@@ -144,6 +145,7 @@ aside .grainient-container {
   overflow: hidden;
   border-radius: inherit;
   pointer-events: none;
+  clip-path: inset(0 var(--rail-pad) 0 var(--rail-pad));
 }
 
 .rail-ui {
@@ -152,13 +154,13 @@ aside .grainient-container {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: clamp(18px, 2.8vh, 28px);
+  padding: var(--rail-pad);
 }
 
 .lede {
   margin: 0 0 16px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -172,7 +174,7 @@ aside .grainient-container {
   padding-bottom: 8px;
   margin-bottom: -1px;
   border-bottom: 2px solid transparent;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: -0.04em;
   color: var(--muted);
@@ -202,7 +204,7 @@ aside .grainient-container {
   gap: 10px;
   padding: 8px 0;
   color: var(--text);
-  font-size: 14px;
+  font-size: 12px;
 }
 .labels .swatch {
   width: 1.6em;
@@ -403,11 +405,11 @@ main.cross, main.cross:active { cursor: crosshair }
   grid-row: 1;
   justify-self: start;
   align-self: end;
-  margin: 0 0 16px 16px;
+  margin: 0 0 var(--rail-pad) var(--rail-pad);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  width: 56px;
+  gap: var(--rail-pad);
+  width: 50px;
 }
 
 .panel {
@@ -415,20 +417,20 @@ main.cross, main.cross:active { cursor: crosshair }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
   border-radius: var(--radius);
-  padding: 22px 7px;
+  padding: 20px 6px;
   background: var(--bg);
   box-shadow: var(--shadow);
   color: #fff;
   font-family: var(--font);
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 500;
   letter-spacing: 0.04em;
 }
 
 .panel button { padding: 2px 1px; line-height: 1 }
-.panel svg { width: 14px; height: 14px }
+.panel svg { width: 13px; height: 13px }
 .panel .step { color: var(--cyan) }
 .panel button[aria-pressed="true"] { color: var(--lime) }
 .zoom span { color: var(--text) }
@@ -451,7 +453,7 @@ main.cross, main.cross:active { cursor: crosshair }
   border-radius: var(--radius);
   background: var(--bg);
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0;
   white-space: nowrap;
@@ -461,13 +463,13 @@ main.cross, main.cross:active { cursor: crosshair }
   align-self: center;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-right: 16px;
+  gap: 14px;
+  padding-right: 14px;
   border-right: 1px solid var(--line);
 }
 .extra button + button {
   border-left: 1px solid var(--line);
-  padding-left: 16px;
+  padding-left: 14px;
 }
 .extra button {
   display: flex;
@@ -475,10 +477,10 @@ main.cross, main.cross:active { cursor: crosshair }
   align-items: center;
   gap: 2px;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
-.extra svg { width: 16px; height: 16px; display: block }
+.extra svg { width: 14px; height: 14px; display: block }
 
 aside::after,
 footer::after,
