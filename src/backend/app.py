@@ -1,78 +1,120 @@
+import os
+import tempfile
 from pathlib import Path
-import sys
+from typing import Annotated, Literal
 
-SRC = Path(__file__).resolve().parents[1]
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
+from backend.db import apply_schema, fetchone
 from backend.models import Doc
-from backend.store import ensure_layout, image_path, list_images, load_doc, save_doc
+from backend.store import (
+    create_project,
+    ensure_user,
+    get_image,
+    get_project,
+    image_row,
+    list_images,
+    list_projects,
+    put_objects,
+    save_objects,
+    seed_demo,
+)
+from backend.s3 import download
 from demo.hands import seed
-from demo.project import PROJECT
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
+class NewProject(BaseModel):
+    name: str
+    type: Literal["boxes", "polygons", "hands"]
+
+
+def uid(x_user_id: Annotated[str | None, Header()] = None) -> str:
+    return x_user_id or "dev"
+
+
 @app.on_event("startup")
 def boot() -> None:
-    ensure_layout()
+    apply_schema()
+    ensure_user("dev")
+    seed_demo()
 
 
-@app.get("/project")
-def project():
-    return PROJECT
+@app.get("/health")
+def health():
+    fetchone("select 1")
+    return {"ok": True}
 
 
-@app.get("/images")
-def images():
-    ensure_layout()
-    return list_images()
+@app.get("/me")
+def me(user: str = Depends(uid)):
+    return {"id": user}
 
 
-@app.get("/images/{id}")
-def get_image(id: str):
-    doc = load_doc(id)
-    if doc is None:
+@app.get("/projects")
+def projects(user: str = Depends(uid)):
+    return list_projects(user)
+
+
+@app.post("/projects")
+def new_project(body: NewProject, user: str = Depends(uid)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "name")
+    return create_project(user, name, body.type)
+
+
+@app.get("/projects/{pid}")
+def project(pid: str, user: str = Depends(uid)):
+    row = get_project(pid, user)
+    if not row:
         raise HTTPException(404)
-    if not doc.objects:
-        path = image_path(id)
-        if path:
-            doc.objects = seed(path)
-            save_doc(doc)
-    return doc
+    return row
 
 
-@app.put("/images/{id}")
-def put_image(id: str, body: Doc):
-    if load_doc(id) is None:
+@app.get("/projects/{pid}/images")
+def images(pid: str, user: str = Depends(uid)):
+    rows = list_images(pid, user)
+    if rows is None:
         raise HTTPException(404)
-    body.id = id
-    save_doc(body)
-    return body
+    return rows
 
 
-@app.post("/images/{id}/assist")
-def assist(id: str):
-    doc = load_doc(id)
-    if doc is None:
+@app.get("/projects/{pid}/images/{iid}")
+def image(pid: str, iid: str, user: str = Depends(uid)):
+    row = get_image(pid, iid, user)
+    if not row:
         raise HTTPException(404)
-    if doc.objects:
-        return doc
-    path = image_path(id)
-    if path:
-        doc.objects = seed(path)
-        save_doc(doc)
-    return doc
+    return row
 
 
-@app.get("/images/{id}/file")
-def file(id: str):
-    path = image_path(id)
-    if not path:
+@app.put("/projects/{pid}/images/{iid}")
+def save(pid: str, iid: str, body: Doc, user: str = Depends(uid)):
+    row = put_objects(pid, iid, user, [o.model_dump() for o in body.objects])
+    if not row:
         raise HTTPException(404)
-    return FileResponse(path)
+    return row
+
+
+@app.post("/projects/{pid}/images/{iid}/assist")
+def assist(pid: str, iid: str, user: str = Depends(uid)):
+    row = image_row(pid, iid, user)
+    if not row:
+        raise HTTPException(404)
+    if row["objects"]:
+        return get_image(pid, iid, user)
+    ext = Path(row["filename"]).suffix or ".jpg"
+    fd, name = tempfile.mkstemp(suffix=ext)
+    os.close(fd)
+    tmp = Path(name)
+    try:
+        download(row["s3_key"], tmp)
+        objs = seed(tmp)
+        save_objects(str(row["id"]), [o.model_dump() for o in objs])
+    finally:
+        tmp.unlink(missing_ok=True)
+    return get_image(pid, iid, user)

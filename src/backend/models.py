@@ -40,8 +40,11 @@ class Doc(BaseModel):
     id: str
     image: str
     objects: list[Obj]
+    url: str | None = None
 
 
 class Project(BaseModel):
+    id: str
+    name: str
     type: Literal["boxes", "polygons", "hands"]
     classes: list[str]

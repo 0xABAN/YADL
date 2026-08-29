@@ -5,16 +5,16 @@ from urllib.request import urlretrieve
 import mediapipe as mp
 
 from backend.models import GeomHand, Landmark, Obj
-from backend.store import MODELS
 
-MODEL = MODELS / "hand_landmarker.task"
+ROOT = Path(__file__).resolve().parents[2]
+MODEL = ROOT / "data" / "models" / "hand_landmarker.task"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
 
 _lm = None
 
 
 def _model() -> Path:
-    MODELS.mkdir(parents=True, exist_ok=True)
+    MODEL.parent.mkdir(parents=True, exist_ok=True)
     if not MODEL.exists():
         urlretrieve(MODEL_URL, MODEL)
     return MODEL
