@@ -192,10 +192,12 @@ aside .grainient-container {
   list-style: none;
   padding: 8px 12px;
 }
-.labels.poses li { grid-template-columns: 1fr auto }
+.labels.poses li { grid-template-columns: 1fr auto; cursor: pointer }
+.labels li[aria-current] { color: var(--cyan) }
 .labels li {
   display: grid;
   grid-template-columns: auto 1fr auto;
+  cursor: pointer;
   align-items: center;
   gap: 10px;
   padding: 8px 0;

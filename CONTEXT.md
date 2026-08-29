@@ -57,10 +57,11 @@ Do not rate-limit `set_joint`.
 - Presigned uploads
 - Harsh caps on commits / image-gen / train
 - RunPod: train a classifier on labeled landmarks
+- RunPod **serverless** for MediaPipe still-image seed (and later similar assist). Low traffic; pay only when a job runs. Hosted API stays JSON/files — do not run `detect()` on the web worker.
 - GPT image API: optional stills augment (not local, not RunPod)
 - Optional camera → in-tab MediaPipe (GPU/WASM, VIDEO mode, worker). Tool reads latest landmarks; it does not run inference.
 
-Live landmarks stay in the browser. Heavy jobs (train) may use RunPod. Image gen uses the OpenAI API.
+Live camera stays in the browser. Stills seed and train may use RunPod. Image gen uses the OpenAI API.
 
 ## Locked decisions
 

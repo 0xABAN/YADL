@@ -2,12 +2,24 @@
 
 import { useState } from "react";
 import Grainient from "./Grainient";
-import { HAND_COLOR, NAMES, PRESETS } from "@/lib/hand";
+import { HAND_COLOR } from "@/lib/hand";
+import type { HandObj } from "@/lib/doc";
 
-const POSES = Object.keys(PRESETS);
-
-export default function Classes() {
+export default function Classes({
+  classes,
+  objects,
+  selected,
+  onSelect,
+  onLabel,
+}: {
+  classes: string[];
+  objects: HandObj[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  onLabel: (label: string) => void;
+}) {
   const [tab, setTab] = useState<"labels" | "objects">("labels");
+  const counts = Object.fromEntries(classes.map((c) => [c, objects.filter((o) => o.label === c).length]));
   return (
     <aside>
       <Grainient
@@ -44,24 +56,22 @@ export default function Classes() {
         <div className="pane">
           {tab === "labels" && (
             <ul className="labels poses">
-              {POSES.map((id) => (
-                <li key={id}>
-                  {id.replaceAll("_", " ")}
-                  <b>{id === "open" ? 1 : 0}</b>
+              {classes.map((name) => (
+                <li key={name} onClick={() => onLabel(name)}>
+                  {name}
+                  <b>{counts[name] || 0}</b>
                 </li>
               ))}
             </ul>
           )}
           {tab === "objects" && (
             <ul className="labels">
-              {HAND_COLOR.flatMap((color, h) =>
-                NAMES.map((name, i) => (
-                  <li key={`${h}-${i}`}>
-                    <span className="swatch" style={{ background: color }} />
-                    {i} {name}
-                  </li>
-                )),
-              )}
+              {objects.map((o, i) => (
+                <li key={o.id} aria-current={selected === o.id || undefined} onClick={() => onSelect(o.id)}>
+                  <span className="swatch" style={{ background: HAND_COLOR[i % HAND_COLOR.length] }} />
+                  Hand {i + 1}{o.label ? ` · ${o.label}` : ""}
+                </li>
+              ))}
             </ul>
           )}
         </div>

@@ -1,13 +1,5 @@
-import Canvas from "@/components/Canvas";
-import Classes from "@/components/Classes";
-import Footer from "@/components/Footer";
+import Studio from "@/components/Studio";
 
 export default function Home() {
-  return (
-    <div className="shell">
-      <Classes />
-      <Canvas />
-      <Footer />
-    </div>
-  );
+  return <Studio />;
 }

@@ -1,9 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE } from "react";
-import { CONNECTIONS, HAND_COLOR, PRESETS, pose, region, type Landmark } from "@/lib/hand";
-
-const OPEN = pose(PRESETS.open);
+import { CONNECTIONS, HAND_COLOR } from "@/lib/hand";
+import type { HandObj } from "@/lib/doc";
 const STEP = 10;
 const MIN = 25;
 const MAX = 400;
@@ -104,13 +103,25 @@ const TOOLS = [
   { id: "assist", label: "Label Assist", d: "M48,64a8,8,0,0,1,8-8H72V40a8,8,0,0,1,16,0V56h16a8,8,0,0,1,0,16H88V88a8,8,0,0,1-16,0V72H56A8,8,0,0,1,48,64ZM184,192h-8v-8a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0v-8h8a8,8,0,0,0,0-16Zm56-48H224V128a8,8,0,0,0-16,0v16H192a8,8,0,0,0,0,16h16v16a8,8,0,0,0,16,0V160h16a8,8,0,0,0,0-16ZM219.31,80,80,219.31a16,16,0,0,1-22.62,0L36.68,198.63a16,16,0,0,1,0-22.63L176,36.69a16,16,0,0,1,22.63,0l20.68,20.68A16,16,0,0,1,219.31,80Zm-54.63,32L144,91.31l-96,96L68.68,208ZM208,68.69,187.31,48l-32,32L176,100.69Z" },
 ] as const;
 
-export default function Canvas() {
+const SHOWN = new Set<string>(["move", "landmarks", "assist"]);
+
+export default function Canvas({
+  src = "/default.jpg",
+  objects = [],
+  onChange,
+  onAssist,
+}: {
+  src?: string;
+  objects?: HandObj[];
+  onChange?: (objects: HandObj[]) => void;
+  onAssist?: () => void;
+}) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(100);
   const [locked, setLocked] = useState(false);
   const [tool, setTool] = useState<(typeof TOOLS)[number]["id"]>("landmarks");
-  const [hand, setHand] = useState<Landmark[]>(OPEN);
-  const [hold, setHold] = useState<number | null>(null);
+  const [hands, setHands] = useState<HandObj[]>(objects);
+  const [hold, setHold] = useState<{ h: number; i: number } | null>(null);
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [draft, setDraft] = useState<Box | null>(null);
   const [boxHold, setBoxHold] = useState<number | "draw" | null>(null);
@@ -121,12 +132,14 @@ export default function Canvas() {
   const [vertHold, setVertHold] = useState<number | null>(null);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
-  const live = useRef(hand);
-  const sel = useRef<number | null>(null);
-  const dragPt = useRef<{ i: number; start: Landmark[] } | null>(null);
+  const change = useRef(onChange);
+  change.current = onChange;
+  const live = useRef(hands);
+  const sel = useRef<{ h: number; i: number } | null>(null);
+  const dragPt = useRef<{ h: number; i: number; start: HandObj[] } | null>(null);
   const frameR = useRef<DOMRect | null>(null);
-  const undo = useRef<Landmark[][]>([]);
-  const redo = useRef<Landmark[][]>([]);
+  const undo = useRef<HandObj[][]>([]);
+  const redo = useRef<HandObj[][]>([]);
   const liveBoxes = useRef(boxes);
   const gest = useRef<Gest | null>(null);
   const snap = useRef<Box[]>([]);
@@ -140,13 +153,22 @@ export default function Canvas() {
   const polyUndo = useRef<Poly[][]>([]);
   const polyRedo = useRef<Poly[][]>([]);
   const selVert = useRef<{ i: number; j: number } | null>(null);
-  live.current = hand;
+  live.current = hands;
   liveBoxes.current = boxes;
   livePolys.current = polys;
 
-  const apply = (next: Landmark[]) => {
+  useEffect(() => {
+    setHands(objects);
+    live.current = objects;
+  }, [objects]);
+  useEffect(() => {
+    undo.current = [];
+    redo.current = [];
+  }, [src]);
+
+  const apply = (next: HandObj[]) => {
     live.current = next;
-    setHand(next);
+    setHands(next);
   };
   const applyBoxes = (next: Box[]) => {
     liveBoxes.current = next;
@@ -156,7 +178,7 @@ export default function Canvas() {
     livePolys.current = next;
     setPolys(next);
   };
-  const pushUndo = (prev: Landmark[]) => {
+  const pushUndo = (prev: HandObj[]) => {
     undo.current.push(prev);
     if (undo.current.length > 50) undo.current.shift();
     redo.current = [];
@@ -296,11 +318,13 @@ export default function Canvas() {
           if (!n) return;
           undo.current.push(live.current);
           apply(n);
+          change.current?.(n);
         } else {
           const n = undo.current.pop();
           if (!n) return;
           redo.current.push(live.current);
           apply(n);
+          change.current?.(n);
         }
         return;
       }
@@ -309,13 +333,25 @@ export default function Canvas() {
       const r = frame.current?.getBoundingClientRect();
       const dx = (e.shiftKey ? 10 : 1) / (r?.width || 500);
       const dy = (e.shiftKey ? 10 : 1) / (r?.height || 500);
-      const i = sel.current;
-      const p = live.current[i];
+      const s = sel.current;
+      const obj = live.current[s.h];
+      if (!obj || obj.geom.t !== "hand") return;
+      const p = obj.geom.landmarks[s.i];
       const x = clamp01(p.x + (e.key === "ArrowRight" ? dx : e.key === "ArrowLeft" ? -dx : 0));
       const y = clamp01(p.y + (e.key === "ArrowDown" ? dy : e.key === "ArrowUp" ? -dy : 0));
       if (x === p.x && y === p.y) return;
       pushUndo(live.current);
-      apply(live.current.map((q, j) => (j === i ? { ...q, x, y } : q)));
+      const next = live.current.map((o, h) =>
+        h !== s.h
+          ? o
+          : {
+              ...o,
+              edited: true,
+              geom: { ...o.geom, landmarks: o.geom.landmarks.map((q, j) => (j === s.i ? { ...q, x, y } : q)) },
+            },
+      );
+      apply(next);
+      change.current?.(next);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -329,7 +365,17 @@ export default function Canvas() {
       if (!d || !r) return;
       const x = clamp01((e.clientX - r.left) / r.width);
       const y = clamp01((e.clientY - r.top) / r.height);
-      apply(live.current.map((p, j) => (j === d.i ? { ...p, x, y } : p)));
+      apply(
+        live.current.map((o, h) =>
+          h !== d.h
+            ? o
+            : {
+                ...o,
+                edited: true,
+                geom: { ...o.geom, landmarks: o.geom.landmarks.map((p, j) => (j === d.i ? { ...p, x, y } : p)) },
+              },
+        ),
+      );
     };
     const up = () => {
       const d = dragPt.current;
@@ -337,9 +383,11 @@ export default function Canvas() {
       frameR.current = null;
       setHold(null);
       if (!d) return;
-      const p = live.current[d.i];
-      if (p.x === d.start[d.i].x && p.y === d.start[d.i].y) return;
+      const now = live.current[d.h]?.geom.landmarks[d.i];
+      const was = d.start[d.h]?.geom.landmarks[d.i];
+      if (!now || !was || (now.x === was.x && now.y === was.y)) return;
       pushUndo(d.start);
+      change.current?.(live.current);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -567,7 +615,7 @@ export default function Canvas() {
         <div className="dots" aria-hidden="true" />
         <div className="frame" ref={frame}>
           <i /><i /><i /><i />
-          <img src="/default.jpg" alt="" draggable={false} />
+          <img src={src} alt="" draggable={false} />
           <div className={`boxes${tool === "box" && !locked ? " edit" : ""}`}>
             {boxes.map((b, i) => (
               <div
@@ -654,44 +702,46 @@ export default function Canvas() {
               />
             ))}
           </div>
-          <div className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`} style={{ "--c": HAND_COLOR[0] } as CSSProperties}>
+          {hands.map((obj, h) => obj.geom.t === "hand" && (
+          <div key={obj.id} className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`} style={{ "--c": HAND_COLOR[h % HAND_COLOR.length] } as CSSProperties}>
             <svg viewBox="0 0 1 1" preserveAspectRatio="none">
               {CONNECTIONS.map(([a, b]) => (
-                <line key={`${a}-${b}`} x1={hand[a].x} y1={hand[a].y} x2={hand[b].x} y2={hand[b].y} />
+                <line key={`${a}-${b}`} x1={obj.geom.landmarks[a].x} y1={obj.geom.landmarks[a].y} x2={obj.geom.landmarks[b].x} y2={obj.geom.landmarks[b].y} />
               ))}
             </svg>
-            {hand.map((p, i) => (
+            {obj.geom.landmarks.map((p, i) => (
               <span
                 key={i}
-                className={`pt${hold === i ? " on" : ""}`}
+                className={`pt${hold?.h === h && hold.i === i ? " on" : ""}`}
                 style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
                 onPointerDown={(e) => {
                   if (locked || tool !== "landmarks") return;
                   e.stopPropagation();
                   frameR.current = frame.current!.getBoundingClientRect();
-                  sel.current = i;
-                  dragPt.current = { i, start: live.current };
-                  setHold(i);
+                  sel.current = { h, i };
+                  dragPt.current = { h, i, start: live.current };
+                  setHold({ h, i });
                 }}
               >
-                <span className="chip">{i} {region(i).toUpperCase()}</span>
+                <span className="chip">{i}</span>
                 <span className="dot" />
               </span>
             ))}
           </div>
+          ))}
         </div>
       </div>
     </main>
     <div className="stack">
     <div className="panel tools">
-      {TOOLS.map((t) => (
+      {TOOLS.filter((t) => SHOWN.has(t.id)).map((t) => (
         <Fragment key={t.id}>
         {t.id === "assist" && <hr />}
         <button
           type="button"
           aria-label={t.label}
-          aria-pressed={tool === t.id}
-          onClick={() => setTool(t.id)}
+          aria-pressed={t.id !== "assist" && tool === t.id}
+          onClick={() => (t.id === "assist" ? onAssist?.() : setTool(t.id))}
         >
           <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
             <path d={t.d} fill="currentColor" />
