@@ -22,7 +22,9 @@ export type Project = {
   classes: string[];
 };
 
-export const SHOWN: Record<Project["type"], string[]> = {
+export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist";
+
+export const SHOWN: Record<Project["type"], ToolId[]> = {
   hands: ["move", "landmarks", "assist"],
   boxes: ["move", "box"],
   polygons: ["move", "polygon"],

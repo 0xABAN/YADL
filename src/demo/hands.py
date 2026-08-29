@@ -4,9 +4,9 @@ from urllib.request import urlretrieve
 
 import mediapipe as mp
 
+from backend.db import ROOT
 from backend.models import GeomHand, Landmark, Obj
 
-ROOT = Path(__file__).resolve().parents[2]
 MODEL = ROOT / "data" / "models" / "hand_landmarker.task"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
 

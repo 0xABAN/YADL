@@ -1,4 +1,3 @@
-import os
 import tempfile
 from pathlib import Path
 from typing import Annotated, Literal
@@ -10,6 +9,7 @@ from pydantic import BaseModel
 from backend.db import apply_schema, fetchone
 from backend.models import Doc
 from backend.store import (
+    as_doc,
     create_project,
     ensure_user,
     get_image,
@@ -48,11 +48,6 @@ def boot() -> None:
 def health():
     fetchone("select 1")
     return {"ok": True}
-
-
-@app.get("/me")
-def me(user: str = Depends(uid)):
-    return {"id": user}
 
 
 @app.get("/projects")
@@ -106,15 +101,12 @@ def assist(pid: str, iid: str, user: str = Depends(uid)):
     if not row:
         raise HTTPException(404)
     if row["objects"]:
-        return get_image(pid, iid, user)
+        return as_doc(row)
     ext = Path(row["filename"]).suffix or ".jpg"
-    fd, name = tempfile.mkstemp(suffix=ext)
-    os.close(fd)
-    tmp = Path(name)
-    try:
-        download(row["s3_key"], tmp)
-        objs = seed(tmp)
-        save_objects(str(row["id"]), [o.model_dump() for o in objs])
-    finally:
-        tmp.unlink(missing_ok=True)
-    return get_image(pid, iid, user)
+    with tempfile.NamedTemporaryFile(suffix=ext) as tmp:
+        path = Path(tmp.name)
+        download(row["s3_key"], path)
+        objs = [o.model_dump() for o in seed(path)]
+    save_objects(str(row["id"]), objs)
+    row["objects"] = objs
+    return as_doc(row)

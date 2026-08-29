@@ -35,8 +35,10 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: name.trim(), type }),
     })
-      .then((r) => r.json())
-      .then((p) => router.push(`/p/${p.id}`))
+      .then((r) => r.json().then((p) => ({ ok: r.ok, p })))
+      .then(({ ok, p }) => {
+        if (ok && p.id) router.push(`/p/${p.id}`);
+      })
       .finally(() => setBusy(false));
   };
 

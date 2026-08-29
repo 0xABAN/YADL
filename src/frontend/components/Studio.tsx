@@ -22,17 +22,19 @@ export default function Studio({ id }: { id: string }) {
     });
   }, [id]);
 
+  const apply = (d: Doc) => {
+    const objects = (d.objects ?? []).filter((o) => o.kind === "hand") as HandObj[];
+    setDoc({ ...d, objects });
+    setSelected(objects[0]?.id ?? null);
+  };
+
   const iid = list[index]?.id;
   useEffect(() => {
     if (!iid) {
       setDoc(null);
       return;
     }
-    api(`/projects/${id}/images/${iid}`).then((d: Doc) => {
-      const objects = (d.objects ?? []).filter((o) => o.kind === "hand") as HandObj[];
-      setDoc({ ...d, objects });
-      setSelected(objects[0]?.id ?? null);
-    });
+    api(`/projects/${id}/images/${iid}`).then(apply);
   }, [id, iid]);
 
   const save = (objects: HandObj[]) => {
@@ -69,11 +71,7 @@ export default function Studio({ id }: { id: string }) {
           onAssist={() => {
             fetch(`/api/projects/${id}/images/${doc.id}/assist`, { method: "POST" })
               .then((r) => r.json())
-              .then((d: Doc) => {
-                const objects = (d.objects ?? []).filter((o) => o.kind === "hand") as HandObj[];
-                setDoc({ ...d, objects });
-                setSelected(objects[0]?.id ?? selected);
-              });
+              .then(apply);
           }}
         />
       )}

@@ -27,12 +27,16 @@ def ensure_user(uid: str) -> None:
 
 def list_projects(uid: str) -> list[dict]:
     return [as_project(r) for r in fetch(
-        "select * from projects where owner_id=%s order by created_at desc", (uid,)
+        "select id, name, type, classes from projects where owner_id=%s order by created_at desc limit 50",
+        (uid,),
     )]
 
 
 def get_project(pid: str, uid: str) -> dict | None:
-    row = fetchone("select * from projects where id=%s and owner_id=%s", (pid, uid))
+    row = fetchone(
+        "select id, name, type, classes from projects where id=%s and owner_id=%s",
+        (pid, uid),
+    )
     return as_project(row) if row else None
 
 
@@ -56,29 +60,6 @@ def list_images(pid: str, uid: str) -> list[dict] | None:
     return [{"id": str(r["id"]), "filename": r["filename"]} for r in rows]
 
 
-def get_image(pid: str, iid: str, uid: str) -> dict | None:
-    row = fetchone(
-        """select i.* from images i
-           join projects p on p.id=i.project_id
-           where i.id=%s and p.id=%s and p.owner_id=%s""",
-        (iid, pid, uid),
-    )
-    return as_doc(row) if row else None
-
-
-def put_objects(pid: str, iid: str, uid: str, objects: list) -> dict | None:
-    row = fetchone(
-        """select i.id from images i
-           join projects p on p.id=i.project_id
-           where i.id=%s and p.id=%s and p.owner_id=%s""",
-        (iid, pid, uid),
-    )
-    if not row:
-        return None
-    fetchone("update images set objects=%s where id=%s returning id", (Json(objects), iid))
-    return get_image(pid, iid, uid)
-
-
 def image_row(pid: str, iid: str, uid: str) -> dict | None:
     return fetchone(
         """select i.* from images i
@@ -88,12 +69,25 @@ def image_row(pid: str, iid: str, uid: str) -> dict | None:
     )
 
 
+def get_image(pid: str, iid: str, uid: str) -> dict | None:
+    row = image_row(pid, iid, uid)
+    return as_doc(row) if row else None
+
+
 def save_objects(iid: str, objects: list) -> None:
     execute("update images set objects=%s where id=%s", (Json(objects), iid))
 
 
+def put_objects(pid: str, iid: str, uid: str, objects: list) -> dict | None:
+    row = image_row(pid, iid, uid)
+    if not row:
+        return None
+    save_objects(str(row["id"]), objects)
+    row["objects"] = objects
+    return as_doc(row)
+
+
 def seed_demo() -> None:
-    ensure_user("dev")
     if fetchone("select id from projects where owner_id=%s limit 1", ("dev",)):
         return
     src = ROOT / "src" / "frontend" / "public" / "default.jpg"

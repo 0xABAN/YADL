@@ -4,9 +4,7 @@ from pathlib import Path
 
 import boto3
 
-from backend.db import load_env
-
-load_env()
+import backend.db
 
 
 @lru_cache(maxsize=1)

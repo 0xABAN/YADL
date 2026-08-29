@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE } from "react";
 import { CONNECTIONS, HAND_COLOR } from "@/lib/hand";
-import type { HandObj } from "@/lib/doc";
+import { SHOWN, type HandObj, type ToolId } from "@/lib/doc";
 const STEP = 10;
 const MIN = 25;
 const MAX = 400;
@@ -108,19 +108,19 @@ export default function Canvas({
   objects = [],
   onChange,
   onAssist,
-  shown = ["move", "landmarks", "assist"],
+  shown = SHOWN.hands,
 }: {
   src?: string;
   objects?: HandObj[];
   onChange?: (objects: HandObj[]) => void;
   onAssist?: () => void;
-  shown?: string[];
+  shown?: ToolId[];
 }) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(100);
   const [locked, setLocked] = useState(false);
   const [tool, setTool] = useState<(typeof TOOLS)[number]["id"]>(
-    (shown.find((t) => t !== "assist") as (typeof TOOLS)[number]["id"]) ?? "move",
+    shown.find((t) => t !== "assist") ?? "move",
   );
   const [hands, setHands] = useState<HandObj[]>(objects);
   const [hold, setHold] = useState<{ h: number; i: number } | null>(null);
