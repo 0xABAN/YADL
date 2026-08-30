@@ -4,6 +4,48 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/doc";
 
+const EXAMPLES = [
+  "faces", "hands", "dogs", "cats", "cars", "trucks", "buses", "bikes",
+  "planes", "ships", "drones", "people", "crowds", "pedestrians", "cyclists",
+  "animals", "birds", "fish", "sharks", "whales", "bees", "cattle", "horses",
+  "wildlife", "weeds", "crops", "blight", "rust", "cracks", "leaks", "smoke",
+  "flames", "floods", "potholes", "lane lines", "road signs", "stop signs",
+  "plates", "helmets", "hard hats", "vests", "masks", "gloves", "seatbelts",
+  "phones", "tumors", "lesions", "cells", "pills", "bones", "organs",
+  "bacteria", "pollen", "flowers", "leaves", "fruit", "bruises", "mold",
+  "pests", "mushrooms", "coral", "algae", "eggs", "nests", "tracks",
+  "logos", "barcodes", "QR codes", "text", "handwriting", "receipts",
+  "labels", "tickets", "passports", "graffiti", "defects", "dents",
+  "scratches", "spills", "debris", "litter", "plastics", "oil spills",
+  "clouds", "lightning", "aurora", "stars", "craters", "fossils", "gems",
+  "coins", "stamps", "sneakers", "watches", "jewelry", "tools", "parts",
+  "pallets", "forklifts", "parcels", "boxes", "shelves", "keypoints",
+  "poses", "gestures", "blinks", "tattoos", "uniforms", "jerseys", "balls",
+  "cones", "crosswalks", "bike lanes", "parking spots", "doors", "windows",
+  "lights", "snow", "hail", "frost", "stumps", "knots", "tiles", "bricks",
+  "cables", "chips", "wires", "meters", "gauges", "flares", "roofs",
+  "tires", "brakes", "engines", "fabric", "stitches", "buttons", "zippers",
+  "teeth", "cavities", "moles", "wounds", "burns", "vials", "colonies",
+  "vessels", "nerves", "falls", "drowsiness", "queues", "desks", "chairs",
+  "rooms", "trash", "players", "swings", "bins", "addresses", "seals",
+  "toppings", "garnish", "allergens", "ripeness", "grapes", "apples",
+  "tomatoes", "corn", "wheat", "rice", "trees", "logs", "ore", "dust",
+  "solar panels", "damage", "wear", "syringes", "capsules", "retina",
+  "emotions", "irises", "pupils", "eyes", "lips", "ASL signs",
+  "yoga poses", "dance moves", "goal lines", "offside", "jersey numbers",
+  "fill levels", "empty shelves", "price tags", "brand logos",
+  "butterflies", "crop rows", "PCB faults", "weld beads", "solder gaps",
+  "rust spots", "wind damage", "speed limits", "comic panels",
+  "book spines", "wine labels", "album art", "latte art", "pizza",
+  "sushi", "meat", "traffic cones", "fire hydrants", "streetlights",
+  "power lines", "paw prints", "number plates", "smiles", "frowns",
+  "fractures", "polyps", "nodules", "cataracts", "glaucoma",
+  "misalignments", "missing parts", "loose bolts", "open valves",
+  "products", "out of stock", "standing water", "bare soil",
+  "deer", "bears", "foxes", "owls", "insects", "bats",
+  "lane markings", "red lights", "mailboxes",
+];
+
 const TYPES = [
   { id: "boxes", name: "Bounding boxes", blurb: "Identify objects and their positions with bounding boxes." },
   { id: "polygons", name: "Polygons", blurb: "Detect objects and their actual shape." },
@@ -17,9 +59,15 @@ export default function New() {
   const [vis, setVis] = useState<"Private" | "Public">("Private");
   const [err, setErr] = useState<"empty" | "taken" | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
+  const [ex, setEx] = useState(0);
 
   useEffect(() => {
     fetch("/api/projects").then((r) => r.json()).then((d) => setRows(Array.isArray(d) ? d : []));
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setEx((i) => (i + 1) % EXAMPLES.length), 2200);
+    return () => clearInterval(t);
   }, []);
 
   const create = () => {
@@ -37,7 +85,7 @@ export default function New() {
 
   return (
     <div className="create">
-      <h1>Let's create your project.</h1>
+      <h1>let's detect <span className="ex">{EXAMPLES[ex]}</span></h1>
       <div className="body">
         <div className="split">
         <div className="sheet">
