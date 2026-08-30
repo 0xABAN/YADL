@@ -2,15 +2,17 @@ import tempfile
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.db import apply_schema, fetchone
 from backend.models import Doc
 from backend.store import (
+    add_images,
     as_doc,
     create_project,
+    delete_project,
     ensure_user,
     get_image,
     get_project,
@@ -60,7 +62,16 @@ def new_project(body: NewProject, user: str = Depends(uid)):
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "name")
-    return create_project(user, name, body.type)
+    row = create_project(user, name, body.type)
+    if not row:
+        raise HTTPException(409, "name")
+    return row
+
+
+@app.delete("/projects/{pid}")
+def drop_project(pid: str, user: str = Depends(uid)):
+    if not delete_project(pid, user):
+        raise HTTPException(404)
 
 
 @app.get("/projects/{pid}")
@@ -74,6 +85,21 @@ def project(pid: str, user: str = Depends(uid)):
 @app.get("/projects/{pid}/images")
 def images(pid: str, user: str = Depends(uid)):
     rows = list_images(pid, user)
+    if rows is None:
+        raise HTTPException(404)
+    return rows
+
+
+@app.post("/projects/{pid}/images")
+async def upload(pid: str, user: str = Depends(uid), files: list[UploadFile] = File()):
+    blobs = []
+    for f in files:
+        if not (f.content_type or "").startswith("image/"):
+            continue
+        blobs.append((f.filename or "image.jpg", await f.read(), f.content_type or "image/jpeg"))
+    if not blobs:
+        raise HTTPException(400, "files")
+    rows = add_images(pid, user, blobs)
     if rows is None:
         raise HTTPException(404)
     return rows

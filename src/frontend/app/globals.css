@@ -578,6 +578,17 @@ aside::after { border-left: 0; border-bottom: 0 }
 .create .history small { color: var(--muted); font-size: 12px; }
 .create .history .empty { padding: 24px 16px; color: var(--muted); font-size: 13px; }
 .create .bar {
-  display: flex; justify-content: center; align-items: center;
-  height: 50px; background: var(--bg); border-top: 1px solid var(--line);
+  display: flex; justify-content: center; align-items: center; gap: 16px;
+  height: 56px; background: var(--bg); border-top: 1px solid var(--line);
 }
+.create .bar a { color: var(--muted); text-decoration: none; font-size: 14px; }
+.create .bar .commit { padding: 8px 16px; font-size: 13px; }
+.create .lede { color: var(--muted); margin: 0 0 20px; }
+.upload .drop {
+  display: grid; place-items: center;
+  min-height: min(52vh, 480px);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  color: var(--muted); font-size: 16px; text-align: center; cursor: pointer;
+}
+.upload .drop.over { box-shadow: inset 0 0 0 1px var(--cyan); color: #fff; }

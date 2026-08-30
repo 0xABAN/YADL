@@ -15,8 +15,7 @@ export default function Home() {
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof TYPES)[number]["id"]>("boxes");
   const [vis, setVis] = useState<"Private" | "Public">("Private");
-  const [err, setErr] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<"empty" | "taken" | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
 
   useEffect(() => {
@@ -24,22 +23,16 @@ export default function Home() {
   }, []);
 
   const create = () => {
-    if (!name.trim()) {
-      setErr(true);
+    const n = name.trim();
+    if (!n) {
+      setErr("empty");
       return;
     }
-    if (busy) return;
-    setBusy(true);
-    fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), type }),
-    })
-      .then((r) => r.json().then((p) => ({ ok: r.ok, p })))
-      .then(({ ok, p }) => {
-        if (ok && p.id) router.push(`/p/${p.id}`);
-      })
-      .finally(() => setBusy(false));
+    if (rows.some((p) => p.name === n)) {
+      setErr("taken");
+      return;
+    }
+    router.push(`/upload?name=${encodeURIComponent(n)}&type=${type}`);
   };
 
   return (
@@ -63,11 +56,12 @@ export default function Home() {
               placeholder="E.g., 'Dog Breeds' or 'Car Models' or 'Text Finder'."
               onChange={(e) => {
                 setName(e.target.value);
-                if (err) setErr(false);
+                if (err) setErr(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && create()}
             />
-            {err && <small className="err">Name cannot be empty.</small>}
+            {err === "empty" && <small className="err">Name cannot be empty.</small>}
+            {err === "taken" && <small className="err">Name already exists.</small>}
           </label>
           <div>
             <p className="k">Visibility</p>
@@ -109,7 +103,7 @@ export default function Home() {
         </div>
       </div>
       <div className="bar">
-        <button className="commit" type="button" disabled={busy} onClick={create}>
+        <button className="commit" type="button" onClick={create}>
           Create {vis} Project
         </button>
       </div>

@@ -10,6 +10,7 @@ dependencies = [
   "psycopg-pool>=3.3.1",
   "boto3>=1.43.83",
   "botocore[crt]>=1.43.83",
+  "python-multipart>=0.0.32",
 ]
 
 [tool.uv]

@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 
 from psycopg.types.json import Json
 
@@ -40,14 +41,19 @@ def get_project(pid: str, uid: str) -> dict | None:
     return as_project(row) if row else None
 
 
-def create_project(uid: str, name: str, type: str) -> dict:
+def create_project(uid: str, name: str, type: str) -> dict | None:
     pid = uuid.uuid4()
     classes = HANDS_CLASSES if type == "hands" else []
     row = fetchone(
-        "insert into projects (id, owner_id, name, type, classes) values (%s,%s,%s,%s,%s) returning *",
+        """insert into projects (id, owner_id, name, type, classes) values (%s,%s,%s,%s,%s)
+           on conflict (owner_id, name) do nothing returning *""",
         (str(pid), uid, name, type, Json(classes)),
     )
-    return as_project(row)
+    return as_project(row) if row else None
+
+
+def delete_project(pid: str, uid: str) -> bool:
+    return bool(fetchone("delete from projects where id=%s and owner_id=%s returning id", (pid, uid)))
 
 
 def list_images(pid: str, uid: str) -> list[dict] | None:
@@ -85,6 +91,23 @@ def put_objects(pid: str, iid: str, uid: str, objects: list) -> dict | None:
     save_objects(str(row["id"]), objects)
     row["objects"] = objects
     return as_doc(row)
+
+
+def add_images(pid: str, uid: str, files: list[tuple[str, bytes, str]]) -> list[dict] | None:
+    if not get_project(pid, uid):
+        return None
+    out = []
+    for name, body, ctype in files:
+        iid = uuid.uuid4()
+        filename = Path(name).name or "image.jpg"
+        key = f"{uid}/{pid}/{iid}/{filename}"
+        put(key, body, ctype)
+        execute(
+            "insert into images (id, project_id, s3_key, filename) values (%s,%s,%s,%s)",
+            (str(iid), pid, key, filename),
+        )
+        out.append({"id": str(iid), "filename": filename})
+    return out
 
 
 def seed_demo() -> None:

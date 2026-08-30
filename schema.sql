@@ -12,6 +12,9 @@ create table if not exists projects (
   created_at timestamptz not null default now()
 );
 create index if not exists projects_owner_created on projects (owner_id, created_at desc);
+delete from projects a using projects b
+  where a.owner_id = b.owner_id and a.name = b.name and a.id > b.id;
+create unique index if not exists projects_owner_name on projects (owner_id, name);
 
 create table if not exists images (
   id uuid primary key,
