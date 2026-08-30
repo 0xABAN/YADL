@@ -575,7 +575,17 @@ main.cross, main.cross:active { cursor: crosshair }
   grid-template-rows: auto 1fr auto;
   background:
     linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
+    var(--canvas) url("/create.png") center / cover no-repeat;
+}
+.create.up {
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
     var(--canvas) url("/create.jpg") center / cover no-repeat;
+}
+.create.auth {
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
+    var(--canvas) url("/auth.png") center / cover no-repeat;
 }
 .create:not(.upload) { grid-template-rows: auto 1fr; }
 .create:not(.upload):not(.auth) {
@@ -621,14 +631,15 @@ main.cross, main.cross:active { cursor: crosshair }
 .create:not(.upload) .body {
   position: relative;
   z-index: 2;
-  width: min(880px, calc(100% - 80px));
+  width: 100%;
   margin: 0 auto;
   padding: 16px 40px 0;
-  justify-self: center;
+  justify-self: stretch;
   align-self: stretch;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: visible;
 }
 .create:not(.auth):not(.upload) .body { padding-top: 0; }
 .create.auth .body {
@@ -637,7 +648,14 @@ main.cross, main.cross:active { cursor: crosshair }
   align-items: center;
   justify-content: center;
   justify-self: stretch;
-  padding: 24px 40px;
+  overflow: visible;
+  padding: 56px 40px;
+}
+.create.auth .sheet {
+  width: min(100%, 400px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .create:not(.auth) > h1 {
   position: relative;
@@ -645,10 +663,11 @@ main.cross, main.cross:active { cursor: crosshair }
   width: min(880px, calc(100% - 80px));
   justify-self: center;
   margin: 0;
-  padding: 0 40px 8px;
+  padding: 0 0 8px;
+  text-align: center;
+  white-space: nowrap;
   view-transition-name: create-title;
 }
-.create.up > h1 { text-align: center; }
 .create h1 .back {
   display: inline-flex;
   align-items: center;
@@ -661,20 +680,20 @@ main.cross, main.cross:active { cursor: crosshair }
   cursor: pointer;
 }
 .create h1 .back svg { width: 0.72em; height: 0.72em; display: block; }
-.create .sheet { view-transition-name: create-sheet; }
+.create .sheet { view-transition-name: create-sheet; grid-column: 2; }
 .create .history { view-transition-name: create-open; }
 .create .split {
   display: grid;
-  grid-template-columns: 1fr 220px;
-  gap: 16px;
+  grid-template-columns: 1fr minmax(0, 560px) 1fr;
+  column-gap: 16px;
   align-items: start;
 }
-.create .split.up {
-  grid-template-columns: 1fr;
-  justify-items: center;
+.create .history {
+  grid-column: 3;
+  width: 220px;
+  justify-self: start;
 }
 .create .split.up .history { display: none; }
-.create .split.up .sheet { width: min(100%, 560px); }
 ::view-transition-old(create-sheet),
 ::view-transition-new(create-sheet) {
   height: auto;
@@ -713,7 +732,7 @@ main.cross, main.cross:active { cursor: crosshair }
     1px calc(100% - 8px);
 }
 .create h1 .ex::before {
-  --h: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Crect x='0.5' y='0.5' width='7' height='7' fill='none' stroke='%23fff' stroke-width='1'/%3E%3C/svg%3E");
+  --h: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Crect x='0.5' y='0.5' width='7' height='7' fill='none' stroke='%23bfff00' stroke-width='1'/%3E%3C/svg%3E");
   content: "";
   position: absolute;
   inset: -4px;
