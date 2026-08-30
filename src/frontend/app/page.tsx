@@ -39,32 +39,26 @@ export default function Home() {
     <div className="create">
       <header>
         <a className="word" href="/">YADL+</a>
+        <span className="who">dev</span>
       </header>
       <div className="body">
         <h1>Let's create your project.</h1>
-        <p className="crumb">
-          dev
-          <span>›</span>
-          <em>{vis}</em>
-        </p>
-        <div className="fields">
-          <label>
-            Project name
+        <div className="split">
+        <div className="sheet">
+          <div className="fields">
+            <p className="k">Project name</p>
+            <p className="k">Visibility</p>
             <input
               type="text"
+              aria-label="Project name"
               value={name}
-              placeholder="E.g., 'Dog Breeds' or 'Car Models' or 'Text Finder'."
+              placeholder="E.g., 'Dog Breeds'"
               onChange={(e) => {
                 setName(e.target.value);
                 if (err) setErr(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && create()}
             />
-            {err === "empty" && <small className="err">Name cannot be empty.</small>}
-            {err === "taken" && <small className="err">Name already exists.</small>}
-          </label>
-          <div>
-            <p className="k">Visibility</p>
             <div className="vis">
               <button type="button" aria-pressed={vis === "Private"} onClick={() => setVis("Private")}>
                 <svg viewBox="0 0 256 256" width="14" height="14" aria-hidden="true"><path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96Z" fill="currentColor" /></svg>
@@ -75,10 +69,9 @@ export default function Home() {
                 Public
               </button>
             </div>
+            {err === "empty" && <small className="err">Name cannot be empty.</small>}
+            {err === "taken" && <small className="err">Name already exists.</small>}
           </div>
-        </div>
-        <p className="k">Project type</p>
-        <div className="split">
           <div className="types">
             {TYPES.map((t) => (
               <button key={t.id} type="button" aria-pressed={type === t.id} onClick={() => setType(t.id)}>
@@ -87,25 +80,24 @@ export default function Home() {
               </button>
             ))}
           </div>
-          <div className="history">
-            <h2>Project history</h2>
-            {rows.length === 0 ? (
-              <p className="empty">No projects yet.</p>
-            ) : (
-              rows.map((p) => (
-                <a key={p.id} href={`/p/${p.id}`}>
-                  {p.name}
-                  <small>{p.type}</small>
-                </a>
-              ))
-            )}
-          </div>
+          <button className="commit" type="button" onClick={create}>
+            Create {vis} Project
+          </button>
         </div>
-      </div>
-      <div className="bar">
-        <button className="commit" type="button" onClick={create}>
-          Create {vis} Project
-        </button>
+        <div className="history">
+          <h2>Open</h2>
+          {rows.length === 0 ? (
+            <p className="empty">No projects yet.</p>
+          ) : (
+            rows.slice(0, 3).map((p) => (
+              <a key={p.id} href={`/p/${p.id}`}>
+                {p.name}
+                <small>{p.type}</small>
+              </a>
+            ))
+          )}
+        </div>
+        </div>
       </div>
     </div>
   );
