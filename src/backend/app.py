@@ -1,4 +1,6 @@
 import tempfile
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -35,8 +37,49 @@ class NewProject(BaseModel):
     type: Literal["boxes", "polygons", "hands"]
 
 
+OK = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".bmp": "image/bmp",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+}
+MAX_N, MAX_B = 500, 100 * 1024 * 1024
+
+
 def uid(x_user_id: Annotated[str | None, Header()] = None) -> str:
     return x_user_id or "dev"
+
+
+def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
+    ext = Path(name).suffix.lower()
+    if ext == ".zip":
+        out: list[tuple[str, bytes, str]] = []
+        n = 0
+        try:
+            zf = zipfile.ZipFile(BytesIO(body))
+        except zipfile.BadZipFile:
+            raise HTTPException(400, "files") from None
+        with zf as z:
+            for info in z.infolist():
+                parts = Path(info.filename).parts
+                fn = parts[-1] if parts else ""
+                if info.is_dir() or not fn or fn.startswith(".") or "__MACOSX" in parts:
+                    continue
+                ct = OK.get(Path(fn).suffix.lower())
+                if not ct:
+                    continue
+                data = z.read(info)
+                n += len(data)
+                if n > MAX_B or len(out) >= MAX_N:
+                    raise HTTPException(400, "files")
+                out.append((fn, data, ct))
+        return out
+    ct = OK.get(ext)
+    return [(Path(name).name or "image.jpg", body, ct)] if ct else []
 
 
 @app.on_event("startup")
@@ -94,9 +137,9 @@ def images(pid: str, user: str = Depends(uid)):
 async def upload(pid: str, user: str = Depends(uid), files: list[UploadFile] = File()):
     blobs = []
     for f in files:
-        if not (f.content_type or "").startswith("image/"):
-            continue
-        blobs.append((f.filename or "image.jpg", await f.read(), f.content_type or "image/jpeg"))
+        blobs.extend(flatten(f.filename or "", await f.read()))
+        if len(blobs) > MAX_N:
+            raise HTTPException(400, "files")
     if not blobs:
         raise HTTPException(400, "files")
     rows = add_images(pid, user, blobs)
