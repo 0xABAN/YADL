@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/doc";
 
@@ -57,9 +58,13 @@ export default function New() {
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof TYPES)[number]["id"]>("boxes");
   const [vis, setVis] = useState<"Private" | "Public">("Private");
-  const [err, setErr] = useState<"empty" | "taken" | null>(null);
+  const [err, setErr] = useState<"empty" | "taken" | "fail" | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
   const [ex, setEx] = useState(0);
+  const [step, setStep] = useState<"form" | "up">("form");
+  const [files, setFiles] = useState<File[]>([]);
+  const [over, setOver] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     fetch("/api/projects").then((r) => r.json()).then((d) => setRows(Array.isArray(d) ? d : []));
@@ -74,6 +79,12 @@ export default function New() {
     return () => clearInterval(t);
   }, []);
 
+  const go = (next: "form" | "up") => {
+    const run = () => flushSync(() => setStep(next));
+    if ("startViewTransition" in document) document.startViewTransition(run);
+    else run();
+  };
+
   const create = () => {
     const n = name.trim();
     if (!n) {
@@ -84,15 +95,66 @@ export default function New() {
       setErr("taken");
       return;
     }
-    router.push(`/upload?name=${encodeURIComponent(n)}&type=${type}`);
+    setErr(null);
+    go("up");
+  };
+
+  const take = (list: FileList | File[]) => {
+    setFiles([...list].filter((f) => /\.(jpe?g|png|webp|avif|bmp|heic|heif|zip)$/i.test(f.name)));
+  };
+
+  const send = () => {
+    if (!files.length || busy) return;
+    setBusy(true);
+    setErr(null);
+    fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), type }),
+    })
+      .then((r) => r.json().then((p) => ({ ok: r.ok, status: r.status, p })))
+      .then(({ ok, status, p }) => {
+        if (status === 409) {
+          setErr("taken");
+          return;
+        }
+        if (!ok || !p.id) {
+          setErr("fail");
+          return;
+        }
+        const body = new FormData();
+        files.forEach((f) => body.append("files", f));
+        return fetch(`/api/projects/${p.id}/images`, { method: "POST", body }).then((r) => {
+          if (!r.ok) {
+            fetch(`/api/projects/${p.id}`, { method: "DELETE" });
+            setErr("fail");
+            return;
+          }
+          router.push(`/p/${p.id}`);
+        });
+      })
+      .finally(() => setBusy(false));
   };
 
   return (
-    <div className="create">
-      <h1>let's detect <span className="ex">{EXAMPLES[ex]}</span></h1>
+    <div className={step === "up" ? "create up" : "create"}>
+      <h1>
+        {step === "form" ? (
+          <>let's detect <span className="ex">{EXAMPLES[ex]}</span></>
+        ) : (
+          <>
+            <button type="button" className="back" aria-label="Back" onClick={() => go("form")}>
+              <svg viewBox="0 0 256 256" width="1em" height="1em" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z" fill="currentColor" /></svg>
+            </button>
+            upload <span className="ex">data</span>
+          </>
+        )}
+      </h1>
       <div className="body">
-        <div className="split">
+        <div className={step === "up" ? "split up" : "split"}>
         <div className="sheet">
+          {step === "form" ? (
+            <>
           <div className="fields">
             <p className="k">Project name</p>
             <p className="k">Visibility</p>
@@ -131,6 +193,47 @@ export default function New() {
           <button className="commit" type="button" onClick={create}>
             Create {vis} Project
           </button>
+            </>
+          ) : (
+            <>
+              <div
+                className={over ? "drop over" : "drop"}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setOver(true);
+                }}
+                onDragLeave={() => setOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setOver(false);
+                  take(e.dataTransfer.files);
+                }}
+              >
+                {files.length > 0 && <p className="picked">{files.length} selected</p>}
+                <p className="lead">Drag and drop to upload, or:</p>
+                <div className="picks">
+                  <label className="pick">
+                    Select files
+                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.avif,.bmp,.heic,.heif,.zip" multiple hidden onChange={(e) => e.target.files && take(e.target.files)} />
+                  </label>
+                  <label className="pick">
+                    Select folder
+                    <input type="file" multiple hidden ref={(n) => n?.setAttribute("webkitdirectory", "true")} onChange={(e) => e.target.files && take(e.target.files)} />
+                  </label>
+                </div>
+                <div className="formats">
+                  <b>Supported</b>
+                  .jpg .jpeg .png .webp .avif .bmp .heic .heif .zip
+                </div>
+              </div>
+              {err === "taken" && <small className="err">Name already exists.</small>}
+              {err === "fail" && <small className="err">Upload failed.</small>}
+              <button className="commit" type="button" disabled={!files.length || busy} onClick={send}>
+                {busy ? "Uploading" : "Upload"}
+              </button>
+              <a className="skip" href="/">Skip</a>
+            </>
+          )}
         </div>
         <div className="history">
           <h2>Open</h2>
