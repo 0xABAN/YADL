@@ -117,10 +117,6 @@ def seed_demo() -> None:
     if not src.exists():
         return
     proj = create_project("dev", "Hands", "hands")
-    iid = uuid.uuid4()
-    key = f"dev/{proj['id']}/{iid}/default.jpg"
-    put(key, src.read_bytes(), "image/jpeg")
-    execute(
-        "insert into images (id, project_id, s3_key, filename) values (%s,%s,%s,%s)",
-        (str(iid), proj["id"], key, "default.jpg"),
-    )
+    if not proj:
+        return
+    add_images(proj["id"], "dev", [(src.name, src.read_bytes(), "image/jpeg")])

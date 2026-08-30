@@ -53,6 +53,8 @@ const TYPES = [
   { id: "hands", name: "Landmarks", blurb: "Identify keypoints on subjects." },
 ] as const;
 
+const EXTS = ".jpg,.jpeg,.png,.webp,.avif,.bmp,.heic,.heif,.zip";
+
 export default function New() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -71,13 +73,14 @@ export default function New() {
   }, []);
 
   useEffect(() => {
+    if (step !== "form") return;
     const t = setInterval(() => setEx((i) => {
       let n = i;
       while (n === i) n = Math.floor(Math.random() * EXAMPLES.length);
       return n;
     }), 2200);
     return () => clearInterval(t);
-  }, []);
+  }, [step]);
 
   const go = (next: "form" | "up") => {
     const run = () => flushSync(() => setStep(next));
@@ -100,40 +103,40 @@ export default function New() {
   };
 
   const take = (list: FileList | File[]) => {
-    setFiles([...list].filter((f) => /\.(jpe?g|png|webp|avif|bmp|heic|heif|zip)$/i.test(f.name)));
+    setFiles([...list].filter((f) => EXTS.split(",").some((e) => f.name.toLowerCase().endsWith(e))));
   };
 
-  const send = () => {
+  const send = async () => {
     if (!files.length || busy) return;
     setBusy(true);
     setErr(null);
-    fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), type }),
-    })
-      .then((r) => r.json().then((p) => ({ ok: r.ok, status: r.status, p })))
-      .then(({ ok, status, p }) => {
-        if (status === 409) {
-          setErr("taken");
-          return;
-        }
-        if (!ok || !p.id) {
-          setErr("fail");
-          return;
-        }
-        const body = new FormData();
-        files.forEach((f) => body.append("files", f));
-        return fetch(`/api/projects/${p.id}/images`, { method: "POST", body }).then((r) => {
-          if (!r.ok) {
-            fetch(`/api/projects/${p.id}`, { method: "DELETE" });
-            setErr("fail");
-            return;
-          }
-          router.push(`/p/${p.id}`);
-        });
-      })
-      .finally(() => setBusy(false));
+    try {
+      const r = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), type }),
+      });
+      const p = await r.json();
+      if (r.status === 409) {
+        setErr("taken");
+        return;
+      }
+      if (!r.ok || !p.id) {
+        setErr("fail");
+        return;
+      }
+      const body = new FormData();
+      files.forEach((f) => body.append("files", f));
+      const up = await fetch(`/api/projects/${p.id}/images`, { method: "POST", body });
+      if (!up.ok) {
+        fetch(`/api/projects/${p.id}`, { method: "DELETE" });
+        setErr("fail");
+        return;
+      }
+      router.push(`/p/${p.id}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -214,7 +217,7 @@ export default function New() {
                 <div className="picks">
                   <label className="pick">
                     Select files
-                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.avif,.bmp,.heic,.heif,.zip" multiple hidden onChange={(e) => e.target.files && take(e.target.files)} />
+                    <input type="file" accept={EXTS} multiple hidden onChange={(e) => e.target.files && take(e.target.files)} />
                   </label>
                   <label className="pick">
                     Select folder
@@ -223,7 +226,7 @@ export default function New() {
                 </div>
                 <div className="formats">
                   <b>Supported</b>
-                  .jpg .jpeg .png .webp .avif .bmp .heic .heif .zip
+                  {EXTS.replaceAll(",", " ")}
                 </div>
               </div>
               {err === "taken" && <small className="err">Name already exists.</small>}

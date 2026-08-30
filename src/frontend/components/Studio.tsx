@@ -34,7 +34,14 @@ export default function Studio({ id }: { id: string }) {
       setDoc(null);
       return;
     }
-    api(`/projects/${id}/images/${iid}`).then(apply);
+    const ac = new AbortController();
+    fetch(`/api/projects/${id}/images/${iid}`, { signal: ac.signal })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!ac.signal.aborted) apply(d);
+      })
+      .catch(() => {});
+    return () => ac.abort();
   }, [id, iid]);
 
   const save = (objects: HandObj[]) => {

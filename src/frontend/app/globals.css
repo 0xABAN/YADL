@@ -788,7 +788,8 @@ main.cross, main.cross:active { cursor: crosshair }
 .create input[type=text]:focus { outline: none; border-color: #fff; }
 .create .err { display: block; color: #f87171; font-size: 12px; font-weight: 400; }
 .create .vis { display: flex; gap: 8px; }
-.create .vis button {
+.create .vis button,
+.create .pick {
   --cut: 8px;
   display: flex; align-items: center; gap: 6px;
   padding: 10px 14px;
@@ -821,7 +822,8 @@ main.cross, main.cross:active { cursor: crosshair }
   font-size: 13px;
 }
 .create .vis button[aria-pressed="true"] { background-color: #fff; color: #000; }
-.create .vis button:hover { background-color: #2a2a2a; }
+.create .vis button:hover,
+.create .pick:hover { background-color: #2a2a2a; }
 .create .vis button[aria-pressed="true"]:hover { background-color: #e8e8e8; }
 .create .types { display: flex; flex-direction: column; gap: 8px; }
 .create .types button, .create .history a {
@@ -837,6 +839,7 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .types button:hover, .create .history a:hover { background: #2a2a2a; }
 .create .types button,
 .create .vis button,
+.create .pick,
 .create .history a,
 .create .sheet .commit {
   user-select: none;
@@ -844,6 +847,7 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create .types button:active,
 .create .vis button:active,
+.create .pick:active,
 .create .history a:active,
 .create .sheet .commit:active {
   transform: scale(0.98);
@@ -890,16 +894,10 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .picks { display: flex; gap: 8px; }
 .create .pick {
   margin: 0;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  background: #171717;
   color: #fff;
-  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
-.create .pick:hover { background: #2a2a2a; }
-.create .pick:active { transform: scale(0.98); }
 .create .formats {
   width: 100%;
   padding: 12px 14px;

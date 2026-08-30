@@ -180,6 +180,16 @@ export default function Canvas({
     livePolys.current = next;
     setPolys(next);
   };
+  const patchLm = (h: number, i: number, x: number, y: number) =>
+    live.current.map((o, k) =>
+      k !== h
+        ? o
+        : {
+            ...o,
+            edited: true,
+            geom: { ...o.geom, landmarks: o.geom.landmarks.map((q, j) => (j === i ? { ...q, x, y } : q)) },
+          },
+    );
   const pushUndo = (prev: HandObj[]) => {
     undo.current.push(prev);
     if (undo.current.length > 50) undo.current.shift();
@@ -343,15 +353,7 @@ export default function Canvas({
       const y = clamp01(p.y + (e.key === "ArrowDown" ? dy : e.key === "ArrowUp" ? -dy : 0));
       if (x === p.x && y === p.y) return;
       pushUndo(live.current);
-      const next = live.current.map((o, h) =>
-        h !== s.h
-          ? o
-          : {
-              ...o,
-              edited: true,
-              geom: { ...o.geom, landmarks: o.geom.landmarks.map((q, j) => (j === s.i ? { ...q, x, y } : q)) },
-            },
-      );
+      const next = patchLm(s.h, s.i, x, y);
       apply(next);
       change.current?.(next);
     };
@@ -365,19 +367,8 @@ export default function Canvas({
       const d = dragPt.current;
       const r = frameR.current;
       if (!d || !r) return;
-      const x = clamp01((e.clientX - r.left) / r.width);
-      const y = clamp01((e.clientY - r.top) / r.height);
-      apply(
-        live.current.map((o, h) =>
-          h !== d.h
-            ? o
-            : {
-                ...o,
-                edited: true,
-                geom: { ...o.geom, landmarks: o.geom.landmarks.map((p, j) => (j === d.i ? { ...p, x, y } : p)) },
-              },
-        ),
-      );
+      const p = atRect(e, r);
+      apply(patchLm(d.h, d.i, p.x, p.y));
     };
     const up = () => {
       const d = dragPt.current;
@@ -517,8 +508,9 @@ export default function Canvas({
     frameR.current = r;
     snap.current = liveBoxes.current;
     if (g.t === "move") {
-      g.x0 = clamp01((e.clientX - r.left) / r.width);
-      g.y0 = clamp01((e.clientY - r.top) / r.height);
+      const p = atRect(e, r);
+      g.x0 = p.x;
+      g.y0 = p.y;
     }
     gest.current = g;
     setBoxHold(g.t === "draw" ? "draw" : g.i);
@@ -531,8 +523,9 @@ export default function Canvas({
     frameR.current = r;
     polySnap.current = livePolys.current;
     if (g.t === "move") {
-      g.x0 = clamp01((e.clientX - r.left) / r.width);
-      g.y0 = clamp01((e.clientY - r.top) / r.height);
+      const p = atRect(e, r);
+      g.x0 = p.x;
+      g.y0 = p.y;
     }
     if (g.t === "vertex") {
       selVert.current = { i: g.i, j: g.j };
@@ -577,8 +570,7 @@ export default function Canvas({
         if (tool === "box") {
           const r = frame.current!.getBoundingClientRect();
           frameR.current = r;
-          const x = clamp01((e.clientX - r.left) / r.width);
-          const y = clamp01((e.clientY - r.top) / r.height);
+          const { x, y } = atRect(e, r);
           snap.current = liveBoxes.current;
           gest.current = { t: "draw", x0: x, y0: y };
           const z = { x, y, w: 0, h: 0 };

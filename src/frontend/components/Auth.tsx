@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 export default function Auth() {
   const router = useRouter();
-  const [isLogin, setIsLogin] = useState(true);
+  const [login, setLogin] = useState(true);
   const go = (e?: React.FormEvent) => {
     e?.preventDefault();
     router.push("/new");
@@ -37,6 +37,27 @@ export default function Auth() {
     fontSize: "0.875rem",
     outline: "none",
   };
+  const primary: React.CSSProperties = {
+    width: "100%",
+    padding: "0.65rem",
+    borderRadius: 6,
+    border: "none",
+    background: "#ededed",
+    color: "#000",
+    fontWeight: 500,
+    fontSize: "0.875rem",
+    cursor: "pointer",
+  };
+  const link: React.CSSProperties = {
+    color: "#fff",
+    fontWeight: 500,
+    background: "none",
+    border: "none",
+    padding: 0,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: "inherit",
+  };
 
   const GoogleIcon = (
     <svg viewBox="0 0 24 24" style={{ width: 16, height: 16, flexShrink: 0 }}>
@@ -57,80 +78,36 @@ export default function Auth() {
     </svg>
   );
 
-  const Logo = (
-    <div style={{ background: "#111", width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.15rem", marginBottom: "0.75rem", border: "1px solid #333" }}>Y+</div>
-  );
-  const Footer = (
-    <div style={{ marginTop: "0.85rem", fontSize: "0.75rem", color: "#666", lineHeight: 1.5, textAlign: "center" }}>
-      By proceeding, you agree to creating a YADL+ account
-      <br />
-      subject to our{" "}
-      <a href="#" style={{ color: "#888" }}>Terms of Service</a> and <a href="#" style={{ color: "#888" }}>Privacy Policy</a>.
-    </div>
-  );
-
-  const primary: React.CSSProperties = {
-    width: "100%",
-    padding: "0.65rem",
-    borderRadius: 6,
-    border: "none",
-    background: "#ededed",
-    color: "#000",
-    fontWeight: 500,
-    fontSize: "0.875rem",
-    cursor: "pointer",
-  };
-
   return (
     <div style={{ position: "relative", zIndex: 2, background: "#121212", borderRadius: 12, padding: "2rem", width: "100%", maxWidth: 400, boxShadow: "0 10px 40px rgba(0,0,0,0.8)", display: "flex", flexDirection: "column", alignItems: "center", border: "1px solid #222" }}>
-      {isLogin ? (
-        <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
-          {Logo}
-          <h1 style={{ fontSize: "1.35rem", fontWeight: 600, marginBottom: "0.25rem", letterSpacing: "-0.025em" }}>Sign in to Account</h1>
-          <p style={{ fontSize: "0.85rem", color: "#888", marginBottom: "0.85rem", lineHeight: 1.5 }}>Sign in to your Account.</p>
+      <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+        <div style={{ background: "#111", width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.15rem", marginBottom: "0.75rem", border: "1px solid #333" }}>Y+</div>
+        <h1 style={{ fontSize: "1.35rem", fontWeight: 600, marginBottom: "0.25rem", letterSpacing: "-0.025em" }}>{login ? "Sign in to Account" : "Sign up for Account"}</h1>
+        <p style={{ fontSize: "0.85rem", color: "#888", marginBottom: "0.85rem", lineHeight: 1.5 }}>{login ? "Sign in to your Account." : "Create a new account to get started."}</p>
 
-          <form onSubmit={go} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-            <input style={input} type="email" placeholder="name@work-email.com" required />
-            <button type="submit" style={primary}>Continue with Email</button>
-          </form>
+        <form onSubmit={go} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+          {!login && <input style={input} type="text" placeholder="Full Name" required />}
+          <input style={input} type="email" placeholder="name@work-email.com" required />
+          <button type="submit" style={primary}>{login ? "Continue with Email" : "Sign Up with Email"}</button>
+        </form>
 
-          <div style={{ height: 1, background: "#222", width: "100%", margin: "0.85rem 0" }} />
+        <div style={{ height: 1, background: "#222", width: "100%", margin: "0.85rem 0" }} />
 
-          <button type="button" style={socialBtn} onClick={() => go()}>{GoogleIcon}Continue with Google</button>
-          <button type="button" style={socialBtn} onClick={() => go()}>{GitHubIcon}Continue with GitHub</button>
-          <button type="button" style={{ ...socialBtn, marginBottom: 0 }} onClick={() => go()}>{AppleIcon}Continue with Apple</button>
+        <button type="button" style={socialBtn} onClick={() => go()}>{GoogleIcon}{login ? "Continue with Google" : "Sign up with Google"}</button>
+        <button type="button" style={socialBtn} onClick={() => go()}>{GitHubIcon}{login ? "Continue with GitHub" : "Sign up with GitHub"}</button>
+        <button type="button" style={{ ...socialBtn, marginBottom: 0 }} onClick={() => go()}>{AppleIcon}{login ? "Continue with Apple" : "Sign up with Apple"}</button>
 
-          <div style={{ marginTop: "1.25rem", fontSize: "0.875rem", color: "#888" }}>
-            Don&apos;t have an account?{" "}
-            <button type="button" onClick={() => setIsLogin(false)} style={{ color: "#fff", fontWeight: 500, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "inherit" }}>Sign Up</button>
-          </div>
-          {Footer}
+        <div style={{ marginTop: "1.25rem", fontSize: "0.875rem", color: "#888" }}>
+          {login ? "Don't have an account? " : "Already have an account? "}
+          <button type="button" onClick={() => setLogin(!login)} style={link}>{login ? "Sign Up" : "Sign In"}</button>
         </div>
-      ) : (
-        <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
-          {Logo}
-          <h1 style={{ fontSize: "1.35rem", fontWeight: 600, marginBottom: "0.25rem", letterSpacing: "-0.025em" }}>Sign up for Account</h1>
-          <p style={{ fontSize: "0.85rem", color: "#888", marginBottom: "0.85rem", lineHeight: 1.5 }}>Create a new account to get started.</p>
-
-          <form onSubmit={go} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-            <input style={input} type="text" placeholder="Full Name" required />
-            <input style={input} type="email" placeholder="name@work-email.com" required />
-            <button type="submit" style={primary}>Sign Up with Email</button>
-          </form>
-
-          <div style={{ height: 1, background: "#222", width: "100%", margin: "0.85rem 0" }} />
-
-          <button type="button" style={socialBtn} onClick={() => go()}>{GoogleIcon}Sign up with Google</button>
-          <button type="button" style={socialBtn} onClick={() => go()}>{GitHubIcon}Sign up with GitHub</button>
-          <button type="button" style={{ ...socialBtn, marginBottom: 0 }} onClick={() => go()}>{AppleIcon}Sign up with Apple</button>
-
-          <div style={{ marginTop: "1.25rem", fontSize: "0.875rem", color: "#888" }}>
-            Already have an account?{" "}
-            <button type="button" onClick={() => setIsLogin(true)} style={{ color: "#fff", fontWeight: 500, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "inherit" }}>Sign In</button>
-          </div>
-          {Footer}
+        <div style={{ marginTop: "0.85rem", fontSize: "0.75rem", color: "#666", lineHeight: 1.5, textAlign: "center" }}>
+          By proceeding, you agree to creating a YADL+ account
+          <br />
+          subject to our{" "}
+          <a href="#" style={{ color: "#888" }}>Terms of Service</a> and <a href="#" style={{ color: "#888" }}>Privacy Policy</a>.
         </div>
-      )}
+      </div>
     </div>
   );
 }

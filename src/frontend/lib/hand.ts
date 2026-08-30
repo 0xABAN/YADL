@@ -168,5 +168,3 @@ export const PRESETS: Record<string, Joints> = {
     pinky: { spread: 20, mcp: 14, pip: 10 },
   },
 };
-
-// later: hand = result.landmarks[0]
