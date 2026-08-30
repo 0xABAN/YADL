@@ -722,7 +722,6 @@ main.cross, main.cross:active { cursor: crosshair }
   font-weight: 700;
   font-style: italic;
   letter-spacing: 0;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
   background-image:
     linear-gradient(#fff, #fff),
     linear-gradient(#fff, #fff),
