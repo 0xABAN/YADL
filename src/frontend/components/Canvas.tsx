@@ -709,8 +709,9 @@ export default function Canvas({
                 className={`pt${hold?.h === h && hold.i === i ? " on" : ""}`}
                 style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
                 onPointerDown={(e) => {
-                  if (locked || tool !== "landmarks") return;
+                  if (locked) return;
                   e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
                   frameR.current = frame.current!.getBoundingClientRect();
                   sel.current = { h, i };
                   dragPt.current = { h, i, start: live.current };
@@ -718,7 +719,6 @@ export default function Canvas({
                 }}
               >
                 <span className="chip">{i}</span>
-                <span className="dot" />
               </span>
             ))}
           </div>
