@@ -548,6 +548,14 @@ aside::after { border-left: 0; border-bottom: 0 }
   flex-direction: column;
   min-height: 0;
 }
+.create.auth .body {
+  width: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: stretch;
+  padding: 24px 40px;
+}
 .create .split {
   display: grid;
   grid-template-columns: 1fr 220px;
