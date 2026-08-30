@@ -515,7 +515,11 @@ aside::after { border-left: 0; border-bottom: 0 }
 }
 .create.upload { background: var(--canvas); }
 .create:not(.upload) { grid-template-rows: auto 1fr; }
-.create:not(.upload):not(.auth) { grid-template-rows: auto auto 1fr; }
+.create:not(.upload):not(.auth) {
+  grid-template-rows: auto auto;
+  align-content: safe center;
+  overflow: auto;
+}
 .create:not(.upload)::after {
   content: "";
   position: absolute;
@@ -554,7 +558,7 @@ aside::after { border-left: 0; border-bottom: 0 }
 .create:not(.upload) .body {
   position: relative;
   z-index: 2;
-  width: min(800px, calc(100% - 80px));
+  width: min(880px, calc(100% - 80px));
   margin: 0 auto;
   padding: 16px 40px 0;
   justify-self: center;
@@ -573,10 +577,12 @@ aside::after { border-left: 0; border-bottom: 0 }
   padding: 24px 40px;
 }
 .create:not(.auth) > h1 {
-  width: min(800px, calc(100% - 80px));
+  position: relative;
+  z-index: 2;
+  width: min(880px, calc(100% - 80px));
   justify-self: center;
   margin: 0;
-  padding: 16px 40px 20px;
+  padding: 0 40px 8px;
 }
 .create .split {
   display: grid;
@@ -585,7 +591,7 @@ aside::after { border-left: 0; border-bottom: 0 }
   align-items: start;
 }
 .create h1 { font-size: 32px; font-weight: 650; letter-spacing: -0.04em; margin: 0 0 8px; }
-.create:not(.upload) h1 { font-size: 46px; line-height: 1.1; margin: 0 0 20px; }
+.create:not(.upload) h1 { font-size: 46px; line-height: 1.1; margin: 0; }
 .create button:focus-visible { outline-color: #fff; }
 .create .sheet,
 .create .history {
@@ -622,7 +628,7 @@ aside::after { border-left: 0; border-bottom: 0 }
   );
 }
 .create .sheet {
-  padding: 24px;
+  padding: 32px;
 }
 .create .sheet .commit {
   display: block;

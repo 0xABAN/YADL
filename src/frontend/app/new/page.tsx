@@ -37,10 +37,6 @@ export default function New() {
 
   return (
     <div className="create">
-      <header>
-        <a className="word" href="/">YADL+</a>
-        <span className="who">dev</span>
-      </header>
       <h1>Let's create your project.</h1>
       <div className="body">
         <div className="split">
