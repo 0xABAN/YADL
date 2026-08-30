@@ -382,9 +382,8 @@ main.cross, main.cross:active { cursor: crosshair }
 .hand .dot {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
-  background: var(--c);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  background: #fff;
+  border: 1px solid #000;
 }
 .hand.edit .pt { pointer-events: auto; cursor: grab; touch-action: none }
 .hand.edit .dot::before { content: ""; position: absolute; inset: -8px }
@@ -473,9 +472,8 @@ main.cross, main.cross:active { cursor: crosshair }
   z-index: 2;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  background: #fff;
+  border: 1px solid #000;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
