@@ -66,7 +66,11 @@ export default function New() {
   }, []);
 
   useEffect(() => {
-    const t = setInterval(() => setEx((i) => (i + 1) % EXAMPLES.length), 2200);
+    const t = setInterval(() => setEx((i) => {
+      let n = i;
+      while (n === i) n = Math.floor(Math.random() * EXAMPLES.length);
+      return n;
+    }), 2200);
     return () => clearInterval(t);
   }, []);
 

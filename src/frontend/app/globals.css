@@ -616,13 +616,26 @@ aside::after { border-left: 0; border-bottom: 0 }
 .create:not(.upload) h1 { font-size: 46px; line-height: 1.15; margin: 0; }
 .create h1 .ex {
   display: inline-block;
+  position: relative;
   background: #fff;
   color: #000;
+  border: 3px solid #000;
   padding: 0 0.28em 0.06em;
   font-family: var(--font-display);
   font-weight: 700;
   font-style: italic;
   letter-spacing: 0;
+}
+.create h1 .ex::before {
+  --h: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect x='1.5' y='1.5' width='9' height='9' fill='%23fff' stroke='%23000' stroke-width='3'/%3E%3C/svg%3E");
+  content: "";
+  position: absolute;
+  inset: -6px;
+  pointer-events: none;
+  background: var(--h) 0 0 / 12px 12px no-repeat,
+    var(--h) 100% 0 / 12px 12px no-repeat,
+    var(--h) 0 100% / 12px 12px no-repeat,
+    var(--h) 100% 100% / 12px 12px no-repeat;
 }
 .create button:focus-visible { outline-color: #fff; }
 .create .sheet,
@@ -722,6 +735,8 @@ aside::after { border-left: 0; border-bottom: 0 }
   font-size: 13px;
 }
 .create .vis button[aria-pressed="true"] { background-color: #fff; color: #000; }
+.create .vis button:hover { background-color: #2a2a2a; }
+.create .vis button[aria-pressed="true"]:hover { background-color: #e8e8e8; }
 .create .types { display: flex; flex-direction: column; gap: 8px; }
 .create .types button, .create .history a {
   display: block; width: 100%; text-align: left; padding: 12px 16px;
@@ -733,17 +748,37 @@ aside::after { border-left: 0; border-bottom: 0 }
   background: #171717;
 }
 .create .types button[aria-pressed="true"] { border-color: #fff; }
+.create .types button:hover, .create .history a:hover { background: #2a2a2a; }
+.create .types button,
+.create .vis button,
+.create .history a,
+.create .sheet .commit {
+  user-select: none;
+  transition: background-color 0.12s, transform 0.08s, border-color 0.12s;
+}
+.create .types button:active,
+.create .vis button:active,
+.create .history a:active,
+.create .sheet .commit:active {
+  transform: scale(0.98);
+}
 .create .types b { display: block; font-size: 14px; font-weight: 500; }
 .create .types span { color: var(--muted); font-size: 12px; }
 .create .history {
   align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 16px 12px;
 }
 .create .history h2 {
-  padding: 0 8px 8px;
+  padding: 0 8px;
   font-size: 12px; font-weight: 500; color: var(--muted);
 }
-.create .history a { display: block; padding: 8px; }
+.create .history a {
+  border: 1px solid var(--line);
+  background: #171717;
+}
 .create .history small { display: block; color: var(--muted); font-size: 12px; }
 .create .history .empty { padding: 8px; color: var(--muted); font-size: 13px; }
 .create .bar {
