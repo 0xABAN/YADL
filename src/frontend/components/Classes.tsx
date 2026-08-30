@@ -47,8 +47,8 @@ export default function Classes({
         zoom={1}
       />
       <div className="rail-ui">
-        <span className="brand">yadl+</span>
-        <p className="lede">Most tools augment humans with AI. This one augments AI with humans.</p>
+        <span className="brand">yadl.</span>
+        <p className="lede">yet another data labeler, but in this one, you don't have to click.</p>
         <nav className="tabs">
           <button type="button" aria-pressed={tab === "labels"} onClick={() => setTab("labels")}>Labels</button>
           <button type="button" aria-pressed={tab === "objects"} onClick={() => setTab("objects")}>Objects</button>

@@ -71,15 +71,16 @@ aside, .shell footer, .stack { z-index: 1 }
   grid-row: 2;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  align-items: stretch;
+  align-items: center;
   height: 50px;
-  margin: 0 16px 16px var(--rail-pad);
+  margin: 0 16px var(--rail-pad) var(--rail-pad);
   padding: 9px 14px;
 }
 
 .brand {
   display: block;
   margin: 8px 0 12px;
+  text-align: center;
   font-family: var(--font-display);
   font-size: clamp(26px, 3.6vw, 42px);
   font-weight: 700;
@@ -104,26 +105,26 @@ aside, .shell footer, .stack { z-index: 1 }
 .pager {
   grid-column: 2;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   overflow: hidden;
   border: 1px solid var(--line);
-  background: #000;
+  background: #fff;
 }
 .pager button {
   display: grid;
   place-items: center;
   width: 22px;
-  padding: 0;
-  background: #000;
-  color: #fff;
+  padding: 6px 0;
+  background: #e5e5e5;
+  color: #000;
 }
 .pager button:disabled { opacity: 1 }
 .pager span {
   min-width: 3em;
-  padding: 0 11px;
+  padding: 6px 11px;
   display: grid;
   place-items: center;
-  color: #fff;
+  color: #000;
   font-size: 11px;
   font-weight: 500;
 }
@@ -133,7 +134,7 @@ aside, .shell footer, .stack { z-index: 1 }
   grid-column: 3;
   justify-self: end;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 14px;
 }
 
@@ -146,11 +147,36 @@ aside, .shell footer, .stack { z-index: 1 }
   font-weight: 500;
 }
 .shell .commit {
-  background: #000;
-  color: #fff;
-  border: 1px solid var(--line);
+  --cut: 6px;
+  border: 0;
+  padding: 6px 11px;
+  background-color: #fff;
+  background-image:
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000),
+    linear-gradient(#000, #000);
+  background-repeat: no-repeat;
+  background-position:
+    var(--cut) 0,
+    100% 0,
+    0 100%,
+    0 var(--cut);
+  background-size:
+    calc(100% - var(--cut)) 1px,
+    1px calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 1px,
+    1px calc(100% - var(--cut));
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
 }
-.shell .commit:hover { background: #111; color: #fff; }
+.shell .commit:hover { background-color: #e5e5e5; color: #000; }
 .commit:hover { background: #e5e5e5 }
 .commit:active { transform: scale(0.98) }
 
@@ -194,7 +220,7 @@ aside {
   overflow: visible;
   grid-column: 1;
   grid-row: 1 / -1;
-  margin: 16px 0 16px 16px;
+  margin: 16px 0 var(--rail-pad) var(--rail-pad);
 }
 aside .grainient-container {
   --gcut: max(0px, calc(var(--cut) - var(--rail-pad)));
@@ -228,6 +254,7 @@ aside .grainient-container {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
+  text-align: center;
 }
 
 .tabs {
@@ -247,8 +274,9 @@ aside .grainient-container {
 }
 .tabs button[aria-pressed="true"] {
   color: var(--text);
-  border-bottom-color: #fff;
+  border-bottom-color: var(--cyan);
 }
+.tabs button:last-child[aria-pressed="true"] { border-bottom-color: var(--lime); }
 
 .pane {
   flex: 1 1 0;
