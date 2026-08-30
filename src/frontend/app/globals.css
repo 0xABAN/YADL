@@ -32,7 +32,7 @@
   --radius: 6px;
   --radius-lg: 12px;
   --rail: 249px;
-  --rail-pad: clamp(9px, 1.4vh, 14px);
+  --rail-pad: clamp(10px, 1.54vh, 15px);
   --canvas: #0c0c0c;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   --font: ui-sans-serif, system-ui, sans-serif;
@@ -79,8 +79,7 @@ aside, .shell footer, .stack { z-index: 1 }
 
 .brand {
   display: block;
-  margin: 8px 0 12px;
-  text-align: center;
+  margin: 9px 0 13px;
   font-family: var(--font-display);
   font-size: clamp(26px, 3.6vw, 42px);
   font-weight: 700;
@@ -250,11 +249,10 @@ aside .grainient-container {
 }
 
 .lede {
-  margin: 0 0 16px;
+  margin: 0 0 18px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
-  text-align: center;
 }
 
 .tabs {
@@ -264,7 +262,7 @@ aside .grainient-container {
 }
 .tabs button {
   text-align: left;
-  padding-bottom: 8px;
+  padding-bottom: 9px;
   margin-bottom: -1px;
   border-bottom: 2px solid transparent;
   font-size: 14px;
@@ -290,7 +288,7 @@ aside .grainient-container {
 }
 .labels {
   list-style: none;
-  padding: 8px 12px;
+  padding: 9px 13px;
 }
 .labels.poses li { grid-template-columns: 1fr auto; cursor: pointer }
 .labels li[aria-current] { color: var(--cyan) }
@@ -299,8 +297,8 @@ aside .grainient-container {
   grid-template-columns: auto 1fr auto;
   cursor: pointer;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 11px;
+  padding: 9px 0;
   color: var(--text);
   font-size: 12px;
 }
