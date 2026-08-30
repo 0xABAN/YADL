@@ -505,16 +505,25 @@ aside::after { border-left: 0; border-bottom: 0 }
 
 .create {
   --grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.14'/%3E%3C/svg%3E");
+  position: relative;
   height: 100%;
   display: grid;
   grid-template-rows: auto 1fr auto;
   background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
     linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
     var(--canvas) url("/create.jpg") center / cover no-repeat;
 }
 .create.upload { background: var(--canvas); }
 .create:not(.upload) { grid-template-rows: auto 1fr; }
+.create:not(.upload):not(.auth) { grid-template-rows: auto auto 1fr; }
+.create:not(.upload)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+}
 .create header {
   display: flex;
   align-items: center;
@@ -523,6 +532,8 @@ aside::after { border-left: 0; border-bottom: 0 }
   border-bottom: 1px solid var(--line);
 }
 .create:not(.upload) header {
+  position: relative;
+  z-index: 2;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
@@ -541,6 +552,8 @@ aside::after { border-left: 0; border-bottom: 0 }
 }
 .create .body { width: min(1080px, 100%); margin: 0 auto; padding: 28px 40px 16px; overflow: auto; }
 .create:not(.upload) .body {
+  position: relative;
+  z-index: 2;
   width: min(800px, calc(100% - 80px));
   margin: 0 auto;
   padding: 16px 40px 0;
@@ -550,6 +563,7 @@ aside::after { border-left: 0; border-bottom: 0 }
   flex-direction: column;
   min-height: 0;
 }
+.create:not(.auth):not(.upload) .body { padding-top: 0; }
 .create.auth .body {
   width: auto;
   display: flex;
@@ -557,6 +571,12 @@ aside::after { border-left: 0; border-bottom: 0 }
   justify-content: center;
   justify-self: stretch;
   padding: 24px 40px;
+}
+.create:not(.auth) > h1 {
+  width: min(800px, calc(100% - 80px));
+  justify-self: center;
+  margin: 0;
+  padding: 16px 40px 20px;
 }
 .create .split {
   display: grid;

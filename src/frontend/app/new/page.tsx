@@ -41,8 +41,8 @@ export default function New() {
         <a className="word" href="/">YADL+</a>
         <span className="who">dev</span>
       </header>
+      <h1>Let's create your project.</h1>
       <div className="body">
-        <h1>Let's create your project.</h1>
         <div className="split">
         <div className="sheet">
           <div className="fields">
