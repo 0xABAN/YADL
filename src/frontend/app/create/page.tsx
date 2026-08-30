@@ -54,6 +54,11 @@ const TYPES = [
 ] as const;
 
 const EXTS = ".jpg,.jpeg,.png,.webp,.avif,.bmp,.heic,.heif,.zip";
+const DATA = [
+  "data", "images", "frames", "photos", "pictures", "shots", "stills",
+  "files", "samples", "examples", "batches", "media", "captures",
+  "scans", "snaps", "assets", "inputs", "sets", "packs", "lots",
+];
 
 export default function New() {
   const router = useRouter();
@@ -69,14 +74,20 @@ export default function New() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/projects").then((r) => r.json()).then((d) => setRows(Array.isArray(d) ? d : []));
+    fetch("/api/projects").then((r) => {
+      if (r.status === 401) {
+        location.href = "/auth";
+        return [];
+      }
+      return r.json();
+    }).then((d) => setRows(Array.isArray(d) ? d : []));
   }, []);
 
   useEffect(() => {
-    if (step !== "form") return;
+    const list = step === "form" ? EXAMPLES : DATA;
     const t = setInterval(() => setEx((i) => {
-      let n = i;
-      while (n === i) n = Math.floor(Math.random() * EXAMPLES.length);
+      let n = i % list.length;
+      while (n === i % list.length) n = Math.floor(Math.random() * list.length);
       return n;
     }), 2200);
     return () => clearInterval(t);
@@ -133,7 +144,7 @@ export default function New() {
         setErr("fail");
         return;
       }
-      router.push(`/p/${p.id}`);
+      router.push(`/studio/${p.id}`);
     } finally {
       setBusy(false);
     }
@@ -143,13 +154,13 @@ export default function New() {
     <div className={step === "up" ? "create up" : "create"}>
       <h1>
         {step === "form" ? (
-          <>let's detect <span className="ex">{EXAMPLES[ex]}</span></>
+          <>let's detect <span className="ex">{EXAMPLES[ex % EXAMPLES.length]}</span></>
         ) : (
           <>
             <button type="button" className="back" aria-label="Back" onClick={() => go("form")}>
               <svg viewBox="0 0 256 256" width="1em" height="1em" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z" fill="currentColor" /></svg>
             </button>
-            upload <span className="ex">data</span>
+            upload <span className="ex">{DATA[ex % DATA.length]}</span>
           </>
         )}
       </h1>
@@ -234,7 +245,7 @@ export default function New() {
               <button className="commit" type="button" disabled={!files.length || busy} onClick={send}>
                 {busy ? "Uploading" : "Upload"}
               </button>
-              <a className="skip" href="/">Skip</a>
+              <a className="skip" href="/auth">Skip</a>
             </>
           )}
         </div>
@@ -244,7 +255,7 @@ export default function New() {
             <p className="empty">No projects yet.</p>
           ) : (
             rows.slice(0, 3).map((p) => (
-              <a key={p.id} href={`/p/${p.id}`}>
+              <a key={p.id} href={`/studio/${p.id}`}>
                 {p.name}
                 <small>{p.type}</small>
               </a>

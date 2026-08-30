@@ -2,6 +2,12 @@ create table if not exists users (
   id text primary key,
   created_at timestamptz not null default now()
 );
+alter table users add column if not exists email text;
+alter table users add column if not exists password text;
+alter table users add column if not exists name text;
+alter table users add column if not exists github_id text;
+create unique index if not exists users_email on users (email);
+create unique index if not exists users_github on users (github_id);
 
 create table if not exists projects (
   id uuid primary key,

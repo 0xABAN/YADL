@@ -1,15 +1,18 @@
 "use client";
 
+import { Suspense } from "react";
 import Auth from "@/components/Auth";
 
 export default function Home() {
   return (
     <div className="create auth">
       <header>
-        <a className="word" href="/">YADL+</a>
+        <a className="word" href="/auth">YADL+</a>
       </header>
       <div className="body">
-        <Auth />
+        <Suspense>
+          <Auth />
+        </Suspense>
       </div>
     </div>
   );

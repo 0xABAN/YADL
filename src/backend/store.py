@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import os
 import uuid
 from pathlib import Path
 
@@ -24,6 +27,61 @@ def as_doc(row: dict) -> dict:
 
 def ensure_user(uid: str) -> None:
     execute("insert into users (id) values (%s) on conflict do nothing", (uid,))
+
+
+def _hash(pw: str) -> str:
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, 100_000)
+    return salt.hex() + "$" + dk.hex()
+
+
+def _check(pw: str, stored: str) -> bool:
+    salt, dk = stored.split("$", 1)
+    got = hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), 100_000)
+    return hmac.compare_digest(got.hex(), dk)
+
+
+def create_user(email: str, password: str, name: str) -> dict | None:
+    email = email.strip().lower()
+    if not email or not password:
+        return None
+    row = fetchone(
+        """insert into users (id, email, password, name) values (%s,%s,%s,%s)
+           on conflict (email) do nothing returning id, email, name""",
+        (str(uuid.uuid4()), email, _hash(password), name.strip() or None),
+    )
+    return dict(row) if row else None
+
+
+def login_user(email: str, password: str) -> dict | None:
+    row = fetchone(
+        "select id, email, name, password from users where email=%s",
+        (email.strip().lower(),),
+    )
+    if not row or not row["password"] or not _check(password, row["password"]):
+        return None
+    return {"id": row["id"], "email": row["email"], "name": row["name"]}
+
+
+def github_user(github_id: str, email: str | None, name: str | None) -> dict:
+    row = fetchone("select id, email, name from users where github_id=%s", (github_id,))
+    if row:
+        return {"id": row["id"], "email": row["email"], "name": row["name"]}
+    email = email.strip().lower() if email else None
+    name = name.strip() if name else None
+    if email:
+        row = fetchone("select id, email, name from users where email=%s", (email,))
+        if row:
+            execute(
+                "update users set github_id=%s, name=coalesce(%s, name) where id=%s",
+                (github_id, name, row["id"]),
+            )
+            return {"id": row["id"], "email": row["email"], "name": name or row["name"]}
+    row = fetchone(
+        "insert into users (id, email, name, github_id) values (%s,%s,%s,%s) returning id, email, name",
+        (str(uuid.uuid4()), email, name, github_id),
+    )
+    return dict(row)
 
 
 def list_projects(uid: str) -> list[dict]:

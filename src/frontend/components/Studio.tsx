@@ -6,7 +6,14 @@ import Classes from "./Classes";
 import Footer from "./Footer";
 import { SHOWN, type Doc, type HandObj, type Project } from "@/lib/doc";
 
-const api = (path: string) => fetch(`/api${path}`).then((r) => r.json());
+const api = (path: string) =>
+  fetch(`/api${path}`).then((r) => {
+    if (r.status === 401) {
+      location.href = "/auth";
+      return Promise.reject();
+    }
+    return r.json();
+  });
 
 export default function Studio({ id }: { id: string }) {
   const [project, setProject] = useState<Project | null>(null);

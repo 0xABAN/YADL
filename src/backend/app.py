@@ -1,11 +1,21 @@
+import hashlib
+import hmac
+import json
+import os
+import secrets
 import tempfile
+import time
+import urllib.error
+import urllib.request
 import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Cookie, Depends, FastAPI, File, Header, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from backend.db import apply_schema, fetchone
@@ -14,13 +24,16 @@ from backend.store import (
     add_images,
     as_doc,
     create_project,
+    create_user,
     delete_project,
     ensure_user,
     get_image,
     get_project,
+    github_user,
     image_row,
     list_images,
     list_projects,
+    login_user,
     put_objects,
     save_objects,
     seed_demo,
@@ -37,6 +50,12 @@ class NewProject(BaseModel):
     type: Literal["boxes", "polygons", "hands"]
 
 
+class Creds(BaseModel):
+    email: str
+    password: str
+    name: str = ""
+
+
 OK = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -50,8 +69,65 @@ OK = {
 MAX_N, MAX_B = 500, 100 * 1024 * 1024
 
 
-def uid(x_user_id: Annotated[str | None, Header()] = None) -> str:
-    return x_user_id or "dev"
+def _secret() -> bytes:
+    return (os.environ.get("SESSION_SECRET") or "dev").encode()
+
+
+def mint(uid: str) -> str:
+    exp = str(int(time.time()) + 30 * 86400)
+    msg = f"{uid}.{exp}"
+    sig = hmac.new(_secret(), msg.encode(), hashlib.sha256).hexdigest()
+    return f"{msg}.{sig}"
+
+
+def read_sid(sid: str) -> str | None:
+    try:
+        uid, exp, sig = sid.rsplit(".", 2)
+    except ValueError:
+        return None
+    msg = f"{uid}.{exp}"
+    expect = hmac.new(_secret(), msg.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expect) or int(exp) < time.time():
+        return None
+    return uid
+
+
+def uid(
+    sid: Annotated[str | None, Cookie()] = None,
+    x_user_id: Annotated[str | None, Header()] = None,
+) -> str:
+    if sid and (u := read_sid(sid)):
+        return u
+    if x_user_id:
+        return x_user_id
+    raise HTTPException(401)
+
+
+def _cookie(response: Response, user_id: str) -> None:
+    response.set_cookie("sid", mint(user_id), httponly=True, samesite="lax", max_age=30 * 86400, path="/")
+
+
+def origin() -> str:
+    return os.environ.get("APP_ORIGIN") or "http://localhost:3000"
+
+
+def gh_callback() -> str:
+    return f"{origin()}/api/auth/github/callback"
+
+
+def _gh(url: str, token: str | None = None, data: dict | None = None):
+    headers = {"User-Agent": "yadl", "Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    body = json.dumps(data).encode() if data is not None else None
+    if body:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=body, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError:
+        return None
 
 
 def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
@@ -93,6 +169,86 @@ def boot() -> None:
 def health():
     fetchone("select 1")
     return {"ok": True}
+
+
+@app.post("/auth/signup")
+def signup(body: Creds, response: Response):
+    if not body.email.strip() or not body.password:
+        raise HTTPException(400)
+    row = create_user(body.email, body.password, body.name)
+    if not row:
+        raise HTTPException(409, "email")
+    _cookie(response, row["id"])
+    return row
+
+
+@app.post("/auth/login")
+def login(body: Creds, response: Response):
+    row = login_user(body.email, body.password)
+    if not row:
+        raise HTTPException(401)
+    _cookie(response, row["id"])
+    return row
+
+
+@app.get("/auth/github")
+def github_start():
+    cid = os.environ.get("GITHUB_CLIENT_ID")
+    if not cid:
+        return RedirectResponse(f"{origin()}/auth?err=github")
+    state = secrets.token_urlsafe(24)
+    url = "https://github.com/login/oauth/authorize?" + urlencode(
+        {
+            "client_id": cid,
+            "redirect_uri": gh_callback(),
+            "scope": "read:user user:email",
+            "state": state,
+        }
+    )
+    r = RedirectResponse(url)
+    r.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=600, path="/")
+    return r
+
+
+@app.get("/auth/github/callback")
+def github_cb(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    oauth_state: Annotated[str | None, Cookie()] = None,
+):
+    fail = RedirectResponse(f"{origin()}/auth?err=github")
+    if error or not code or not state or not oauth_state or not hmac.compare_digest(state, oauth_state):
+        return fail
+    tok = _gh(
+        "https://github.com/login/oauth/access_token",
+        data={
+            "client_id": os.environ.get("GITHUB_CLIENT_ID"),
+            "client_secret": os.environ.get("GITHUB_CLIENT_SECRET"),
+            "code": code,
+            "redirect_uri": gh_callback(),
+        },
+    )
+    token = (tok or {}).get("access_token")
+    if not token:
+        return fail
+    gh = _gh("https://api.github.com/user", token)
+    if not gh or not gh.get("id"):
+        return fail
+    email = gh.get("email")
+    if not email:
+        mails = _gh("https://api.github.com/user/emails", token)
+        if isinstance(mails, list):
+            for e in mails:
+                if e.get("verified") and (e.get("primary") or not email):
+                    email = e.get("email")
+                    if e.get("primary"):
+                        break
+    row = github_user(str(gh["id"]), email, gh.get("name") or gh.get("login"))
+    r = RedirectResponse(f"{origin()}/create")
+    _cookie(r, row["id"])
+    r.delete_cookie("oauth_state", path="/")
+    return r
 
 
 @app.get("/projects")
