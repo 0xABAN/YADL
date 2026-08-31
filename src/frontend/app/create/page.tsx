@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/doc";
@@ -149,8 +149,35 @@ export default function New() {
     }
   };
 
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [guide, setGuide] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const place = () => {
+      const r = el.getBoundingClientRect();
+      setGuide({ left: r.left - 100, top: r.top + 150 });
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    window.addEventListener("resize", place);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", place);
+    };
+  }, [step, rows.length]);
+
   return (
     <div className={step === "up" ? "create up" : "create"}>
+      {guide && (
+        <div
+          className={step === "up" ? "create-guide up" : "create-guide"}
+          aria-hidden="true"
+          style={{ left: guide.left, top: guide.top }}
+        />
+      )}
       <a className="word" href="/create">
         yadl.
       </a>
@@ -186,7 +213,7 @@ export default function New() {
       </h1>
       <div className="body">
         <div className={step === "up" ? "split up" : "split"}>
-        <div className="sheet">
+        <div className="sheet" ref={sheetRef}>
           {step === "form" ? (
             <>
           <div className="fields">
@@ -202,8 +229,9 @@ export default function New() {
               }}
               onKeyDown={(e) => e.key === "Enter" && create()}
             />
-            {err === "empty" && <small className="err">Name cannot be empty.</small>}
-            {err === "taken" && <small className="err">Name already exists.</small>}
+            <small className="err" aria-live="polite">
+              {err === "empty" ? "Name cannot be empty." : err === "taken" ? "Name already exists." : ""}
+            </small>
           </div>
           <div className="types">
             {TYPES.map((t) => (
@@ -263,26 +291,28 @@ export default function New() {
           {rows.length === 0 ? (
             <p className="empty">No projects yet.</p>
           ) : (
-            rows.slice(0, 3).map((p) => (
-              <div key={p.id} className="row">
-                <a href={`/studio/${p.id}`}>
-                  {p.name}
-                  <small>{p.type}</small>
-                </a>
-                <button
-                  type="button"
-                  aria-label="delete"
-                  onClick={() => {
-                    if (!confirm(`Delete ${p.name}?`)) return;
-                    fetch(`/api/projects/${p.id}`, { method: "DELETE" }).then((r) => {
-                      if (r.ok) setRows((rs) => rs.filter((x) => x.id !== p.id));
-                    });
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))
+            <div className="history-list">
+              {rows.map((p) => (
+                <div key={p.id} className="row">
+                  <a href={`/studio/${p.id}`}>
+                    {p.name}
+                    <small>{TYPES.find((t) => t.id === p.type)?.name ?? p.type}</small>
+                  </a>
+                  <button
+                    type="button"
+                    aria-label="delete"
+                    onClick={() => {
+                      if (!confirm(`Delete ${p.name}?`)) return;
+                      fetch(`/api/projects/${p.id}`, { method: "DELETE" }).then((r) => {
+                        if (r.ok) setRows((rs) => rs.filter((x) => x.id !== p.id));
+                      });
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         </div>

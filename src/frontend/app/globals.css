@@ -34,7 +34,7 @@
   --rail: 274px;
   --rail-pad: clamp(10px, 1.54vh, 15px);
   --rail-top: 96px;
-  --canvas: #000;
+  --canvas: #0a0a0a; /* near-black, not pure #000 */
   --ink: #0c0c0c; /* soft black — rail insets, not pure #000 */
   --panel: #171717;
   --grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.14'/%3E%3C/svg%3E");
@@ -1252,8 +1252,74 @@ main.cross, main.cross:active { cursor: crosshair }
     linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
     var(--canvas) url("/create.png") center / cover no-repeat;
 }
+/* layout guide — behind chrome; top-left = sheet −100x / +150y → page BR */
+.create-guide {
+  --cell-w: 420px;
+  --cell-h: 220px;
+  --cut: 8px;
+  --a: #c45a00;
+  --b: #9a4500;
+  --edge: #ffb366;
+  --check: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='220' viewBox='0 0 420 220'%3E%3Crect width='210' height='110' fill='%23fff'/%3E%3Crect x='210' y='110' width='210' height='110' fill='%23fff'/%3E%3C/svg%3E");
+  position: fixed;
+  z-index: 1; /* above page scanlines (0); UI stays at 2+ */
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background-color: var(--a);
+  /* edge lines (T/L) + grain + dark checker */
+  background-image:
+    linear-gradient(var(--edge), var(--edge)),
+    linear-gradient(var(--edge), var(--edge)),
+    var(--grain),
+    url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='220' viewBox='0 0 420 220'%3E%3Crect width='210' height='110' fill='%239a4500'/%3E%3Crect x='210' y='110' width='210' height='110' fill='%239a4500'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+  background-position:
+    var(--cut) 0,
+    0 var(--cut),
+    0 0,
+    0 0;
+  background-size:
+    calc(100% - var(--cut)) 2px,
+    2px calc(100% - var(--cut)),
+    160px 160px,
+    var(--cell-w) var(--cell-h);
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+/* upload phase — blue checker */
+.create-guide.up {
+  --a: #1a5f9e;
+  --b: #0f3d6b;
+  --edge: #6eb6ff;
+  background-image:
+    linear-gradient(var(--edge), var(--edge)),
+    linear-gradient(var(--edge), var(--edge)),
+    var(--grain),
+    url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='220' viewBox='0 0 420 220'%3E%3Crect width='210' height='110' fill='%230f3d6b'/%3E%3Crect x='210' y='110' width='210' height='110' fill='%230f3d6b'/%3E%3C/svg%3E");
+}
+/* scanlines on dark cells only (grain already on whole guide) */
+.create-guide::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  -webkit-mask-image: var(--check);
+  mask-image: var(--check);
+  -webkit-mask-size: var(--cell-w) var(--cell-h);
+  mask-size: var(--cell-w) var(--cell-h);
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  pointer-events: none;
+}
 /* top nav — starts after yadl., never crosses the mark */
 .create-nav {
+  display: none; /* ponytail: preview without marquee nav */
   --cut: 8px;
   position: absolute;
   z-index: 3;
@@ -1261,7 +1327,6 @@ main.cross, main.cross:active { cursor: crosshair }
   left: 96px; /* clear of yadl. */
   right: 16px;
   height: 52px;
-  display: flex;
   align-items: center;
   padding: 0 16px;
   overflow: hidden;
@@ -1365,7 +1430,7 @@ main.cross, main.cross:active { cursor: crosshair }
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 0;
   pointer-events: none;
   background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
 }
@@ -1575,6 +1640,10 @@ main.cross, main.cross:active { cursor: crosshair }
   gap: 8px;
   margin-bottom: 12px;
 }
+.create .fields .err {
+  min-height: 1.2em; /* reserve so types don't jump */
+  line-height: 1.2;
+}
 .create .fields .k { margin: 0; }
 .create label, .create .k { display: block; font-size: 13px; font-weight: 500; margin: 0 0 8px; }
 .create input[type=text] {
@@ -1584,7 +1653,16 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create input[type=text]:focus { outline: none; border-color: #fff; }
 .create .err { display: block; color: #f87171; font-size: 12px; font-weight: 400; }
-.create .types { display: flex; flex-direction: column; gap: 8px; }
+.create .types {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(3 * 62px + 2 * 8px); /* 3 types visible, scroll after */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.create .types button { flex: none; }
 .create .types button, .create .history a {
   display: block; width: 100%; text-align: left; padding: 12px 16px;
   color: #fff; text-decoration: none;
@@ -1622,7 +1700,16 @@ main.cross, main.cross:active { cursor: crosshair }
   padding: 0 8px;
   font-size: 12px; font-weight: 500; color: var(--muted);
 }
-.create .history .row { position: relative; }
+.create .history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 58px; /* one project row */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.create .history .row { position: relative; flex: none; }
 .create .history a {
   border: 1px solid var(--line);
   background: #171717;
