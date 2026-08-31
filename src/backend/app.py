@@ -383,11 +383,11 @@ def save(pid: str, iid: str, body: Doc, user: str = Depends(uid)):
     return row
 
 
-def seed_row(row: dict, ptype: str) -> dict:
+def seed_row(row: dict, ptype: str, *, force: bool = False) -> dict:
     # MediaPipe hand landmarks only — never for boxes/polygons
     if ptype != "hands":
         return row
-    if row["objects"]:
+    if row["objects"] and not force:
         return row
     ext = Path(row["filename"]).suffix or ".jpg"
     with tempfile.NamedTemporaryFile(suffix=ext) as tmp:
@@ -400,7 +400,12 @@ def seed_row(row: dict, ptype: str) -> dict:
 
 
 @app.post("/projects/{pid}/images/{iid}/assist")
-def assist(pid: str, iid: str, user: str = Depends(uid)):
+def assist(
+    pid: str,
+    iid: str,
+    force: bool = False,
+    user: str = Depends(uid),
+):
     proj = get_project(pid, user)
     if not proj:
         raise HTTPException(404)
@@ -409,7 +414,7 @@ def assist(pid: str, iid: str, user: str = Depends(uid)):
     row = image_row(pid, iid, user)
     if not row:
         raise HTTPException(404)
-    return as_doc(seed_row(row, proj["type"]))
+    return as_doc(seed_row(row, proj["type"], force=force))
 
 
 @app.post("/projects/{pid}/assist")

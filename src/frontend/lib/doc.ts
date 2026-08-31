@@ -46,10 +46,10 @@ export type Project = {
   classes: string[];
 };
 
-export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist" | "synthetic";
+export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist" | "seed" | "synthetic";
 
 export const SHOWN: Record<Project["type"], ToolId[]> = {
-  hands: ["move", "assist", "synthetic"],
+  hands: ["move", "seed", "assist", "synthetic"],
   boxes: ["move", "box", "synthetic"],
   polygons: ["move", "polygon", "synthetic"],
 };

@@ -70,8 +70,15 @@ const TOOLS = [
     d: "M230.64,49.36a32,32,0,0,0-45.26,0h0a31.9,31.9,0,0,0-5.16,6.76L152,48.42A32,32,0,0,0,97.37,25.36h0a32.06,32.06,0,0,0-5.76,37.41L57.67,93.32a32.05,32.05,0,0,0-40.31,4.05h0a32,32,0,0,0,42.89,47.41l70,51.36a32,32,0,1,0,47.57-14.69l27.39-77.59q1.38.12,2.76.12a32,32,0,0,0,22.63-54.62Zm-122-12.69h0a16,16,0,1,1,0,22.64A16,16,0,0,1,108.68,36.67Zm-80,94.65a16,16,0,0,1,0-22.64h0a16,16,0,1,1,0,22.64Zm142.65,88a16,16,0,0,1-22.63-22.63h0a16,16,0,1,1,22.63,22.63Zm-8.55-43.18a32,32,0,0,0-23,7.08l-70-51.36a32.17,32.17,0,0,0-1.34-26.65l33.95-30.55a32,32,0,0,0,45.47-10.81L176,71.56a32,32,0,0,0,14.12,27Zm56.56-92.84A16,16,0,1,1,196.7,60.68h0a16,16,0,0,1,22.63,22.63Z",
   },
   {
+    // refresh — stays on Auto Label (swap)
     id: "assist",
-    label: "Label Assist",
+    label: "Auto Label",
+    d: "M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.32C192.65,73.19,162.34,56,128,56a72.08,72.08,0,0,0-72,72,8,8,0,0,1-16,0A88.1,88.1,0,0,1,128,40c38.28,0,71.72,20.13,90.51,50.05V56a8,8,0,1,1,16,0Zm-32,72a72,72,0,0,1-130.21,42.79,8,8,0,1,0-12.42,10.06A88,88,0,0,0,216,128a8,8,0,0,0-16,0Z",
+  },
+  {
+    // wand — one-shot seed on this image
+    id: "seed",
+    label: "Seed this image",
     d: "M48,64a8,8,0,0,1,8-8H72V40a8,8,0,0,1,16,0V56h16a8,8,0,0,1,0,16H88V88a8,8,0,0,1-16,0V72H56A8,8,0,0,1,48,64ZM184,192h-8v-8a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0v-8h8a8,8,0,0,0,0-16Zm56-48H224V128a8,8,0,0,0-16,0v16H192a8,8,0,0,0,0,16h16v16a8,8,0,0,0,16,0V160h16a8,8,0,0,0,0-16ZM219.31,80,80,219.31a16,16,0,0,1-22.62,0L36.68,198.63a16,16,0,0,1,0-22.63L176,36.69a16,16,0,0,1,22.63,0l20.68,20.68A16,16,0,0,1,219.31,80Zm-54.63,32L144,91.31l-96,96L68.68,208ZM208,68.69,187.31,48l-32,32L176,100.69Z",
   },
   {
@@ -88,6 +95,7 @@ export default function Canvas({
   projectType = "hands",
   onChange,
   onAssistOn,
+  onAssistReseed,
   assistOn = true,
   assistBusy = false,
   onComment,
@@ -108,6 +116,7 @@ export default function Canvas({
   projectType?: Project["type"];
   onChange?: (objects: AnnObj[]) => void;
   onAssistOn?: () => void;
+  onAssistReseed?: () => void;
   assistOn?: boolean;
   assistBusy?: boolean;
   onComment?: (btn: HTMLElement) => void;
@@ -345,18 +354,27 @@ export default function Canvas({
         <div className="panel tools" onMouseLeave={() => setTip(null)}>
           {TOOLS.filter((t) => shown.includes(t.id)).map((t) => (
             <Fragment key={t.id}>
-              {t.id === "assist" && <hr />}
+              {(t.id === "seed" || (t.id === "assist" && !shown.includes("seed"))) && <hr />}
               <button
                 type="button"
-                className={t.id === "assist" || t.id === "synthetic" ? "assist" : undefined}
-                data-tip={t.id === "synthetic" ? "synthetic-tool" : undefined}
-                aria-label={t.id === "assist" && assistBusy ? "Assist running…" : t.label}
+                className={t.id === "assist" || t.id === "seed" || t.id === "synthetic" ? "assist" : undefined}
+                data-tip={t.id === "synthetic" ? "synthetic-tool" : t.id === "seed" ? "seed-tool" : undefined}
+                disabled={t.id === "seed" && (assistBusy || !src)}
+                aria-label={
+                  t.id === "assist" && assistBusy
+                    ? "Auto Label running…"
+                    : t.id === "seed" && assistBusy
+                      ? "Seeding…"
+                      : t.label
+                }
                 aria-pressed={
                   t.id === "assist"
                     ? assistOn
                     : t.id === "synthetic"
                       ? syntheticOpen
-                      : tool === t.id || (t.id === "move" && tool === "move")
+                      : t.id === "seed"
+                        ? false
+                        : tool === t.id || (t.id === "move" && tool === "move")
                 }
                 title={t.label}
                 onMouseEnter={(e) => {
@@ -365,7 +383,13 @@ export default function Canvas({
                   const b = e.currentTarget.getBoundingClientRect();
                   const s = stack.getBoundingClientRect();
                   stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
-                  setTip(t.id === "assist" && assistBusy ? "Assist running…" : t.label);
+                  setTip(
+                    assistBusy && (t.id === "assist" || t.id === "seed")
+                      ? t.id === "seed"
+                        ? "Seeding…"
+                        : "Auto Label running…"
+                      : t.label,
+                  );
                 }}
                 onFocus={(e) => {
                   const stack = e.currentTarget.closest(".stack");
@@ -378,6 +402,7 @@ export default function Canvas({
                 onBlur={() => setTip(null)}
                 onClick={(e) => {
                   if (t.id === "assist") onAssistOn?.();
+                  else if (t.id === "seed") onAssistReseed?.();
                   else if (t.id === "synthetic") onSynthetic?.(e.currentTarget);
                   else if (t.id === "move") setTool(tool === "move" ? DEFAULT_TOOL[projectType] : "move");
                   else setTool(t.id);

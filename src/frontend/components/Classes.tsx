@@ -135,7 +135,7 @@ export default function Classes({
             <ul className="labels">
               {objects.length === 0 ? (
                 <li className="empty-pane" style={{ display: "block" }}>
-                  No objects. Draw one or run Assist.
+                  No objects. Draw one or run Auto Label.
                 </li>
               ) : (
                 objects.map((o, i) => (

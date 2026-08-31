@@ -69,6 +69,8 @@ export default function Studio({ id }: { id: string }) {
   const [assistOn, setAssistOn] = useState(true);
   const assistOnRef = useRef(true);
   assistOnRef.current = assistOn;
+  // once per image — never batch-seed the whole project
+  const assistedRef = useRef(new Set<string>());
   const [assistBusy, setAssistBusy] = useState(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [toast, setToast] = useState<string | null>(null);
@@ -107,18 +109,11 @@ export default function Studio({ id }: { id: string }) {
         setProject(p);
         setList(imgs);
         setAssistOn(p.type === "hands");
+        assistedRef.current = new Set();
         setLoadState("ready");
       })
       .catch(() => setLoadState("error"));
   }, [id]);
-
-  useEffect(() => {
-    if (!assistOnRef.current || !list.length || project?.type !== "hands") return;
-    setAssistBusy(true);
-    fetch(`/api/projects/${id}/assist`, { method: "POST" })
-      .catch(() => {})
-      .finally(() => setAssistBusy(false));
-  }, [id, list.length, project?.type]);
 
   const apply = useCallback((d: Record<string, unknown>) => {
     const objects = readObjects(d.objects);
@@ -182,6 +177,8 @@ export default function Studio({ id }: { id: string }) {
         if (ac.signal.aborted) return;
         apply(d);
         if (!assistOnRef.current || project?.type !== "hands" || (d.objects ?? []).length) return;
+        if (assistedRef.current.has(iid)) return;
+        assistedRef.current.add(iid);
         setAssistBusy(true);
         return fetch(`/api/projects/${id}/images/${iid}/assist`, { method: "POST", signal: ac.signal })
           .then((r) => {
@@ -191,11 +188,13 @@ export default function Studio({ id }: { id: string }) {
           .then((d2) => {
             if (ac.signal.aborted) return;
             apply(d2);
-            if (!(d2.objects ?? []).length) showToast("No hands detected", 1600);
           })
           .catch((e) => {
-            if (e?.name === "AbortError") return;
-            if (!ac.signal.aborted) showToast("Assist failed", 1500);
+            if (e?.name === "AbortError") {
+              assistedRef.current.delete(iid); // left early — allow retry on return
+              return;
+            }
+            // silent fail — empty / error leave canvas as-is
           })
           .finally(() => {
             if (!ac.signal.aborted) setAssistBusy(false);
@@ -206,7 +205,7 @@ export default function Studio({ id }: { id: string }) {
         setDoc(null);
       });
     return () => ac.abort();
-  }, [id, iid, apply, project?.type, showToast]);
+  }, [id, iid, apply, project?.type]);
 
   const save = useCallback(
     (objects: AnnObj[]) => {
@@ -392,7 +391,7 @@ export default function Studio({ id }: { id: string }) {
   const railStatus = useMemo(() => {
     if (loadState === "loading") return "Loading project…";
     if (loadState === "error") return "Could not load project.";
-    if (assistBusy) return "Assist running…";
+    if (assistBusy) return "Auto Label running…";
     return undefined;
   }, [loadState, assistBusy]);
 
@@ -476,6 +475,7 @@ export default function Studio({ id }: { id: string }) {
             onAssistOn={() => {
               if (project?.type === "hands") setAssistOn((v) => !v);
             }}
+            onAssistReseed={() => {}}
             commentsOpen={false}
             commentCount={0}
             syntheticOpen={false}
@@ -500,25 +500,22 @@ export default function Studio({ id }: { id: string }) {
             onChange={save}
             onSelect={setSelected}
             onAssistOn={() => {
-              if (project?.type !== "hands") return;
-              const next = !assistOn;
-              setAssistOn(next);
-              if (!next) return;
+              // toggle only — seed runs once per image on first view, never batch
+              if (project?.type === "hands") setAssistOn((v) => !v);
+            }}
+            onAssistReseed={() => {
+              if (project?.type !== "hands" || !doc || assistBusy) return;
+              const iid = doc.id;
+              assistedRef.current.add(iid);
               setAssistBusy(true);
-              fetch(`/api/projects/${id}/assist`, { method: "POST" })
-                .catch(() => {})
-                .finally(() => setAssistBusy(false));
-              if (!doc || objects.length) return;
-              fetch(`/api/projects/${id}/images/${doc.id}/assist`, { method: "POST" })
+              fetch(`/api/projects/${id}/images/${iid}/assist?force=true`, { method: "POST" })
                 .then((r) => {
                   if (!r.ok) throw new Error("assist");
                   return r.json();
                 })
-                .then((d2) => {
-                  apply(d2);
-                  if (!(d2.objects ?? []).length) showToast("No hands detected", 1600);
-                })
-                .catch(() => showToast("Assist failed", 1500));
+                .then(apply)
+                .catch(() => {})
+                .finally(() => setAssistBusy(false));
             }}
             commentsOpen={commentsOpen}
             commentCount={doc?.comments?.length ?? 0}
