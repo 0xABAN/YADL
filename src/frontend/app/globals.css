@@ -34,7 +34,10 @@
   --rail: 274px;
   --rail-pad: clamp(10px, 1.54vh, 15px);
   --rail-top: 96px;
-  --canvas: #0c0c0c;
+  --canvas: #000;
+  --ink: #0c0c0c; /* soft black — rail insets, not pure #000 */
+  --panel: #171717;
+  --grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.14'/%3E%3C/svg%3E");
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   --font: ui-sans-serif, system-ui, sans-serif;
   --font-display: "Rose Tinted", ui-sans-serif, system-ui, sans-serif;
@@ -110,6 +113,23 @@ input:focus-visible,
   outline: 2px solid var(--cyan);
   outline-offset: 2px;
 }
+.validity {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: #000;
+  box-sizing: border-box;
+}
+.validity.ok { background: var(--lime); color: #000; }
+.validity.bad { background: #ff1a1a; color: #fff; }
 .live {
   position: fixed;
   z-index: 20;
@@ -134,13 +154,18 @@ input:focus-visible,
 }
 .undo-link { text-decoration: underline; margin-left: 8px; color: inherit }
 .empty-main {
+  position: relative;
+  z-index: 0;
   grid-column: 1 / -1;
   grid-row: 1 / -1;
   display: grid;
   place-items: center;
+  overflow: hidden;
   color: var(--muted);
   background: var(--canvas);
 }
+.empty-main .zpp,
+.empty-main .world { width: 100%; height: 100%; }
 .loading-shell { display: grid; place-items: center; height: 100%; color: var(--muted) }
 .file-wrap {
   flex: 0 1 auto;
@@ -186,7 +211,8 @@ input:focus-visible,
 .labels .row-main > input { min-width: 0; }
 .labels li[aria-current], .labels .row-main[aria-current] { color: #fff }
 .labels .name { color: #fff }
-.hist li button {
+/* history versions only — not comment chips/delete inside .hist.comments */
+.hist:not(.comments) li button {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -195,7 +221,7 @@ input:focus-visible,
   padding: 6px 4px;
   font-family: ui-monospace, monospace;
 }
-.hist li button:hover { background: #171717 }
+.hist:not(.comments) li button:hover { background: #000 }
 .hist-id { font-size: 12px }
 .ann li button {
   display: flex;
@@ -205,7 +231,7 @@ input:focus-visible,
   padding: 5px 8px;
   text-align: left;
 }
-.ann li button:hover { background: #171717 }
+.ann li button:hover { background: #000 }
 .ann li button[aria-current] { background: #fff; color: #000 }
 .ann li .swatch { width: 8px; height: 8px; flex: none; background: var(--cc) }
 .box.sel, .poly.sel { outline: 1px solid var(--lime) }
@@ -246,7 +272,7 @@ aside, .shell footer, .stack { z-index: 1 }
   font: inherit;
   text-align: center;
 }
-.ann header input:focus { outline: none; box-shadow: inset 0 -1px 0 var(--cyan) }
+.ann header input:focus { outline: none; box-shadow: inset 0 -1px 0 #fff }
 .ann header button {
   position: absolute;
   right: 10px;
@@ -294,6 +320,20 @@ aside, .shell footer, .stack { z-index: 1 }
   min-height: calc(2 * 3.1em);
 }
 
+
+.foot-del {
+  margin-right: auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: #f87171;
+  flex: none;
+}
+.foot-del:hover:not(:disabled) { color: #ef4444; }
+.foot-del:disabled { opacity: 0.35; }
+.foot-del svg { width: 16px; height: 16px; display: block; }
+
 .shell footer {
   --cut: 8px;
   --foot-gap: 16px;
@@ -311,7 +351,7 @@ aside, .shell footer, .stack { z-index: 1 }
 }
 
 .rail-head {
-  background: #171717;
+  background: var(--ink);
   padding: 10px 12px;
   margin-bottom: 10px;
   text-align: center;
@@ -319,11 +359,11 @@ aside, .shell footer, .stack { z-index: 1 }
 .brand {
   display: block;
   margin: 0 auto;
-  font-family: var(--font);
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 300;
+  font-weight: 700;
   font-style: italic;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   line-height: 1;
   text-align: center;
 }
@@ -477,6 +517,7 @@ aside, .shell footer, .stack { z-index: 1 }
 .shell .ann header button,
 .shell .ann .del,
 .shell .cmt-del,
+.shell .foot-del,
 .shell .undo-link {
   user-select: none;
   transition: background-color 0.12s, color 0.12s, transform 0.08s, border-color 0.12s, opacity 0.12s;
@@ -491,7 +532,8 @@ aside, .shell footer, .stack { z-index: 1 }
 .shell .tabs button:active,
 .shell .labels .row-main:active,
 .shell .hist li button:active,
-.shell .ann li button:active {
+.shell .ann li button:active,
+.shell .foot-del:not(:disabled):active {
   transform: scale(0.98);
 }
 .studio-back:hover,
@@ -509,30 +551,37 @@ aside, .shell footer, .stack { z-index: 1 }
 .shell .labels .row-main:hover .name { color: #d4d4d4; }
 .shell .labels li[aria-current] .row-main:hover .name,
 .shell .labels .row-main[aria-current]:hover .name { color: #fff; }
+.shell .unused .labels .row-main:hover .name { color: #d4d4d4; }
+.shell .unused .labels li[aria-current] .row-main:hover .name,
+.shell .unused .labels .row-main[aria-current]:hover .name { color: #fff; }
 
+/* gray chrome + grain — same language as /create .sheet */
 aside,
 .shell footer,
 .panel,
 .ann,
 .hist {
   --cut: 16px;
-  background-color: #000;
+  background-color: var(--panel);
   background-image:
     linear-gradient(var(--line), var(--line)),
     linear-gradient(var(--line), var(--line)),
     linear-gradient(var(--line), var(--line)),
-    linear-gradient(var(--line), var(--line));
-  background-repeat: no-repeat;
+    linear-gradient(var(--line), var(--line)),
+    var(--grain);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
   background-position:
     var(--cut) 0,
     100% 0,
     0 100%,
-    0 var(--cut);
+    0 var(--cut),
+    0 0;
   background-size:
     calc(100% - var(--cut)) 1px,
     1px calc(100% - var(--cut)),
     calc(100% - var(--cut)) 1px,
-    1px calc(100% - var(--cut));
+    1px calc(100% - var(--cut)),
+    160px 160px;
   border: 0;
   border-radius: 0;
   filter: drop-shadow(0 12px 40px rgba(0, 0, 0, 0.55));
@@ -602,7 +651,7 @@ aside {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--canvas);
+  background: var(--ink);
 }
 .pane > .labels { flex: 1; min-height: 0; overflow: auto; }
 .unused {
@@ -610,7 +659,8 @@ aside {
   padding: var(--rail-pad);
   min-height: 16%;
   overflow: auto;
-  background: #171717;
+  background: var(--panel);
+  color: var(--text);
 }
 .add-label {
   margin: var(--rail-pad);
@@ -628,6 +678,13 @@ aside {
 }
 .unused .labels { padding: 0; }
 .unused .labels li { color: var(--subtle); }
+.unused .labels .name { color: #fff; }
+.unused .labels .kill { color: var(--muted); }
+.unused .labels .kill:hover { color: #fff; }
+.unused .labels b {
+  background: var(--ink);
+  color: var(--muted);
+}
 .labels {
   list-style: none;
   padding: 9px 13px;
@@ -655,7 +712,7 @@ aside {
   height: 1.6em;
   display: grid;
   place-items: center;
-  background: #000;
+  background: var(--ink);
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
@@ -693,7 +750,8 @@ main.cross, main.cross:active { cursor: crosshair }
   position: absolute;
   inset: -200vmax;
   pointer-events: none;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+  /* gray dots on black canvas */
+  background-image: radial-gradient(rgba(163, 163, 163, 0.28) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 .world img {
@@ -704,6 +762,8 @@ main.cross, main.cross:active { cursor: crosshair }
   max-height: 100cqh;
   user-select: none;
   pointer-events: none;
+  /* outline so annotation coords don't shift 1px */
+  outline: 1px solid #fff;
   box-shadow: var(--shadow);
   opacity: 0;
 }
@@ -904,7 +964,9 @@ main.cross, main.cross:active { cursor: crosshair }
   position: fixed;
   z-index: 6;
   padding: 4px 8px;
-  background: #000;
+  background-color: var(--panel);
+  background-image: var(--grain);
+  background-size: 160px 160px;
   color: #fff;
   font-size: 10px;
   font-weight: 500;
@@ -933,6 +995,36 @@ main.cross, main.cross:active { cursor: crosshair }
   flex-direction: column;
   padding-bottom: 10px;
 }
+.hist.comments.side {
+  /* open beside tools rail */
+  transform: translate(0, -50%);
+}
+.synth-body { display: flex; flex-direction: column; gap: 10px; }
+.synth-prompt {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  padding: 10px 12px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  background: #000;
+  color: #fff;
+  font: inherit;
+  line-height: 1.4;
+}
+.synth-prompt:focus { outline: none; border-color: #fff; }
+.synth-prompt::placeholder { color: #555; }
+.synth-go {
+  align-self: flex-end;
+  padding: 6px 12px;
+  background: #fff;
+  color: #000;
+  font-size: 12px;
+  font-weight: 500;
+}
+.synth-go:disabled { opacity: 0.4; }
+.synth-go:not(:disabled):hover { background: #e5e5e5; }
+.synth-note { margin: 0; color: var(--muted); font-size: 11px; }
 .act-link .cmt-badge {
   display: inline-flex;
   align-items: center;
@@ -954,7 +1046,7 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .cmt-field {
   position: relative;
-  background: #0a0a0a;
+  background: #000;
   border: 1px solid var(--line);
 }
 .cmt-field.chips {
@@ -1037,6 +1129,7 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .cmt-body {
   flex: 1;
+  min-width: 0;
   line-height: 1.45;
   word-break: break-word;
   white-space: pre-wrap;
@@ -1125,7 +1218,6 @@ main.cross, main.cross:active { cursor: crosshair }
 
 
 .create {
-  --grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.14'/%3E%3C/svg%3E");
   position: relative;
   height: 100%;
   display: grid;
@@ -1133,6 +1225,99 @@ main.cross, main.cross:active { cursor: crosshair }
   background:
     linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
     var(--canvas) url("/create.png") center / cover no-repeat;
+}
+/* top nav — starts after yadl., never crosses the mark */
+.create-nav {
+  --cut: 8px;
+  position: absolute;
+  z-index: 3;
+  top: calc(var(--rail-pad) / 2);
+  left: 96px; /* clear of yadl. */
+  right: 16px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  overflow: hidden;
+  background-color: #050505;
+  background-image:
+    linear-gradient(var(--line), var(--line)),
+    linear-gradient(var(--line), var(--line)),
+    linear-gradient(var(--line), var(--line)),
+    linear-gradient(var(--line), var(--line)),
+    var(--grain);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-position:
+    var(--cut) 0,
+    100% 0,
+    0 100%,
+    0 var(--cut),
+    0 0;
+  background-size:
+    calc(100% - var(--cut)) 1px,
+    1px calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 1px,
+    1px calc(100% - var(--cut)),
+    160px 160px;
+  border: 0;
+  filter: drop-shadow(0 12px 40px rgba(0, 0, 0, 0.55));
+  clip-path: polygon(
+    var(--cut) 0,
+    100% 0,
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    0 100%,
+    0 var(--cut)
+  );
+}
+.create .word {
+  position: absolute;
+  z-index: 4;
+  top: calc(var(--rail-pad) / 2 + 14px);
+  left: 24px;
+}
+.create-nav .marquee {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+}
+.create-nav .marquee-track {
+  display: flex;
+  width: max-content;
+  animation: create-marquee 60s linear infinite;
+  will-change: transform;
+}
+.create-nav .marquee-track > span {
+  display: flex;
+  flex: none;
+  white-space: nowrap;
+}
+.create-nav .marquee-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.85em;
+  padding-right: 0.85em;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 300;
+  font-style: italic;
+  letter-spacing: -0.02em;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+.create-nav .marquee-sep {
+  color: var(--subtle);
+  font-style: normal;
+  font-weight: 400;
+}
+@keyframes create-marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .create-nav .marquee-track { animation: none; }
 }
 .create.up {
   background:
@@ -1179,10 +1364,25 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .word {
   font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 850;
-  letter-spacing: -0.075em;
-  color: inherit;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: #fff;
   text-decoration: none;
+}
+.create.auth header {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: auto;
+  padding: 20px 24px;
+  background: transparent;
+  border: 0;
+}
+.create.auth .word {
+  position: static;
 }
 .create .body { width: min(1080px, 100%); margin: 0 auto; padding: 28px 40px 16px; overflow: auto; }
 .create:not(.upload) .body {
@@ -1301,7 +1501,7 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .sheet,
 .create .history {
   --cut: 16px;
-  background-color: #171717;
+  background-color: var(--panel);
   background-image:
     linear-gradient(var(--line), var(--line)),
     linear-gradient(var(--line), var(--line)),
@@ -1362,13 +1562,12 @@ main.cross, main.cross:active { cursor: crosshair }
 .create input[type=text]:focus { outline: none; border-color: #fff; }
 .create .err { display: block; color: #f87171; font-size: 12px; font-weight: 400; }
 .create .vis { display: flex; gap: 8px; }
-.create .vis button,
-.create .pick {
+.create .vis button {
   --cut: 8px;
   display: flex; align-items: center; gap: 6px;
   padding: 10px 14px;
   border: 0;
-  background-color: #171717;
+  background-color: var(--panel);
   background-image:
     linear-gradient(var(--line), var(--line)),
     linear-gradient(var(--line), var(--line)),
@@ -1396,8 +1595,7 @@ main.cross, main.cross:active { cursor: crosshair }
   font-size: 13px;
 }
 .create .vis button[aria-pressed="true"] { background-color: #fff; color: #000; }
-.create .vis button:hover,
-.create .pick:hover { background-color: #2a2a2a; }
+.create .vis button:hover { background-color: #2a2a2a; }
 .create .vis button[aria-pressed="true"]:hover { background-color: #e8e8e8; }
 .create .types { display: flex; flex-direction: column; gap: 8px; }
 .create .types button, .create .history a {
@@ -1479,11 +1677,21 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .drop .picked { margin: 0; color: #fff; font-size: 13px; }
 .create .picks { display: flex; gap: 8px; }
 .create .pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
-  color: #fff;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #000;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  clip-path: none;
 }
+.create .pick:hover { background: #e5e5e5; color: #000; }
 .create .formats {
   width: 100%;
   padding: 12px 14px;
