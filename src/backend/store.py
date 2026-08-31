@@ -360,6 +360,42 @@ def empty_images(pid: str, uid: str) -> list[dict] | None:
     )
 
 
+def export_line(filename: str, obj: dict) -> str | None:
+    """One JSONL row for a named object, or None if skip."""
+    label = obj.get("label")
+    if not _named(label):
+        return None
+    geom = obj.get("geom") or {}
+    t = geom.get("t") or obj.get("kind")
+    base = {"image": filename, "label": label, "kind": t}
+    if t == "hand":
+        lms = geom.get("landmarks") or []
+        if len(lms) != 21:
+            return None
+        base["landmarks"] = lms
+        base["handedness"] = geom.get("handedness")
+    elif t == "box":
+        x, y = float(geom.get("x") or 0), float(geom.get("y") or 0)
+        w, h = float(geom.get("w") or 0), float(geom.get("h") or 0)
+        if w <= 0 or h <= 0:
+            return None
+        base["box"] = {"x": x, "y": y, "w": w, "h": h}
+    elif t == "polygon":
+        raw = geom.get("pts") or []
+        pts = []
+        for p in raw:
+            if isinstance(p, (list, tuple)) and len(p) >= 2:
+                pts.append([float(p[0]), float(p[1])])
+            elif isinstance(p, dict):
+                pts.append([float(p.get("x") or 0), float(p.get("y") or 0)])
+        if len(pts) < 3:
+            return None
+        base["pts"] = pts
+    else:
+        return None
+    return json.dumps(base, separators=(",", ":"))
+
+
 def export_jsonl(pid: str, uid: str) -> tuple[str, str] | None:
     proj = get_project(pid, uid)
     if not proj:
@@ -374,16 +410,9 @@ def export_jsonl(pid: str, uid: str) -> tuple[str, str] | None:
         if not row["committed"]:
             continue
         for o in row["objects"] or []:
-            label = o.get("label")
-            if not _named(label):
-                continue
-            geom = o.get("geom") or {}
-            lines.append(
-                json.dumps(
-                    {"image": row["filename"], "label": label, "landmarks": geom.get("landmarks") or []},
-                    separators=(",", ":"),
-                )
-            )
+            line = export_line(row["filename"], o if isinstance(o, dict) else {})
+            if line:
+                lines.append(line)
     return proj["name"], ("\n".join(lines) + ("\n" if lines else ""))
 
 
