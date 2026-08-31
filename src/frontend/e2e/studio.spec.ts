@@ -112,7 +112,10 @@ test("studio session: label, url state, commit", async ({ page }) => {
 test("studio empty images state", async ({ page }) => {
   await mockApi(page, []);
   await page.goto(`/studio/${PID}`);
-  await expect(page.locator("#studio-main")).toContainText(/No images/i, { timeout: 10_000 });
+  await expect(page.locator("#studio-main")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#studio-main")).not.toContainText(/No images in this project/i);
+  await expect(page.locator(".panel.tools")).toBeVisible();
+  await expect(page.locator(".panel.zoom")).toBeVisible();
 });
 
 test("doc helpers round-trip poly pts", async () => {

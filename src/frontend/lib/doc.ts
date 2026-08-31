@@ -46,12 +46,12 @@ export type Project = {
   classes: string[];
 };
 
-export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist";
+export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist" | "synthetic";
 
 export const SHOWN: Record<Project["type"], ToolId[]> = {
-  hands: ["move", "assist"],
-  boxes: ["move", "box"],
-  polygons: ["move", "polygon"],
+  hands: ["move", "assist", "synthetic"],
+  boxes: ["move", "box", "synthetic"],
+  polygons: ["move", "polygon", "synthetic"],
 };
 
 export const DEFAULT_TOOL: Record<Project["type"], ToolId> = {

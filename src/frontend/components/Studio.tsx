@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Canvas from "./Canvas";
 import Classes from "./Classes";
 import Comments from "./Comments";
+import Synthetic from "./Synthetic";
 import Footer from "./Footer";
 import { readComments } from "@/lib/comment";
 import {
@@ -24,6 +25,7 @@ const api = (path: string) =>
       location.href = "/auth";
       return Promise.reject();
     }
+    if (!r.ok) return Promise.reject(new Error(String(r.status)));
     return r.json();
   });
 
@@ -60,18 +62,23 @@ export default function Studio({ id }: { id: string }) {
   const histRef = useRef<HTMLDivElement>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [commentsPos, setCommentsPos] = useState<{ x: number; y: number } | null>(null);
+  const [commentsSide, setCommentsSide] = useState(false);
+  const [synthOpen, setSynthOpen] = useState(false);
+  const [synthPos, setSynthPos] = useState<{ x: number; y: number } | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [assistOn, setAssistOn] = useState(true);
   const assistOnRef = useRef(true);
   assistOnRef.current = assistOn;
   const [assistBusy, setAssistBusy] = useState(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [toast, setToast] = useState<string | null>(null);
   const [toastOut, setToastOut] = useState(false);
   const toastHide = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const undoToast = useRef<{ objects: AnnObj[]; t: ReturnType<typeof setTimeout> } | null>(null);
+  const undoToast = useRef<
+    | { kind: "objects"; objects: AnnObj[]; t: ReturnType<typeof setTimeout> }
+    | { kind: "image"; id: string; index: number; t: ReturnType<typeof setTimeout> }
+    | null
+  >(null);
 
   const showToast = useCallback((msg: string, holdMs?: number) => {
     if (toastHide.current) clearTimeout(toastHide.current);
@@ -95,20 +102,23 @@ export default function Studio({ id }: { id: string }) {
     setLoadState("loading");
     Promise.all([api(`/projects/${id}`), api(`/projects/${id}/images`)])
       .then(([p, imgs]) => {
+        if (!p || typeof p !== "object" || !("id" in p)) throw new Error("project");
+        if (!Array.isArray(imgs)) throw new Error("images");
         setProject(p);
-        setList(Array.isArray(imgs) ? imgs : []);
+        setList(imgs);
+        setAssistOn(p.type === "hands");
         setLoadState("ready");
       })
       .catch(() => setLoadState("error"));
   }, [id]);
 
   useEffect(() => {
-    if (!assistOnRef.current || !list.length) return;
+    if (!assistOnRef.current || !list.length || project?.type !== "hands") return;
     setAssistBusy(true);
     fetch(`/api/projects/${id}/assist`, { method: "POST" })
       .catch(() => {})
       .finally(() => setAssistBusy(false));
-  }, [id, list.length]);
+  }, [id, list.length, project?.type]);
 
   const apply = useCallback((d: Record<string, unknown>) => {
     const objects = readObjects(d.objects);
@@ -160,7 +170,8 @@ export default function Studio({ id }: { id: string }) {
     setEdit(null);
     setHistOpen(false);
     setCommentsOpen(false);
-    setSaveState("idle");
+    setSynthOpen(false);
+
     const ac = new AbortController();
     fetch(`/api/projects/${id}/images/${iid}`, { signal: ac.signal })
       .then((r) => {
@@ -170,7 +181,7 @@ export default function Studio({ id }: { id: string }) {
       .then((d) => {
         if (ac.signal.aborted) return;
         apply(d);
-        if (!assistOnRef.current || (d.objects ?? []).length) return;
+        if (!assistOnRef.current || project?.type !== "hands" || (d.objects ?? []).length) return;
         setAssistBusy(true);
         return fetch(`/api/projects/${id}/images/${iid}/assist`, { method: "POST", signal: ac.signal })
           .then((r) => r.json())
@@ -187,15 +198,13 @@ export default function Studio({ id }: { id: string }) {
         setDoc(null);
       });
     return () => ac.abort();
-  }, [id, iid, apply]);
+  }, [id, iid, apply, project?.type]);
 
   const save = useCallback(
     (objects: AnnObj[]) => {
       if (!doc) return;
       const next = { ...doc, objects };
       setDoc(next);
-      setSaveState("saving");
-      if (saveTimer.current) clearTimeout(saveTimer.current);
       fetch(`/api/projects/${id}/images/${doc.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -203,16 +212,55 @@ export default function Studio({ id }: { id: string }) {
       })
         .then((r) => {
           if (!r.ok) throw new Error("save");
-          setSaveState("saved");
-          saveTimer.current = setTimeout(() => setSaveState("idle"), 1200);
           setList((ls) =>
             ls.map((x) => (x.id === doc.id ? { ...x, empty: objects.length === 0 } : x)),
           );
         })
-        .catch(() => setSaveState("error"));
+        .catch(() => {});
     },
     [doc, id],
   );
+
+  const undoLast = useCallback(async () => {
+    const u = undoToast.current;
+    if (!u) return false;
+    clearTimeout(u.t);
+    undoToast.current = null;
+    if (u.kind === "objects") {
+      save(u.objects);
+      showToast("Reverted", 1000);
+      return true;
+    }
+    const r = await fetch(`/api/projects/${id}/images/${u.id}/restore`, { method: "POST" });
+    if (!r.ok) {
+      showToast("Restore failed", 1500);
+      return true;
+    }
+    const item = (await r.json()) as ImgRow;
+    setList((ls) => {
+      if (ls.some((x) => x.id === item.id)) return ls;
+      const next = [...ls];
+      next.splice(Math.min(u.index, next.length), 0, item);
+      return next;
+    });
+    setIndex(u.index);
+    showToast("Restored", 1200);
+    return true;
+  }, [id, save, showToast]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+      if (e.key.toLowerCase() !== "z") return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (!undoToast.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void undoLast();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [undoLast]);
 
   const objects = doc?.objects ?? [];
   const editing = edit && edit !== "new" ? objects.find((o) => o.id === edit) : undefined;
@@ -229,6 +277,7 @@ export default function Studio({ id }: { id: string }) {
     setTip(null);
     setHistOpen(false);
     setCommentsOpen(false);
+    setSynthOpen(false);
     setTab("labels");
     setDraft("");
     setEdit("new");
@@ -325,10 +374,9 @@ export default function Studio({ id }: { id: string }) {
     if (loadState === "loading") return "Loading project…";
     if (loadState === "error") return "Could not load project.";
     if (assistBusy) return "Assist running…";
-    if (!list.length) return "No images — upload from Create.";
-    if (doc && objects.length === 0) return "No objects on this image.";
     return undefined;
-  }, [loadState, assistBusy, list.length, doc, objects.length]);
+  }, [loadState, assistBusy]);
+
 
   return (
     <div className="shell">
@@ -344,6 +392,14 @@ export default function Studio({ id }: { id: string }) {
         </svg>
       </a>
       <h1 className="sr-only">Studio{project ? ` — ${project.name}` : ""}</h1>
+      {loadState === "ready" && list.length > 0 && (
+        <div
+          className={`validity ${canCommit ? "ok" : "bad"}`}
+          aria-live="polite"
+        >
+          {canCommit ? "Valid" : "Invalid"} annotation
+        </div>
+      )}
       <Classes
         classes={classes}
         objects={objects}
@@ -383,7 +439,33 @@ export default function Studio({ id }: { id: string }) {
           if (doc) setDoc({ ...doc, objects: doc.objects.map((o) => (o.label === name ? { ...o, label: null } : o)) });
         }}
       />
-      {doc?.url ? (
+      {loadState === "ready" && list.length === 0 ? (
+        <div id="studio-main">
+          <Canvas
+            src={undefined}
+            alt="No images"
+            objects={[]}
+            projectType={project?.type ?? "hands"}
+            classes={classes}
+            selectedId={null}
+            assistOn={assistOn}
+            assistBusy={false}
+            tool={tool}
+            onTool={setTool}
+            onChange={() => {}}
+            onSelect={() => {}}
+            onAssistOn={() => {
+              if (project?.type === "hands") setAssistOn((v) => !v);
+            }}
+            commentsOpen={false}
+            commentCount={0}
+            syntheticOpen={false}
+            onComment={() => {}}
+            onSynthetic={() => {}}
+            onEdit={() => {}}
+          />
+        </div>
+      ) : doc?.url ? (
         <div id="studio-main">
           <Canvas
             src={doc.url}
@@ -399,6 +481,7 @@ export default function Studio({ id }: { id: string }) {
             onChange={save}
             onSelect={setSelected}
             onAssistOn={() => {
+              if (project?.type !== "hands") return;
               const next = !assistOn;
               setAssistOn(next);
               if (!next) return;
@@ -411,6 +494,36 @@ export default function Studio({ id }: { id: string }) {
                 .then((r) => r.json())
                 .then(apply)
                 .catch(() => {});
+            }}
+            commentsOpen={commentsOpen}
+            commentCount={doc?.comments?.length ?? 0}
+            syntheticOpen={synthOpen}
+            onComment={(btn) => {
+              setTip(null);
+              setHistOpen(false);
+              setSynthOpen(false);
+              setEdit(null);
+              if (commentsOpen) {
+                setCommentsOpen(false);
+                return;
+              }
+              const r = btn.getBoundingClientRect();
+              setCommentsSide(true);
+              setCommentsPos({ x: r.right + 12, y: r.top + r.height / 2 });
+              setCommentsOpen(true);
+            }}
+            onSynthetic={(btn) => {
+              setTip(null);
+              setHistOpen(false);
+              setCommentsOpen(false);
+              setEdit(null);
+              if (synthOpen) {
+                setSynthOpen(false);
+                return;
+              }
+              const r = btn.getBoundingClientRect();
+              setSynthPos({ x: r.right + 12, y: r.top + r.height / 2 });
+              setSynthOpen(true);
             }}
             onEdit={(oid) => {
               if (oid == null) {
@@ -433,9 +546,7 @@ export default function Studio({ id }: { id: string }) {
               ? "Loading…"
               : loadState === "error"
                 ? "Failed to load project."
-                : list.length === 0
-                  ? "No images in this project."
-                  : "Loading image…"}
+                : "Loading image…"}
           </p>
         </main>
       )}
@@ -534,6 +645,32 @@ export default function Studio({ id }: { id: string }) {
             }
           }
         }}
+        onDelete={async () => {
+          if (!doc || !list.length) return;
+          const iid = doc.id;
+          const at = index;
+          const r = await fetch(`/api/projects/${id}/images/${iid}`, { method: "DELETE" });
+          if (!r.ok) return;
+          const next = list.filter((x) => x.id !== iid);
+          setList(next);
+          setSelected(null);
+          setEdit(null);
+          setHistOpen(false);
+          setCommentsOpen(false);
+          if (next.length === 0) setDoc(null);
+          setIndex(Math.min(at, Math.max(0, next.length - 1)));
+          if (undoToast.current) clearTimeout(undoToast.current.t);
+          showToast("Deleted");
+          undoToast.current = {
+            kind: "image",
+            id: iid,
+            index: at,
+            t: setTimeout(() => {
+              undoToast.current = null;
+              setToastOut(true);
+            }, 5000),
+          };
+        }}
         onCommit={async () => {
           if (!doc || !canCommit) return;
           const first = !doc.committed;
@@ -557,6 +694,7 @@ export default function Studio({ id }: { id: string }) {
             if (undoToast.current) clearTimeout(undoToast.current.t);
             showToast("Updated");
             undoToast.current = {
+              kind: "objects",
               objects: prev,
               t: setTimeout(() => {
                 undoToast.current = null;
@@ -586,12 +724,14 @@ export default function Studio({ id }: { id: string }) {
         onComment={(btn) => {
           setTip(null);
           setHistOpen(false);
+          setEdit(null);
           if (commentsOpen) {
             setCommentsOpen(false);
             return;
           }
           const r = btn.getBoundingClientRect();
           const foot = btn.closest("footer")?.getBoundingClientRect();
+          setCommentsSide(false);
           setCommentsPos({ x: r.left + r.width / 2, y: foot?.top ?? r.top });
           setCommentsOpen(true);
         }}
@@ -603,11 +743,12 @@ export default function Studio({ id }: { id: string }) {
         histOpen={histOpen}
         commentsOpen={commentsOpen}
         commentCount={doc?.comments?.length ?? 0}
-        saveState={saveState}
       />
+      <Synthetic open={synthOpen} pos={synthPos} onClose={() => setSynthOpen(false)} />
       <Comments
         open={commentsOpen}
         pos={commentsPos}
+        side={commentsSide}
         comments={doc?.comments ?? []}
         objects={objects}
         classes={classes}
@@ -682,19 +823,13 @@ export default function Studio({ id }: { id: string }) {
           }}
         >
           {toast}
-          {toast === "Updated" && undoToast.current && (
+          {(toast === "Updated" || toast === "Deleted") && undoToast.current && (
             <>
               {" "}
               <button
                 type="button"
                 className="undo-link"
-                onClick={() => {
-                  if (!undoToast.current) return;
-                  save(undoToast.current.objects);
-                  clearTimeout(undoToast.current.t);
-                  undoToast.current = null;
-                  showToast("Reverted", 1000);
-                }}
+                onClick={() => void undoLast()}
               >
                 Undo
               </button>

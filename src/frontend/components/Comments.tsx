@@ -57,6 +57,7 @@ function titleOf(id: string, objects: AnnObj[]) {
 export default function Comments({
   open,
   pos,
+  side = false,
   comments,
   objects,
   classes,
@@ -69,6 +70,7 @@ export default function Comments({
 }: {
   open: boolean;
   pos: { x: number; y: number } | null;
+  side?: boolean;
   comments: Comment[];
   objects: AnnObj[];
   classes: string[];
@@ -136,14 +138,24 @@ export default function Comments({
     if (!open) return;
     const onMove = (e: PointerEvent) => {
       const panel = ref.current?.getBoundingClientRect();
-      const btn = document.querySelector("[data-tip=comment]")?.getBoundingClientRect();
-      if (!panel || !btn) return;
+      if (!panel) return;
+      const btns = [...document.querySelectorAll<HTMLElement>("[data-tip=comment], [data-tip=comment-tool]")].map(
+        (el) => el.getBoundingClientRect(),
+      );
+      if (!btns.length) return;
       const pad = 40;
-      const left = Math.min(panel.left, btn.left) - pad;
-      const right = Math.max(panel.right, btn.right) + pad;
-      const top = Math.min(panel.top, btn.top) - pad;
-      const bottom = Math.max(panel.bottom, btn.bottom) + pad;
-      if (e.clientX < left || e.clientX > right || e.clientY < top || e.clientY > bottom) onClose();
+      let left = panel.left,
+        right = panel.right,
+        top = panel.top,
+        bottom = panel.bottom;
+      for (const b of btns) {
+        left = Math.min(left, b.left);
+        right = Math.max(right, b.right);
+        top = Math.min(top, b.top);
+        bottom = Math.max(bottom, b.bottom);
+      }
+      if (e.clientX < left - pad || e.clientX > right + pad || e.clientY < top - pad || e.clientY > bottom + pad)
+        onClose();
     };
     window.addEventListener("pointermove", onMove);
     return () => window.removeEventListener("pointermove", onMove);
@@ -205,7 +217,14 @@ export default function Comments({
   const hasPrefix = parts.length > 0 || at;
 
   return (
-    <div className="hist comments" data-comments ref={ref} style={{ left: pos.x, top: pos.y }} role="dialog" aria-label="Comments">
+    <div
+      className={`hist comments${side ? " side" : ""}`}
+      data-comments
+      ref={ref}
+      style={{ left: pos.x, top: pos.y }}
+      role="dialog"
+      aria-label="Comments"
+    >
       <header>
         <h2>Comments</h2>
         <button type="button" aria-label="Close" onClick={onClose}>

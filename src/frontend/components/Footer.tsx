@@ -23,6 +23,7 @@ export default function Footer({
   onNext,
   onNextOpen,
   onCommit,
+  onDelete,
   onExport,
   onHistory,
   onComment,
@@ -42,6 +43,7 @@ export default function Footer({
   onNext: () => void;
   onNextOpen: () => void;
   onCommit: () => void;
+  onDelete: () => void;
   onExport: () => void;
   onHistory: (btn: HTMLElement) => void;
   onComment: (btn: HTMLElement) => void;
@@ -63,6 +65,25 @@ export default function Footer({
 
   return (
     <footer data-footer>
+      <button
+        type="button"
+        className="foot-del"
+        disabled={n === 0}
+        aria-label="Delete image"
+        title="Delete image"
+        onClick={onDelete}
+        onMouseEnter={(e) => show(e.currentTarget, "Delete image")}
+        onMouseLeave={() => onTip(null)}
+        onFocus={(e) => show(e.currentTarget, "Delete image")}
+        onBlur={() => onTip(null)}
+      >
+        <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+          <path
+            d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"
+            fill="currentColor"
+          />
+        </svg>
+      </button>
       <div className="file-wrap">
         <span className="file" title={path}>
           {path || "—"}

@@ -74,6 +74,11 @@ const TOOLS = [
     label: "Label Assist",
     d: "M48,64a8,8,0,0,1,8-8H72V40a8,8,0,0,1,16,0V56h16a8,8,0,0,1,0,16H88V88a8,8,0,0,1-16,0V72H56A8,8,0,0,1,48,64ZM184,192h-8v-8a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0v-8h8a8,8,0,0,0,0-16Zm56-48H224V128a8,8,0,0,0-16,0v16H192a8,8,0,0,0,0,16h16v16a8,8,0,0,0,16,0V160h16a8,8,0,0,0,0-16ZM219.31,80,80,219.31a16,16,0,0,1-22.62,0L36.68,198.63a16,16,0,0,1,0-22.63L176,36.69a16,16,0,0,1,22.63,0l20.68,20.68A16,16,0,0,1,219.31,80Zm-54.63,32L144,91.31l-96,96L68.68,208ZM208,68.69,187.31,48l-32,32L176,100.69Z",
   },
+  {
+    id: "synthetic",
+    label: "Synthetic images",
+    d: "M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.25V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z",
+  },
 ] as const;
 
 export default function Canvas({
@@ -85,6 +90,11 @@ export default function Canvas({
   onAssistOn,
   assistOn = true,
   assistBusy = false,
+  onComment,
+  commentsOpen = false,
+  commentCount = 0,
+  onSynthetic,
+  syntheticOpen = false,
   onEdit,
   onSelect,
   selectedId = null,
@@ -100,6 +110,11 @@ export default function Canvas({
   onAssistOn?: () => void;
   assistOn?: boolean;
   assistBusy?: boolean;
+  onComment?: (btn: HTMLElement) => void;
+  commentsOpen?: boolean;
+  commentCount?: number;
+  onSynthetic?: (btn: HTMLElement) => void;
+  syntheticOpen?: boolean;
   onEdit?: (id: string | null) => void;
   onSelect?: (id: string | null) => void;
   selectedId?: string | null;
@@ -141,6 +156,7 @@ export default function Canvas({
 
   useEffect(() => {
     setImgReady(false);
+    if (!src) return;
     let dead = false;
     const im = new window.Image();
     const done = () => {
@@ -271,14 +287,16 @@ export default function Canvas({
               <i />
               <i />
               <i />
-              <img
-                src={src}
-                alt={alt}
-                draggable={false}
-                width={1280}
-                height={720}
-                className={imgReady ? "ready" : undefined}
-              />
+              {src ? (
+                <img
+                  src={src}
+                  alt={alt}
+                  draggable={false}
+                  width={1280}
+                  height={720}
+                  className={imgReady ? "ready" : undefined}
+                />
+              ) : null}
               {imgReady && (projectType === "boxes" || boxes.length > 0) && (
                 <Boxes
                   objects={boxes}
@@ -305,7 +323,7 @@ export default function Canvas({
                   onEdit={(id) => onEdit?.(id)}
                 />
               )}
-              {imgReady && (projectType === "hands" || hands.length > 0) && (
+              {imgReady && projectType === "hands" && hands.length > 0 && (
                 <Hands
                   objects={hands}
                   classes={classes}
@@ -330,9 +348,16 @@ export default function Canvas({
               {t.id === "assist" && <hr />}
               <button
                 type="button"
-                className={t.id === "assist" ? "assist" : undefined}
+                className={t.id === "assist" || t.id === "synthetic" ? "assist" : undefined}
+                data-tip={t.id === "synthetic" ? "synthetic-tool" : undefined}
                 aria-label={t.id === "assist" && assistBusy ? "Assist running…" : t.label}
-                aria-pressed={t.id === "assist" ? assistOn : tool === t.id || (t.id === "move" && tool === "move")}
+                aria-pressed={
+                  t.id === "assist"
+                    ? assistOn
+                    : t.id === "synthetic"
+                      ? syntheticOpen
+                      : tool === t.id || (t.id === "move" && tool === "move")
+                }
                 title={t.label}
                 onMouseEnter={(e) => {
                   const stack = e.currentTarget.closest(".stack");
@@ -351,8 +376,9 @@ export default function Canvas({
                   setTip(t.label);
                 }}
                 onBlur={() => setTip(null)}
-                onClick={() => {
+                onClick={(e) => {
                   if (t.id === "assist") onAssistOn?.();
+                  else if (t.id === "synthetic") onSynthetic?.(e.currentTarget);
                   else if (t.id === "move") setTool(tool === "move" ? DEFAULT_TOOL[projectType] : "move");
                   else setTool(t.id);
                 }}
@@ -363,6 +389,32 @@ export default function Canvas({
               </button>
               {t.id === "move" && (
                 <>
+                  <hr />
+                  <button
+                    type="button"
+                    data-tip="comment-tool"
+                    className={commentsOpen ? "on" : undefined}
+                    aria-label="Comment (T)"
+                    aria-pressed={commentsOpen}
+                    title="Comment (T)"
+                    onMouseEnter={(e) => {
+                      const stack = e.currentTarget.closest(".stack");
+                      if (!(stack instanceof HTMLElement)) return;
+                      const b = e.currentTarget.getBoundingClientRect();
+                      const s = stack.getBoundingClientRect();
+                      stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
+                      setTip(commentCount ? `Comment (T) · ${commentCount}` : "Comment (T)");
+                    }}
+                    onMouseLeave={() => setTip(null)}
+                    onClick={(e) => onComment?.(e.currentTarget)}
+                  >
+                    <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+                      <path
+                        d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </button>
                   <button
                     type="button"
                     disabled={hist.u === 0}

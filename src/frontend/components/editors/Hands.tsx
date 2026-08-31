@@ -76,8 +76,6 @@ export default function Hands({
     if (locked || !active) return;
     e.stopPropagation();
     e.preventDefault();
-    const el = e.currentTarget;
-    el.setPointerCapture(e.pointerId);
     const frameR = frameRef.current!.getBoundingClientRect();
     const start = live.current;
     const ox = e.clientX;
@@ -86,20 +84,16 @@ export default function Hands({
     onSelectRef.current(objId);
     setHold({ h, i });
 
+    // window listeners — setHold re-renders and would drop element-bound ups
     const move = (ev: PointerEvent) => {
       if (!canDrag) return;
       const p = atRect(ev, frameR);
       onChangeRef.current(patchLm(h, i, p.x, p.y), false);
     };
     const up = (ev: PointerEvent) => {
-      try {
-        el.releasePointerCapture(ev.pointerId);
-      } catch {
-        /* already released */
-      }
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerup", up);
-      el.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       setHold(null);
       const dist = Math.hypot(ev.clientX - ox, ev.clientY - oy);
       if (!canDrag || dist <= 4) {
@@ -110,9 +104,9 @@ export default function Hands({
       }
       onChangeRef.current(live.current, true);
     };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
-    el.addEventListener("pointercancel", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   return objects.map((obj, h) => (
