@@ -255,10 +255,24 @@ export default function New() {
             <p className="empty">No projects yet.</p>
           ) : (
             rows.slice(0, 3).map((p) => (
-              <a key={p.id} href={`/studio/${p.id}`}>
-                {p.name}
-                <small>{p.type}</small>
-              </a>
+              <div key={p.id} className="row">
+                <a href={`/studio/${p.id}`}>
+                  {p.name}
+                  <small>{p.type}</small>
+                </a>
+                <button
+                  type="button"
+                  aria-label="delete"
+                  onClick={() => {
+                    if (!confirm(`Delete ${p.name}?`)) return;
+                    fetch(`/api/projects/${p.id}`, { method: "DELETE" }).then((r) => {
+                      if (r.ok) setRows((rs) => rs.filter((x) => x.id !== p.id));
+                    });
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             ))
           )}
         </div>
