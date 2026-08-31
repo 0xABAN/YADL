@@ -321,18 +321,42 @@ aside, .shell footer, .stack { z-index: 1 }
 }
 
 
-.foot-del {
+.foot-tools {
   margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--foot-gap, 16px);
+  flex: none;
+}
+.foot-tools > * + * {
+  position: relative;
+}
+.foot-tools > * + *::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--foot-gap, 16px) / -2);
+  top: 50%;
+  height: 28px;
+  transform: translateY(-50%);
+  width: 1px;
+  background: var(--line);
+}
+.foot-del,
+.foot-copy {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
-  color: #f87171;
   flex: none;
 }
+.foot-del { color: #f87171; }
 .foot-del:hover:not(:disabled) { color: #ef4444; }
-.foot-del:disabled { opacity: 0.35; }
-.foot-del svg { width: 16px; height: 16px; display: block; }
+.foot-copy { color: #fff; }
+.foot-copy:hover:not(:disabled) { color: var(--muted); }
+.foot-del:disabled,
+.foot-copy:disabled { opacity: 0.35; }
+.foot-del svg,
+.foot-copy svg { width: 16px; height: 16px; display: block; }
 
 .shell footer {
   --cut: 8px;
@@ -518,6 +542,7 @@ aside, .shell footer, .stack { z-index: 1 }
 .shell .ann .del,
 .shell .cmt-del,
 .shell .foot-del,
+.shell .foot-copy,
 .shell .undo-link {
   user-select: none;
   transition: background-color 0.12s, color 0.12s, transform 0.08s, border-color 0.12s, opacity 0.12s;
@@ -533,7 +558,8 @@ aside, .shell footer, .stack { z-index: 1 }
 .shell .labels .row-main:active,
 .shell .hist li button:active,
 .shell .ann li button:active,
-.shell .foot-del:not(:disabled):active {
+.shell .foot-del:not(:disabled):active,
+.shell .foot-copy:not(:disabled):active {
   transform: scale(0.98);
 }
 .studio-back:hover,
@@ -1546,12 +1572,9 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create .fields {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px 16px;
-  align-items: center;
+  gap: 8px;
   margin-bottom: 12px;
 }
-.create .fields .err { grid-column: 1 / -1; }
 .create .fields .k { margin: 0; }
 .create label, .create .k { display: block; font-size: 13px; font-weight: 500; margin: 0 0 8px; }
 .create input[type=text] {
@@ -1561,42 +1584,6 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create input[type=text]:focus { outline: none; border-color: #fff; }
 .create .err { display: block; color: #f87171; font-size: 12px; font-weight: 400; }
-.create .vis { display: flex; gap: 8px; }
-.create .vis button {
-  --cut: 8px;
-  display: flex; align-items: center; gap: 6px;
-  padding: 10px 14px;
-  border: 0;
-  background-color: var(--panel);
-  background-image:
-    linear-gradient(var(--line), var(--line)),
-    linear-gradient(var(--line), var(--line)),
-    linear-gradient(var(--line), var(--line)),
-    linear-gradient(var(--line), var(--line));
-  background-repeat: no-repeat;
-  background-position:
-    var(--cut) 0,
-    100% 0,
-    0 100%,
-    0 var(--cut);
-  background-size:
-    calc(100% - var(--cut)) 1px,
-    1px calc(100% - var(--cut)),
-    calc(100% - var(--cut)) 1px,
-    1px calc(100% - var(--cut));
-  clip-path: polygon(
-    var(--cut) 0,
-    100% 0,
-    100% calc(100% - var(--cut)),
-    calc(100% - var(--cut)) 100%,
-    0 100%,
-    0 var(--cut)
-  );
-  font-size: 13px;
-}
-.create .vis button[aria-pressed="true"] { background-color: #fff; color: #000; }
-.create .vis button:hover { background-color: #2a2a2a; }
-.create .vis button[aria-pressed="true"]:hover { background-color: #e8e8e8; }
 .create .types { display: flex; flex-direction: column; gap: 8px; }
 .create .types button, .create .history a {
   display: block; width: 100%; text-align: left; padding: 12px 16px;
@@ -1610,7 +1597,6 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .types button[aria-pressed="true"] { border-color: #fff; }
 .create .types button:hover, .create .history a:hover { background: #2a2a2a; }
 .create .types button,
-.create .vis button,
 .create .pick,
 .create .history a,
 .create .sheet .commit {
@@ -1618,7 +1604,6 @@ main.cross, main.cross:active { cursor: crosshair }
   transition: background-color 0.12s, transform 0.08s, border-color 0.12s;
 }
 .create .types button:active,
-.create .vis button:active,
 .create .pick:active,
 .create .history a:active,
 .create .sheet .commit:active {
