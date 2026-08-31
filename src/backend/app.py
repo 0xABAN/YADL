@@ -43,6 +43,8 @@ from backend.store import (
     commit_image,
     add_comment,
     delete_comment,
+    delete_image,
+    restore_image,
     empty_images,
     export_jsonl,
 )
@@ -357,6 +359,22 @@ def image(pid: str, iid: str, user: str = Depends(uid)):
     return row
 
 
+
+@app.delete("/projects/{pid}/images/{iid}")
+def drop_image(pid: str, iid: str, user: str = Depends(uid)):
+    row = delete_image(pid, iid, user)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@app.post("/projects/{pid}/images/{iid}/restore")
+def undelete_image(pid: str, iid: str, user: str = Depends(uid)):
+    row = restore_image(pid, iid, user)
+    if not row:
+        raise HTTPException(404)
+    return row
+
 @app.put("/projects/{pid}/images/{iid}")
 def save(pid: str, iid: str, body: Doc, user: str = Depends(uid)):
     row = put_objects(pid, iid, user, [o.model_dump() for o in body.objects])
@@ -365,7 +383,10 @@ def save(pid: str, iid: str, body: Doc, user: str = Depends(uid)):
     return row
 
 
-def seed_row(row: dict) -> dict:
+def seed_row(row: dict, ptype: str) -> dict:
+    # MediaPipe hand landmarks only — never for boxes/polygons
+    if ptype != "hands":
+        return row
     if row["objects"]:
         return row
     ext = Path(row["filename"]).suffix or ".jpg"
@@ -380,21 +401,31 @@ def seed_row(row: dict) -> dict:
 
 @app.post("/projects/{pid}/images/{iid}/assist")
 def assist(pid: str, iid: str, user: str = Depends(uid)):
+    proj = get_project(pid, user)
+    if not proj:
+        raise HTTPException(404)
+    if proj["type"] != "hands":
+        raise HTTPException(400, "assist is hands-only")
     row = image_row(pid, iid, user)
     if not row:
         raise HTTPException(404)
-    return as_doc(seed_row(row))
+    return as_doc(seed_row(row, proj["type"]))
 
 
 @app.post("/projects/{pid}/assist")
 def assist_all(pid: str, user: str = Depends(uid)):
+    proj = get_project(pid, user)
+    if not proj:
+        raise HTTPException(404)
+    if proj["type"] != "hands":
+        return {"seeded": 0}
     rows = empty_images(pid, user)
     if rows is None:
         raise HTTPException(404)
     # ponytail: sync loop, chunk/job if 500 images time out
     n = 0
     for row in rows:
-        seed_row(row)
+        seed_row(row, proj["type"])
         n += 1
     return {"seeded": n}
 

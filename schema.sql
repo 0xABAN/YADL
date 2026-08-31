@@ -34,3 +34,4 @@ create index if not exists images_project_created on images (project_id, created
 alter table images add column if not exists committed boolean not null default false;
 alter table images add column if not exists history jsonb not null default '[]';
 alter table images add column if not exists comments jsonb not null default '[]';
+alter table images add column if not exists deleted_at timestamptz;

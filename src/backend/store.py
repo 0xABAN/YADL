@@ -215,30 +215,33 @@ def drop_class(pid: str, uid: str, name: str) -> dict | None:
     return proj
 
 
+def _image_item(r: dict) -> dict:
+    return {
+        "id": str(r["id"]),
+        "filename": r["filename"],
+        "committed": bool(r["committed"]),
+        "empty": not (r["objects"] or []),
+    }
+
+
 def list_images(pid: str, uid: str) -> list[dict] | None:
     if not get_project(pid, uid):
         return None
     rows = fetch(
         """select id, filename, committed, objects from images
-           where project_id=%s order by created_at, id limit 500""",
+           where project_id=%s and deleted_at is null
+           order by created_at, id limit 500""",
         (pid,),
     )
-    return [
-        {
-            "id": str(r["id"]),
-            "filename": r["filename"],
-            "committed": bool(r["committed"]),
-            "empty": not (r["objects"] or []),
-        }
-        for r in rows
-    ]
+    return [_image_item(r) for r in rows]
 
 
-def image_row(pid: str, iid: str, uid: str) -> dict | None:
+def image_row(pid: str, iid: str, uid: str, *, gone: bool = False) -> dict | None:
+    gone_sql = "i.deleted_at is not null" if gone else "i.deleted_at is null"
     return fetchone(
-        """select i.* from images i
+        f"""select i.* from images i
            join projects p on p.id=i.project_id
-           where i.id=%s and p.id=%s and p.owner_id=%s""",
+           where i.id=%s and p.id=%s and p.owner_id=%s and {gone_sql}""",
         (iid, pid, uid),
     )
 
@@ -246,6 +249,23 @@ def image_row(pid: str, iid: str, uid: str) -> dict | None:
 def get_image(pid: str, iid: str, uid: str) -> dict | None:
     row = image_row(pid, iid, uid)
     return as_doc(row) if row else None
+
+
+def delete_image(pid: str, iid: str, uid: str) -> dict | None:
+    row = image_row(pid, iid, uid)
+    if not row:
+        return None
+    execute("update images set deleted_at=now() where id=%s", (str(row["id"]),))
+    return _image_item(row)
+
+
+def restore_image(pid: str, iid: str, uid: str) -> dict | None:
+    row = image_row(pid, iid, uid, gone=True)
+    if not row:
+        return None
+    execute("update images set deleted_at=null where id=%s", (str(row["id"]),))
+    row["deleted_at"] = None
+    return _image_item(row)
 
 
 def save_objects(iid: str, objects: list) -> None:
@@ -334,7 +354,7 @@ def empty_images(pid: str, uid: str) -> list[dict] | None:
     if not get_project(pid, uid):
         return None
     return fetch(
-        """select * from images where project_id=%s
+        """select * from images where project_id=%s and deleted_at is null
            and coalesce(objects, '[]'::jsonb) = '[]'::jsonb""",
         (pid,),
     )
@@ -346,7 +366,7 @@ def export_jsonl(pid: str, uid: str) -> tuple[str, str] | None:
         return None
     rows = fetch(
         """select filename, objects, committed from images
-           where project_id=%s order by created_at, id""",
+           where project_id=%s and deleted_at is null order by created_at, id""",
         (pid,),
     )
     lines = []
