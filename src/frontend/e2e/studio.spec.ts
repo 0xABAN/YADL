@@ -36,19 +36,22 @@ async function mockApi(page: Page, images: unknown[] | null = null) {
     if (path === `/projects/${PID}/images` && method === "GET") {
       return route.fulfill({ json: imgs });
     }
-    if (path === `/projects/${PID}/images/${IID}` && method === "GET") {
+    const imgMatch = path.match(new RegExp(`^/projects/${PID}/images/([^/]+)$`));
+    if (imgMatch && method === "GET") {
+      const id = imgMatch[1];
+      const row = (imgs as { id: string; filename: string; committed?: boolean }[]).find((x) => x.id === id);
       return route.fulfill({
         json: {
-          id: IID,
-          image: "hand.jpg",
+          id,
+          image: row?.filename ?? "hand.jpg",
           url: "/default.jpg",
-          committed: false,
+          committed: Boolean(row?.committed),
           objects: [hand],
           history: [],
         },
       });
     }
-    if (path === `/projects/${PID}/images/${IID}` && method === "PUT") {
+    if (imgMatch && method === "PUT") {
       return route.fulfill({ json: { ok: true } });
     }
     if (path === `/projects/${PID}/images/${IID}/commit` && method === "POST") {
@@ -98,14 +101,14 @@ test("studio session: label, url state, commit", async ({ page }) => {
   await expect(page.locator(".hand .pt").first()).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "Objects" }).click();
-  await page.getByRole("button", { name: /Hand 1/ }).click();
-  await page.getByRole("button", { name: "Labels" }).click();
-  // apply via swatch hit target (name text opens rename)
-  await page.locator(".labels.poses li").filter({ hasText: "open" }).locator(".swatch").click();
-  await expect(page.getByRole("button", { name: /Commit/ })).toBeEnabled({ timeout: 5_000 });
-  await page.getByRole("button", { name: /Commit/ }).click();
+  await page.getByRole("button", { name: /untitled#1/ }).click();
+  // object select opens label menu — pick class from .ann
+  await page.locator(".ann li button").filter({ hasText: /^open$/ }).click();
+  const commit = page.locator("footer [data-tip=commit]");
+  await expect(commit).toBeEnabled({ timeout: 5_000 });
+  await commit.click();
   await expect(page.locator(".live")).toContainText(/Committed|Updated/i, { timeout: 5_000 });
-  await expect(page.getByRole("button", { name: "Comment" })).toBeVisible();
+  await expect(page.locator("footer [data-tip=comment]")).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/studio/${PID}`));
 });
 
@@ -127,4 +130,24 @@ test("doc helpers round-trip poly pts", async () => {
   const wire = pts.map((p) => [p.x, p.y]);
   const back = wire.map((p) => ({ x: p[0], y: p[1] }));
   expect(back).toEqual(pts);
+});
+
+test("next open disabled when only current is open", async ({ page }) => {
+  await mockApi(page, [{ id: IID, filename: "hand.jpg", committed: false, empty: false }]);
+  await page.goto(`/studio/${PID}`);
+  await expect(page.locator("#studio-main")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Next open (N)" })).toBeDisabled();
+});
+
+test("next open jumps to another uncommitted image", async ({ page }) => {
+  await mockApi(page, [
+    { id: IID, filename: "a.jpg", committed: true, empty: false },
+    { id: "img_2", filename: "b.jpg", committed: false, empty: false },
+  ]);
+  await page.goto(`/studio/${PID}`);
+  await expect(page.locator("footer .nums")).toHaveText("1/2", { timeout: 10_000 });
+  const nextOpen = page.getByRole("button", { name: "Next open (N)" });
+  await expect(nextOpen).toBeEnabled();
+  await nextOpen.click();
+  await expect(page.locator("footer .nums")).toHaveText("2/2");
 });

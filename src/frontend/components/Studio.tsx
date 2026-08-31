@@ -184,10 +184,18 @@ export default function Studio({ id }: { id: string }) {
         if (!assistOnRef.current || project?.type !== "hands" || (d.objects ?? []).length) return;
         setAssistBusy(true);
         return fetch(`/api/projects/${id}/images/${iid}/assist`, { method: "POST", signal: ac.signal })
-          .then((r) => r.json())
+          .then((r) => {
+            if (!r.ok) throw new Error("assist");
+            return r.json();
+          })
           .then((d2) => {
             if (ac.signal.aborted) return;
             apply(d2);
+            if (!(d2.objects ?? []).length) showToast("No hands detected", 1600);
+          })
+          .catch((e) => {
+            if (e?.name === "AbortError") return;
+            if (!ac.signal.aborted) showToast("Assist failed", 1500);
           })
           .finally(() => {
             if (!ac.signal.aborted) setAssistBusy(false);
@@ -198,7 +206,7 @@ export default function Studio({ id }: { id: string }) {
         setDoc(null);
       });
     return () => ac.abort();
-  }, [id, iid, apply, project?.type]);
+  }, [id, iid, apply, project?.type, showToast]);
 
   const save = useCallback(
     (objects: AnnObj[]) => {
@@ -271,7 +279,9 @@ export default function Studio({ id }: { id: string }) {
   const canCommit = objects.some((o) => named(o.label));
   const commitReason = objects.length === 0 ? "Add an object first" : "Name an object first";
   const nCommitted = list.filter((x) => x.committed).length;
-  const nOpen = list.filter((x) => !x.committed).length;
+  const idx = list.length ? Math.min(index, list.length - 1) : 0;
+  // disabled when no *other* uncommitted image (current-only open is not "next")
+  const canNextOpen = list.some((x, i) => !x.committed && i !== idx);
 
   const openNewLabel = useCallback(() => {
     setTip(null);
@@ -357,6 +367,15 @@ export default function Studio({ id }: { id: string }) {
         setEdit(null);
         setHistOpen(false);
         setCommentsOpen(false);
+        setSynthOpen(false);
+        return;
+      }
+      if ((k === "backspace" || k === "delete") && selected) {
+        e.preventDefault();
+        const next = objects.filter((o) => o.id !== selected);
+        save(next);
+        setSelected(next[0]?.id ?? null);
+        setEdit(null);
         return;
       }
       if (/^[1-9]$/.test(e.key) && selected) {
@@ -491,9 +510,15 @@ export default function Studio({ id }: { id: string }) {
                 .finally(() => setAssistBusy(false));
               if (!doc || objects.length) return;
               fetch(`/api/projects/${id}/images/${doc.id}/assist`, { method: "POST" })
-                .then((r) => r.json())
-                .then(apply)
-                .catch(() => {});
+                .then((r) => {
+                  if (!r.ok) throw new Error("assist");
+                  return r.json();
+                })
+                .then((d2) => {
+                  apply(d2);
+                  if (!(d2.objects ?? []).length) showToast("No hands detected", 1600);
+                })
+                .catch(() => showToast("Assist failed", 1500));
             }}
             commentsOpen={commentsOpen}
             commentCount={doc?.comments?.length ?? 0}
@@ -636,9 +661,9 @@ export default function Studio({ id }: { id: string }) {
         onPrev={() => setIndex((i) => Math.max(0, i - 1))}
         onNext={() => setIndex((i) => Math.min(list.length - 1, i + 1))}
         onNextOpen={() => {
-          if (!list.length) return;
-          for (let k = 1; k <= list.length; k++) {
-            const j = (index + k) % list.length;
+          if (!canNextOpen || !list.length) return;
+          for (let k = 1; k < list.length; k++) {
+            const j = (idx + k) % list.length;
             if (!list[j].committed) {
               setIndex(j);
               return;
@@ -676,7 +701,10 @@ export default function Studio({ id }: { id: string }) {
           const first = !doc.committed;
           const prev = doc.objects;
           const r = await fetch(`/api/projects/${id}/images/${doc.id}/commit`, { method: "POST" });
-          if (!r.ok) return;
+          if (!r.ok) {
+            showToast("Commit failed", 1500);
+            return;
+          }
           const d = await r.json();
           setDoc({
             ...doc,
@@ -705,6 +733,18 @@ export default function Studio({ id }: { id: string }) {
             showToast("Committed", 1200);
             setIndex((i) => Math.min(i + 1, list.length - 1));
           }
+        }}
+        onCopy={() => {
+          if (!doc) return;
+          const payload = {
+            image: doc.image,
+            id: doc.id,
+            objects: writeObjects(doc.objects),
+          };
+          void navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).then(
+            () => showToast("Copied", 1200),
+            () => showToast("Copy failed", 1600),
+          );
         }}
         onExport={() => {
           location.href = `/api/projects/${id}/export`;
@@ -739,7 +779,7 @@ export default function Studio({ id }: { id: string }) {
         canCommit={canCommit}
         commitReason={commitReason}
         nCommitted={nCommitted}
-        nOpen={nOpen}
+        canNextOpen={canNextOpen}
         histOpen={histOpen}
         commentsOpen={commentsOpen}
         commentCount={doc?.comments?.length ?? 0}
