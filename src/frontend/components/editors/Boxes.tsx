@@ -43,19 +43,18 @@ export default function Boxes({
   const [draft, setDraft] = useState<Box | null>(null);
   const [hold, setHold] = useState<number | "draw" | null>(null);
   const live = useRef(objects);
+  const onChangeRef = useRef(onChange);
+  const onSelectRef = useRef(onSelect);
+  const onEditRef = useRef(onEdit);
   const gest = useRef<Gest | null>(null);
-  const snap = useRef<BoxObj[]>([]);
-  const draftRef = useRef<Box | null>(null);
-  const frameR = useRef<DOMRect | null>(null);
   live.current = objects;
-
-  const boxes = objects.map((o) => o.geom);
+  onChangeRef.current = onChange;
+  onSelectRef.current = onSelect;
+  onEditRef.current = onEdit;
 
   const abort = () => {
-    if (gest.current && gest.current.t !== "draw") onChange(snap.current, false);
+    if (gest.current && gest.current.t !== "draw") onChangeRef.current(live.current, false);
     gest.current = null;
-    frameR.current = null;
-    draftRef.current = null;
     setDraft(null);
     setHold(null);
   };
@@ -64,81 +63,6 @@ export default function Boxes({
     if (active && !locked) return;
     if (gest.current) abort();
   }, [active, locked]);
-
-  useEffect(() => {
-    if (hold == null) return;
-    const move = (e: PointerEvent) => {
-      const g = gest.current;
-      const r = frameR.current;
-      if (!g || !r) return;
-      const p = atRect(e, r);
-      if (g.t === "draw") {
-        const b = boxFrom(g.x0, g.y0, p.x, p.y);
-        draftRef.current = b;
-        setDraft(b);
-      } else if (g.t === "resize") {
-        onChange(
-          live.current.map((o, i) =>
-            i === g.i ? { ...o, edited: true, geom: { t: "box", ...resizeBox(g, p) } } : o,
-          ),
-          false,
-        );
-      } else {
-        onChange(
-          live.current.map((o, i) =>
-            i === g.i
-              ? { ...o, edited: true, geom: { t: "box", ...shiftBox(g.start, p.x - g.x0, p.y - g.y0) } }
-              : o,
-          ),
-          false,
-        );
-      }
-    };
-    const up = () => {
-      const g = gest.current;
-      const r = frameR.current;
-      gest.current = null;
-      frameR.current = null;
-      setHold(null);
-      if (!g || !r) {
-        draftRef.current = null;
-        setDraft(null);
-        return;
-      }
-      if (g.t === "draw") {
-        const b = draftRef.current;
-        draftRef.current = null;
-        setDraft(null);
-        if (!b || tiny(b, r)) return;
-        const obj: BoxObj = {
-          id: newId("box"),
-          kind: "box",
-          label: null,
-          edited: true,
-          geom: { t: "box", ...b },
-        };
-        const next = [...snap.current, obj];
-        onChange(next, true);
-        onSelect(obj.id);
-        onEdit(obj.id);
-        return;
-      }
-      const b = live.current[g.i]?.geom;
-      if (!b) return;
-      if (g.t === "resize" && tiny(b, r)) {
-        onChange(snap.current, false);
-        return;
-      }
-      if (eqBox(b, snap.current[g.i].geom)) return;
-      onChange(live.current, true);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [hold, onChange, onEdit, onSelect]);
 
   useEffect(() => {
     if (!active) return;
@@ -153,34 +77,107 @@ export default function Boxes({
     return () => window.removeEventListener("keydown", onKey);
   }, [active]);
 
+  const track = (g: Gest, snap: BoxObj[], frameR: DOMRect) => {
+    gest.current = g;
+    setHold(g.t === "draw" ? "draw" : g.i);
+    let drawBox: Box | null = g.t === "draw" ? { x: g.x0, y: g.y0, w: 0, h: 0 } : null;
+
+    const move = (ev: PointerEvent) => {
+      const cur = gest.current;
+      if (!cur) return;
+      const p = atRect(ev, frameR);
+      if (cur.t === "draw") {
+        drawBox = boxFrom(cur.x0, cur.y0, p.x, p.y);
+        setDraft(drawBox);
+      } else if (cur.t === "resize") {
+        onChangeRef.current(
+          live.current.map((o, i) =>
+            i === cur.i ? { ...o, edited: true, geom: { t: "box", ...resizeBox(cur, p) } } : o,
+          ),
+          false,
+        );
+      } else {
+        onChangeRef.current(
+          live.current.map((o, i) =>
+            i === cur.i
+              ? { ...o, edited: true, geom: { t: "box", ...shiftBox(cur.start, p.x - cur.x0, p.y - cur.y0) } }
+              : o,
+          ),
+          false,
+        );
+      }
+    };
+
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      const cur = gest.current;
+      gest.current = null;
+      setHold(null);
+      setDraft(null);
+      if (!cur) return;
+      if (cur.t === "draw") {
+        const b = drawBox;
+        if (!b || tiny(b, frameR)) return;
+        const obj: BoxObj = {
+          id: newId("box"),
+          kind: "box",
+          label: null,
+          edited: true,
+          geom: { t: "box", ...b },
+        };
+        onChangeRef.current([...snap, obj], true);
+        onSelectRef.current(obj.id);
+        onEditRef.current(obj.id);
+        return;
+      }
+      const b = live.current[cur.i]?.geom;
+      if (!b) return;
+      if (cur.t === "resize" && tiny(b, frameR)) {
+        onChangeRef.current(snap, false);
+        return;
+      }
+      if (eqBox(b, snap[cur.i].geom)) {
+        const id = live.current[cur.i]?.id;
+        if (id) {
+          onSelectRef.current(id);
+          onEditRef.current(id);
+        }
+        return;
+      }
+      onChangeRef.current(live.current, true);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
   const start = (e: PE<HTMLElement>, g: Gest) => {
     if (locked || !active) return;
     e.stopPropagation();
+    e.preventDefault();
     const r = frameRef.current!.getBoundingClientRect();
-    frameR.current = r;
-    snap.current = live.current;
+    const snap = live.current;
     if (g.t === "move") {
       const p = atRect(e, r);
       g.x0 = p.x;
       g.y0 = p.y;
-      onSelect(live.current[g.i]?.id ?? null);
+      onSelectRef.current(live.current[g.i]?.id ?? null);
     }
-    if (g.t === "resize") onSelect(live.current[g.i]?.id ?? null);
-    gest.current = g;
-    setHold(g.t === "draw" ? "draw" : g.i);
+    if (g.t === "resize") onSelectRef.current(live.current[g.i]?.id ?? null);
+    track(g, snap, r);
   };
 
   const onFramePointerDown = (e: PE<HTMLElement>) => {
     if (locked || !active || hold != null) return;
+    // only start draw if the event is on the layer itself, not a child box
+    if (e.target !== e.currentTarget) return;
+    e.stopPropagation();
     const r = frameRef.current!.getBoundingClientRect();
-    frameR.current = r;
     const { x, y } = atRect(e, r);
-    snap.current = live.current;
-    gest.current = { t: "draw", x0: x, y0: y };
-    const z = { x, y, w: 0, h: 0 };
-    draftRef.current = z;
-    setDraft(z);
-    setHold("draw");
+    track({ t: "draw", x0: x, y0: y }, live.current, r);
   };
 
   return (
@@ -201,11 +198,6 @@ export default function Boxes({
               } as CSSProperties
             }
             onPointerDown={(e) => start(e, { t: "move", i, x0: 0, y0: 0, start: b })}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              onSelect(o.id);
-              onEdit(o.id);
-            }}
           >
             {HANDLES.map((h) => (
               <span

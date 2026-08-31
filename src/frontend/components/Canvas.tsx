@@ -109,7 +109,6 @@ export default function Canvas({
 }) {
   const shown = SHOWN[projectType];
   const [zoom, setZoom] = useState(100);
-  const [locked, setLocked] = useState(false);
   const [spacePan, setSpacePan] = useState(false);
   const [tool, setToolInner] = useState<ToolId>(() => toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]));
   const [tip, setTip] = useState<string | null>(null);
@@ -227,10 +226,10 @@ export default function Canvas({
   }, [doUndo, doRedo]);
 
   const move = tool === "move";
-  const panning = move || locked || spacePan;
+  const panning = move || spacePan;
   const drawing = !panning && (tool === "box" || tool === "polygon");
-  const nav = !locked && move;
-  const panOk = !locked && (move || spacePan);
+  const nav = move;
+  const panOk = move || spacePan;
 
   const hands = objects.filter((o): o is HandObj => o.kind === "hand");
   const boxes = objects.filter((o): o is BoxObj => o.kind === "box");
@@ -253,7 +252,6 @@ export default function Canvas({
           initialScale={1}
           limitToBounds={false}
           disablePadding
-          disabled={locked}
           doubleClick={{ disabled: true }}
           zoomAnimation={{ disabled: true }}
           panning={{ disabled: !panOk, velocityDisabled: true }}
@@ -285,7 +283,7 @@ export default function Canvas({
                 <Boxes
                   objects={boxes}
                   classes={classes}
-                  locked={locked || panning}
+                  locked={panning}
                   active={tool === "box"}
                   selectedId={selectedId}
                   frameRef={frame}
@@ -298,7 +296,7 @@ export default function Canvas({
                 <Polys
                   objects={polys}
                   classes={classes}
-                  locked={locked || panning}
+                  locked={panning}
                   active={tool === "polygon"}
                   selectedId={selectedId}
                   frameRef={frame}
@@ -311,8 +309,9 @@ export default function Canvas({
                 <Hands
                   objects={hands}
                   classes={classes}
-                  locked={locked || tool === "move"}
-                  active={projectType === "hands" ? tool !== "move" : tool === "landmarks"}
+                  locked={false}
+                  canDrag={tool !== "move"}
+                  active={projectType === "hands" || tool === "landmarks"}
                   selectedId={selectedId}
                   frameRef={frame}
                   onChange={(next, u) => replaceKind("hand", next, u)}
@@ -420,7 +419,7 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={locked || zoom <= 0}
+            disabled={zoom <= 0}
             onClick={() => zpp.current?.zoomOut(STEP)}
             aria-label="Zoom out"
           >
@@ -430,24 +429,13 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={locked || zoom >= MAX * 100}
+            disabled={zoom >= MAX * 100}
             onClick={() => zpp.current?.zoomIn(STEP)}
             aria-label="Zoom in"
           >
             +
           </button>
-          <button type="button" aria-label="Lock canvas" aria-pressed={locked} onClick={() => setLocked((v) => !v)}>
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-              <rect x="3" y="7" width="10" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
-              <path
-                d={locked ? "M5 7V5a3 3 0 0 1 6 0v2" : "M5 7V5a3 3 0 0 1 6 0"}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
-            </svg>
-          </button>
-          <button type="button" disabled={locked} onClick={() => zpp.current?.resetTransform()}>
+          <button type="button" onClick={() => zpp.current?.resetTransform()}>
             RESET
           </button>
         </div>

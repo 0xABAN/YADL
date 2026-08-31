@@ -9,6 +9,7 @@ export default function Hands({
   objects,
   classes,
   locked,
+  canDrag = true,
   active,
   selectedId,
   onChange,
@@ -19,6 +20,7 @@ export default function Hands({
   objects: HandObj[];
   classes: string[];
   locked: boolean;
+  canDrag?: boolean;
   active: boolean;
   selectedId: string | null;
   onChange: (next: HandObj[], undoable?: boolean) => void;
@@ -28,10 +30,14 @@ export default function Hands({
 }) {
   const [hold, setHold] = useState<{ h: number; i: number } | null>(null);
   const live = useRef(objects);
-  const dragPt = useRef<{ h: number; i: number; start: HandObj[] } | null>(null);
-  const frameR = useRef<DOMRect | null>(null);
+  const onChangeRef = useRef(onChange);
+  const onSelectRef = useRef(onSelect);
+  const onEditRef = useRef(onEdit);
   const sel = useRef<{ h: number; i: number } | null>(null);
   live.current = objects;
+  onChangeRef.current = onChange;
+  onSelectRef.current = onSelect;
+  onEditRef.current = onEdit;
 
   const patchLm = (h: number, i: number, x: number, y: number) =>
     live.current.map((o, k) =>
@@ -45,43 +51,7 @@ export default function Hands({
     );
 
   useEffect(() => {
-    if (hold == null) return;
-    const move = (e: PointerEvent) => {
-      const d = dragPt.current;
-      const r = frameR.current;
-      if (!d || !r) return;
-      const p = atRect(e, r);
-      onChange(patchLm(d.h, d.i, p.x, p.y), false);
-    };
-    const up = () => {
-      const d = dragPt.current;
-      const r = frameR.current;
-      dragPt.current = null;
-      frameR.current = null;
-      setHold(null);
-      if (!d) return;
-      const now = live.current[d.h]?.geom.landmarks[d.i];
-      const was = d.start[d.h]?.geom.landmarks[d.i];
-      if (!now || !was) return;
-      const moved = r && Math.hypot((now.x - was.x) * r.width, (now.y - was.y) * r.height) > 4;
-      if (!moved) {
-        onChange(d.start, false);
-        onSelect(d.start[d.h]?.id ?? null);
-        onEdit(d.start[d.h]?.id ?? null);
-        return;
-      }
-      onChange(live.current, true);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [hold, onChange, onEdit, onSelect]);
-
-  useEffect(() => {
-    if (!active || locked) return;
+    if (!active || locked || !canDrag) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (!e.key.startsWith("Arrow") || sel.current == null) return;
@@ -96,11 +66,54 @@ export default function Hands({
       const x = clamp01(p.x + (e.key === "ArrowRight" ? dx : e.key === "ArrowLeft" ? -dx : 0));
       const y = clamp01(p.y + (e.key === "ArrowDown" ? dy : e.key === "ArrowUp" ? -dy : 0));
       if (x === p.x && y === p.y) return;
-      onChange(patchLm(s.h, s.i, x, y), true);
+      onChangeRef.current(patchLm(s.h, s.i, x, y), true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, locked, frameRef, onChange]);
+  }, [active, locked, canDrag, frameRef]);
+
+  const startPt = (e: PE<HTMLSpanElement>, h: number, i: number, objId: string) => {
+    if (locked || !active) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const frameR = frameRef.current!.getBoundingClientRect();
+    const start = live.current;
+    const ox = e.clientX;
+    const oy = e.clientY;
+    sel.current = { h, i };
+    onSelectRef.current(objId);
+    setHold({ h, i });
+
+    const move = (ev: PointerEvent) => {
+      if (!canDrag) return;
+      const p = atRect(ev, frameR);
+      onChangeRef.current(patchLm(h, i, p.x, p.y), false);
+    };
+    const up = (ev: PointerEvent) => {
+      try {
+        el.releasePointerCapture(ev.pointerId);
+      } catch {
+        /* already released */
+      }
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      setHold(null);
+      const dist = Math.hypot(ev.clientX - ox, ev.clientY - oy);
+      if (!canDrag || dist <= 4) {
+        onChangeRef.current(start, false);
+        onSelectRef.current(objId);
+        onEditRef.current(objId);
+        return;
+      }
+      onChangeRef.current(live.current, true);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
 
   return objects.map((obj, h) => (
     <div
@@ -131,16 +144,7 @@ export default function Hands({
             sel.current = { h, i };
             onSelect(obj.id);
           }}
-          onPointerDown={(e: PE<HTMLSpanElement>) => {
-            if (locked || !active) return;
-            e.stopPropagation();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            frameR.current = frameRef.current!.getBoundingClientRect();
-            sel.current = { h, i };
-            onSelect(obj.id);
-            dragPt.current = { h, i, start: live.current };
-            setHold({ h, i });
-          }}
+          onPointerDown={(e) => startPt(e, h, i, obj.id)}
         >
           <span className="chip" aria-hidden="true">
             {i}

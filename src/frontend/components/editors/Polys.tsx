@@ -104,65 +104,6 @@ export default function Polys({
   }, [hold, frameRef]);
 
   useEffect(() => {
-    if (hold == null || hold === "draw") return;
-    const move = (e: PointerEvent) => {
-      const g = gest.current;
-      const r = frameR.current;
-      if (!g || g.t === "draw" || !r) return;
-      const p = atRect(e, r);
-      if (g.t === "vertex") {
-        onChange(
-          live.current.map((o, i) =>
-            i !== g.i
-              ? o
-              : {
-                  ...o,
-                  edited: true,
-                  geom: { t: "polygon", pts: o.geom.pts.map((pt, j) => (j === g.j ? p : pt)) },
-                },
-          ),
-          false,
-        );
-      } else {
-        onChange(
-          live.current.map((o, i) =>
-            i !== g.i
-              ? o
-              : {
-                  ...o,
-                  edited: true,
-                  geom: { t: "polygon", pts: shiftPoly(g.start, p.x - g.x0, p.y - g.y0) },
-                },
-          ),
-          false,
-        );
-      }
-    };
-    const up = () => {
-      const g = gest.current;
-      const r = frameR.current;
-      gest.current = null;
-      frameR.current = null;
-      setHold(null);
-      setVertHold(null);
-      if (!g || g.t === "draw" || !r) return;
-      const p = live.current[g.i];
-      if (!p || tinyPoly(p.geom.pts, r)) {
-        onChange(snap.current, false);
-        return;
-      }
-      if (eqPoly(p.geom.pts, snap.current[g.i].geom.pts)) return;
-      onChange(live.current, true);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [hold, onChange]);
-
-  useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -202,6 +143,7 @@ export default function Polys({
   const start = (e: PE<Element>, g: Exclude<Gest, { t: "draw" }>) => {
     if (locked || !active || draftRef.current) return;
     e.stopPropagation();
+    e.preventDefault();
     const r = frameRef.current!.getBoundingClientRect();
     frameR.current = r;
     snap.current = live.current;
@@ -217,6 +159,67 @@ export default function Polys({
       onSelect(live.current[g.i]?.id ?? null);
     }
     gest.current = g;
+    // attach immediately so a fast click can't miss pointerup (useEffect race)
+    const move = (ev: PointerEvent) => {
+      const gg = gest.current;
+      if (!gg || gg.t === "draw") return;
+      const p = atRect(ev, r);
+      if (gg.t === "vertex") {
+        onChange(
+          live.current.map((o, i) =>
+            i !== gg.i
+              ? o
+              : {
+                  ...o,
+                  edited: true,
+                  geom: { t: "polygon", pts: o.geom.pts.map((pt, j) => (j === gg.j ? p : pt)) },
+                },
+          ),
+          false,
+        );
+      } else {
+        onChange(
+          live.current.map((o, i) =>
+            i !== gg.i
+              ? o
+              : {
+                  ...o,
+                  edited: true,
+                  geom: { t: "polygon", pts: shiftPoly(gg.start, p.x - gg.x0, p.y - gg.y0) },
+                },
+          ),
+          false,
+        );
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      const gg = gest.current;
+      gest.current = null;
+      frameR.current = null;
+      setHold(null);
+      setVertHold(null);
+      if (!gg || gg.t === "draw") return;
+      const poly = live.current[gg.i];
+      if (!poly || tinyPoly(poly.geom.pts, r)) {
+        onChange(snap.current, false);
+        return;
+      }
+      if (eqPoly(poly.geom.pts, snap.current[gg.i].geom.pts)) {
+        const id = live.current[gg.i]?.id;
+        if (id) {
+          onSelect(id);
+          onEdit(id);
+        }
+        return;
+      }
+      onChange(live.current, true);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     setHold(g.i);
   };
 
