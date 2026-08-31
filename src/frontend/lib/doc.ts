@@ -27,7 +27,7 @@ export type Project = {
 export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist";
 
 export const SHOWN: Record<Project["type"], ToolId[]> = {
-  hands: ["move", "landmarks", "assist"],
+  hands: ["move", "assist"],
   boxes: ["move", "box"],
   polygons: ["move", "polygon"],
 };
