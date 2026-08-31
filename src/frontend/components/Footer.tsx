@@ -3,7 +3,7 @@ const EXTRA = [
     id: "comment",
     label: "Comment (T)",
     d: "M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z",
-    hint: "Coming soon",
+    hint: "Notes for the agent on this image",
   },
   {
     id: "history",
@@ -25,12 +25,15 @@ export default function Footer({
   onCommit,
   onExport,
   onHistory,
+  onComment,
   onTip,
   canCommit,
   commitReason,
   nCommitted,
   nOpen,
   histOpen,
+  commentsOpen,
+  commentCount,
   saveState,
 }: {
   path: string;
@@ -42,12 +45,15 @@ export default function Footer({
   onCommit: () => void;
   onExport: () => void;
   onHistory: (btn: HTMLElement) => void;
+  onComment: (btn: HTMLElement) => void;
   onTip: (tip: Tip | null) => void;
   canCommit: boolean;
   commitReason: string;
   nCommitted: number;
   nOpen: number;
   histOpen: boolean;
+  commentsOpen: boolean;
+  commentCount: number;
   saveState: "idle" | "saving" | "saved" | "error";
 }) {
   const show = (el: HTMLElement, text: string) => {
@@ -100,9 +106,15 @@ export default function Footer({
             className="act-link"
             data-tip={t.id}
             aria-label={t.label}
-            aria-pressed={t.id === "history" ? histOpen : undefined}
+            aria-pressed={t.id === "history" ? histOpen : t.id === "comment" ? commentsOpen : undefined}
             title={t.hint}
-            onClick={t.id === "history" ? (e) => onHistory(e.currentTarget) : undefined}
+            onClick={
+              t.id === "history"
+                ? (e) => onHistory(e.currentTarget)
+                : t.id === "comment"
+                  ? (e) => onComment(e.currentTarget)
+                  : undefined
+            }
             onMouseEnter={(e) => show(e.currentTarget, t.hint)}
             onMouseLeave={() => onTip(null)}
             onFocus={(e) => show(e.currentTarget, t.hint)}
@@ -112,6 +124,7 @@ export default function Footer({
               <path d={t.d} fill="currentColor" />
             </svg>
             {t.label}
+            {t.id === "comment" && commentCount > 0 && <span className="cmt-badge">{commentCount}</span>}
           </button>
         ))}
         <span className="act-btn after-sep">

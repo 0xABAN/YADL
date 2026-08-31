@@ -1,3 +1,4 @@
+import type { Comment } from "./comment";
 import type { Landmark } from "./hand";
 
 export type Pt = { x: number; y: number };
@@ -35,6 +36,7 @@ export type Doc = {
   url?: string | null;
   committed?: boolean;
   history?: { id: string; objects: AnnObj[]; at?: string | null }[];
+  comments?: Comment[];
 };
 
 export type Project = {
@@ -71,10 +73,16 @@ export function classColor(label: string | null | undefined, classes: string[]) 
   return CLASS_COLOR[(i < 0 ? 0 : i) % CLASS_COLOR.length];
 }
 
-export function objTitle(o: AnnObj, i: number) {
-  const kind = o.kind === "hand" ? "Hand" : o.kind === "box" ? "Box" : "Polygon";
-  const lab = named(o.label);
-  return lab ? `${kind} ${i + 1} · ${lab}` : `${kind} ${i + 1}`;
+/** `<label>#i` — i is the 1-based index among objects with the same label (in list order). */
+export function objTitle(o: AnnObj, objects: AnnObj[]) {
+  const lab = named(o.label) ?? "untitled";
+  let n = 0;
+  for (const x of objects) {
+    if ((named(x.label) ?? "untitled") !== lab) continue;
+    n++;
+    if (x.id === o.id) return `${lab}#${n}`;
+  }
+  return `${lab}#${n || 1}`;
 }
 
 /** Normalize API objects (poly pts may be [x,y] tuples). */

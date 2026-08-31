@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,34 @@ def _versions(raw: list) -> list[dict]:
     return out
 
 
+def _comments(raw: list) -> list[dict]:
+    out = []
+    for c in raw or []:
+        if not isinstance(c, dict) or "id" not in c or "body" not in c:
+            continue
+        body = str(c["body"])
+        mentions = c.get("mentions")
+        if not isinstance(mentions, list):
+            mentions = _mentions_of(body)
+        out.append(
+            {
+                "id": str(c["id"]),
+                "body": body,
+                "mentions": [str(m) for m in mentions],
+                "at": c.get("at"),
+            }
+        )
+    return out
+
+
+def _mentions_of(body: str) -> list[str]:
+    seen: list[str] = []
+    for m in re.findall(r"@\{\{([^}]+)\}\}", body):
+        if m not in seen:
+            seen.append(m)
+    return seen
+
+
 def as_doc(row: dict) -> dict:
     return {
         "id": str(row["id"]),
@@ -39,6 +68,7 @@ def as_doc(row: dict) -> dict:
         "url": presign_get(row["s3_key"]),
         "committed": bool(row.get("committed")),
         "history": _versions(row.get("history") or []),
+        "comments": _comments(row.get("comments") or []),
     }
 
 
@@ -256,6 +286,47 @@ def commit_image(pid: str, iid: str, uid: str) -> dict | None:
     )
     row["committed"] = True
     row["history"] = hist
+    return as_doc(row)
+
+
+def add_comment(pid: str, iid: str, uid: str, body: str) -> dict | None:
+    row = image_row(pid, iid, uid)
+    if not row:
+        return None
+    body = (body or "").strip()
+    if not body:
+        raise ValueError("empty")
+    obj_ids = {str(o.get("id")) for o in (row.get("objects") or []) if isinstance(o, dict)}
+    mentions = [m for m in _mentions_of(body) if m in obj_ids]
+    # drop tokens for unknown ids so agents don't chase ghosts
+    clean = re.sub(
+        r"@\{\{([^}]+)\}\}",
+        lambda m: m.group(0) if m.group(1) in obj_ids else "",
+        body,
+    ).strip()
+    if not clean:
+        raise ValueError("empty")
+    mentions = _mentions_of(clean)
+    note = {
+        "id": uuid.uuid4().hex[:10],
+        "body": clean,
+        "mentions": mentions,
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    comments = _comments(row.get("comments") or [])
+    comments.append(note)
+    execute("update images set comments=%s where id=%s", (Json(comments), str(row["id"])))
+    row["comments"] = comments
+    return as_doc(row)
+
+
+def delete_comment(pid: str, iid: str, uid: str, cid: str) -> dict | None:
+    row = image_row(pid, iid, uid)
+    if not row:
+        return None
+    comments = [c for c in _comments(row.get("comments") or []) if c["id"] != cid]
+    execute("update images set comments=%s where id=%s", (Json(comments), str(row["id"])))
+    row["comments"] = comments
     return as_doc(row)
 
 

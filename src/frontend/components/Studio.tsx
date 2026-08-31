@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Canvas from "./Canvas";
 import Classes from "./Classes";
+import Comments from "./Comments";
 import Footer from "./Footer";
+import { readComments } from "@/lib/comment";
 import {
   classColor,
   named,
@@ -56,6 +58,8 @@ export default function Studio({ id }: { id: string }) {
   const [histOpen, setHistOpen] = useState(false);
   const [histPos, setHistPos] = useState<{ x: number; y: number } | null>(null);
   const histRef = useRef<HTMLDivElement>(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsPos, setCommentsPos] = useState<{ x: number; y: number } | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [assistOn, setAssistOn] = useState(true);
   const assistOnRef = useRef(true);
@@ -110,6 +114,7 @@ export default function Studio({ id }: { id: string }) {
             objects: readObjects(h.objects),
           }))
         : [],
+      comments: readComments(d.comments),
       objects,
     });
     setSelected((cur) => (cur && objects.some((o) => o.id === cur) ? cur : objects[0]?.id ?? null));
@@ -145,6 +150,7 @@ export default function Studio({ id }: { id: string }) {
     }
     setEdit(null);
     setHistOpen(false);
+    setCommentsOpen(false);
     setSaveState("idle");
     const ac = new AbortController();
     fetch(`/api/projects/${id}/images/${iid}`, { signal: ac.signal })
@@ -272,13 +278,14 @@ export default function Studio({ id }: { id: string }) {
       }
       if (k === "t") {
         e.preventDefault();
-        setToast("Comment — coming soon");
-        setTimeout(() => setToast(null), 1500);
+        const btn = document.querySelector<HTMLElement>("[data-tip=comment]");
+        if (btn) btn.click();
         return;
       }
       if (k === "escape") {
         setEdit(null);
         setHistOpen(false);
+        setCommentsOpen(false);
         return;
       }
       if (/^[1-9]$/.test(e.key) && selected) {
@@ -538,6 +545,7 @@ export default function Studio({ id }: { id: string }) {
         }}
         onHistory={(btn) => {
           setTip(null);
+          setCommentsOpen(false);
           if (histOpen) {
             setHistOpen(false);
             return;
@@ -547,13 +555,57 @@ export default function Studio({ id }: { id: string }) {
           setHistPos({ x: r.left + r.width / 2, y: foot?.top ?? r.top });
           setHistOpen(true);
         }}
+        onComment={(btn) => {
+          setTip(null);
+          setHistOpen(false);
+          if (commentsOpen) {
+            setCommentsOpen(false);
+            return;
+          }
+          const r = btn.getBoundingClientRect();
+          const foot = btn.closest("footer")?.getBoundingClientRect();
+          setCommentsPos({ x: r.left + r.width / 2, y: foot?.top ?? r.top });
+          setCommentsOpen(true);
+        }}
         onTip={setTip}
         canCommit={canCommit}
         commitReason={commitReason}
         nCommitted={nCommitted}
         nOpen={nOpen}
         histOpen={histOpen}
+        commentsOpen={commentsOpen}
+        commentCount={doc?.comments?.length ?? 0}
         saveState={saveState}
+      />
+      <Comments
+        open={commentsOpen}
+        pos={commentsPos}
+        comments={doc?.comments ?? []}
+        objects={objects}
+        classes={classes}
+        selectedId={selected}
+        onClose={() => setCommentsOpen(false)}
+        onAdd={async (body) => {
+          if (!doc) return;
+          const r = await fetch(`/api/projects/${id}/images/${doc.id}/comments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ body }),
+          });
+          if (!r.ok) return;
+          apply(await r.json());
+        }}
+        onDelete={async (cid) => {
+          if (!doc) return;
+          const r = await fetch(`/api/projects/${id}/images/${doc.id}/comments/${cid}`, { method: "DELETE" });
+          if (!r.ok) return;
+          apply(await r.json());
+        }}
+        onSelect={(oid) => {
+          setSelected(oid);
+          setTab("objects");
+        }}
+        relTime={relTime}
       />
       {histOpen && histPos && (
         <div className="hist" data-hist ref={histRef} style={{ left: histPos.x, top: histPos.y }} role="dialog" aria-label="History">

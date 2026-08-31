@@ -147,7 +147,7 @@ export default function Classes({
                     <button type="button" className="row-main" onClick={() => onSelect(o.id)}>
                       <span className="swatch" style={{ background: classColor(o.label, classes) }} aria-hidden="true" />
                       <span className="name">
-                        {objTitle(o, i)}
+                        {objTitle(o, objects)}
                         {!named(o.label) ? " · unlabeled" : ""}
                       </span>
                     </button>

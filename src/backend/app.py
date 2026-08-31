@@ -41,6 +41,8 @@ from backend.store import (
     drop_class,
     rename_class,
     commit_image,
+    add_comment,
+    delete_comment,
     empty_images,
     export_jsonl,
 )
@@ -69,6 +71,10 @@ class Creds(BaseModel):
     email: str
     password: str
     name: str = ""
+
+
+class CommentIn(BaseModel):
+    body: str
 
 
 OK = {
@@ -399,6 +405,25 @@ def commit(pid: str, iid: str, user: str = Depends(uid)):
         row = commit_image(pid, iid, user)
     except ValueError:
         raise HTTPException(400)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@app.post("/projects/{pid}/images/{iid}/comments")
+def post_comment(pid: str, iid: str, body: CommentIn, user: str = Depends(uid)):
+    try:
+        row = add_comment(pid, iid, user, body.body)
+    except ValueError:
+        raise HTTPException(400, "empty")
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@app.delete("/projects/{pid}/images/{iid}/comments/{cid}")
+def drop_comment(pid: str, iid: str, cid: str, user: str = Depends(uid)):
+    row = delete_comment(pid, iid, user, cid)
     if not row:
         raise HTTPException(404)
     return row
