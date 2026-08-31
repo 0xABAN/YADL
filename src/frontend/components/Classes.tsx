@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Grainient from "./Grainient";
 import { HAND_COLOR } from "@/lib/hand";
-import type { HandObj } from "@/lib/doc";
+import { classColor, named, type HandObj } from "@/lib/doc";
 
 export default function Classes({
   classes,
@@ -11,14 +11,21 @@ export default function Classes({
   selected,
   onSelect,
   onLabel,
+  onRename,
+  onDrop,
 }: {
   classes: string[];
   objects: HandObj[];
   selected: string | null;
   onSelect: (id: string) => void;
   onLabel: (label: string) => void;
+  onRename: (old: string, name: string) => void;
+  onDrop: (name: string) => void;
 }) {
   const [tab, setTab] = useState<"labels" | "objects">("labels");
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const keep = useRef(true);
   const counts = Object.fromEntries(classes.map((c) => [c, objects.filter((o) => o.label === c).length]));
   return (
     <aside>
@@ -46,8 +53,49 @@ export default function Classes({
             <ul className="labels poses">
               {classes.map((name) => (
                 <li key={name} onClick={() => onLabel(name)}>
-                  {name}
+                  <span className="swatch" style={{ background: classColor(name, classes) }} />
+                  {renaming === name ? (
+                    <input
+                      autoFocus
+                      value={text}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setText(e.target.value)}
+                      onBlur={() => {
+                        if (keep.current) onRename(name, text);
+                        keep.current = true;
+                        setRenaming(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") {
+                          keep.current = false;
+                          setRenaming(null);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenaming(name);
+                        setText(name);
+                      }}
+                    >
+                      {name}
+                    </span>
+                  )}
                   <b>{counts[name] || 0}</b>
+                  <button
+                    type="button"
+                    className="kill"
+                    aria-label={`delete ${name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDrop(name);
+                    }}
+                  >
+                    ×
+                  </button>
                 </li>
               ))}
             </ul>
@@ -56,8 +104,8 @@ export default function Classes({
             <ul className="labels">
               {objects.map((o, i) => (
                 <li key={o.id} aria-current={selected === o.id || undefined} onClick={() => onSelect(o.id)}>
-                  <span className="swatch" style={{ background: HAND_COLOR[i % HAND_COLOR.length] }} />
-                  Hand {i + 1}{o.label ? ` · ${o.label}` : ""}
+                  <span className="swatch" style={{ background: classColor(o.label, classes) }} />
+                  Hand {i + 1}{named(o.label) ? ` · ${named(o.label)}` : ""}
                 </li>
               ))}
             </ul>

@@ -53,7 +53,6 @@ html, body {
 
 button { font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer }
 button:disabled { cursor: default; opacity: 0.62 }
-button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px }
 
 .shell {
   position: relative;
@@ -64,6 +63,68 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px }
 
 aside, .shell footer, .stack { z-index: 1 }
 
+.ann {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  left: calc(var(--rail) + var(--rail-pad));
+  width: 200px;
+  font-size: 12px;
+}
+.ann header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 8px 28px;
+  border-bottom: 1px solid var(--line);
+}
+.ann header input {
+  width: 100%;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  outline: none;
+}
+.ann header button {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0;
+  line-height: 1;
+  color: var(--muted);
+}
+.ann-btns {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.ann .del { color: #f87171; }
+.ann .save {
+  padding: 4px 10px;
+  background: #fff;
+  color: #000;
+  font-size: 11px;
+  font-weight: 500;
+}
+.ann ul { list-style: none; padding: 6px 8px calc(var(--cut) + 2px); }
+.ann li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.ann li .swatch { width: 8px; height: 8px; flex: none; background: var(--cc); }
+.ann li:hover { background: #171717; }
+.ann li[aria-current] { background: #fff; color: #000; }
+
 .shell footer {
   --cut: 8px;
   position: relative;
@@ -73,13 +134,13 @@ aside, .shell footer, .stack { z-index: 1 }
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   height: 50px;
-  margin: 0 16px var(--rail-pad) var(--rail-pad);
+  margin: 0 16px calc(var(--rail-pad) / 2) var(--rail-pad);
   padding: 9px 14px;
 }
 
 .brand {
   display: block;
-  margin: 9px 0 13px;
+  margin: 28px 0 13px;
   font-family: var(--font-display);
   font-size: clamp(26px, 3.6vw, 42px);
   font-weight: 700;
@@ -181,7 +242,8 @@ aside, .shell footer, .stack { z-index: 1 }
 
 aside,
 .shell footer,
-.panel {
+.panel,
+.ann {
   --cut: 16px;
   background-color: #000;
   background-image:
@@ -219,7 +281,7 @@ aside {
   overflow: visible;
   grid-column: 1;
   grid-row: 1 / -1;
-  margin: 16px 0 var(--rail-pad) var(--rail-pad);
+  margin: 16px 0 calc(var(--rail-pad) / 2) calc(var(--rail-pad) / 2);
 }
 aside .grainient-container {
   --gcut: max(0px, calc(var(--cut) - var(--rail-pad)));
@@ -290,7 +352,6 @@ aside .grainient-container {
   list-style: none;
   padding: 9px 13px;
 }
-.labels.poses li { grid-template-columns: 1fr auto; cursor: pointer }
 .labels li[aria-current] { color: var(--cyan) }
 .labels li {
   display: grid;
@@ -302,10 +363,23 @@ aside .grainient-container {
   color: var(--text);
   font-size: 12px;
 }
+.labels.poses li { grid-template-columns: auto 1fr auto auto; }
 .labels .swatch {
   width: 1.6em;
   height: 1.6em;
   padding: 0;
+}
+.labels .kill { padding: 0 2px; color: var(--muted); line-height: 1; }
+.labels .kill:hover { color: #fff; }
+.labels input {
+  width: 100%;
+  min-width: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  font: inherit;
+  outline: none;
 }
 .labels b {
   width: 1.6em;
@@ -534,14 +608,17 @@ main.cross, main.cross:active { cursor: crosshair }
   border: 0;
   border-top: 1px solid var(--line);
 }
+.panel.tools { clip-path: none; overflow: visible; }
 .tools button { position: relative }
+.tools button.assist { color: var(--lime); }
+.tools button.assist[aria-pressed="false"] { color: var(--muted); }
 .tools button:hover::after {
   content: attr(aria-label);
   position: absolute;
   left: calc(100% + 10px);
   top: 50%;
   transform: translateY(-50%);
-  z-index: 3;
+  z-index: 5;
   padding: 4px 8px;
   background: #000;
   color: #fff;
@@ -750,7 +827,6 @@ main.cross, main.cross:active { cursor: crosshair }
     var(--h) 0 100% / 8px 8px no-repeat,
     var(--h) 100% 100% / 8px 8px no-repeat;
 }
-.create button:focus-visible { outline-color: #fff; }
 .create .sheet,
 .create .history {
   --cut: 16px;
@@ -892,10 +968,22 @@ main.cross, main.cross:active { cursor: crosshair }
   padding: 0 8px;
   font-size: 12px; font-weight: 500; color: var(--muted);
 }
+.create .history .row { position: relative; }
 .create .history a {
   border: 1px solid var(--line);
   background: #171717;
+  padding-right: 32px;
 }
+.create .history .row button {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px;
+  color: var(--muted);
+  line-height: 1;
+}
+.create .history .row button:hover { color: #fff; }
 .create .history small { display: block; color: var(--muted); font-size: 12px; }
 .create .history .empty { padding: 8px; color: var(--muted); font-size: 13px; }
 .create .drop {

@@ -1,8 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE } from "react";
-import { CONNECTIONS, HAND_COLOR } from "@/lib/hand";
-import { SHOWN, type HandObj, type ToolId } from "@/lib/doc";
+import { CONNECTIONS } from "@/lib/hand";
+import { SHOWN, classColor, type HandObj, type ToolId } from "@/lib/doc";
 const STEP = 10;
 const MIN = 25;
 const MAX = 400;
@@ -107,13 +107,19 @@ export default function Canvas({
   src = "/default.jpg",
   objects = [],
   onChange,
-  onAssist,
+  onAssistOn,
+  assistOn = true,
+  onEdit,
+  classes = [],
   shown = SHOWN.hands,
 }: {
   src?: string;
   objects?: HandObj[];
   onChange?: (objects: HandObj[]) => void;
-  onAssist?: () => void;
+  onAssistOn?: () => void;
+  assistOn?: boolean;
+  onEdit?: (id: string | null) => void;
+  classes?: string[];
   shown?: ToolId[];
 }) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
@@ -136,6 +142,8 @@ export default function Canvas({
   const frame = useRef<HTMLDivElement>(null);
   const change = useRef(onChange);
   change.current = onChange;
+  const editFn = useRef(onEdit);
+  editFn.current = onEdit;
   const live = useRef(hands);
   const sel = useRef<{ h: number; i: number } | null>(null);
   const dragPt = useRef<{ h: number; i: number; start: HandObj[] } | null>(null);
@@ -372,13 +380,20 @@ export default function Canvas({
     };
     const up = () => {
       const d = dragPt.current;
+      const r = frameR.current;
       dragPt.current = null;
       frameR.current = null;
       setHold(null);
       if (!d) return;
       const now = live.current[d.h]?.geom.landmarks[d.i];
       const was = d.start[d.h]?.geom.landmarks[d.i];
-      if (!now || !was || (now.x === was.x && now.y === was.y)) return;
+      if (!now || !was) return;
+      const moved = r && Math.hypot((now.x - was.x) * r.width, (now.y - was.y) * r.height) > 4;
+      if (!moved) {
+        apply(d.start);
+        editFn.current?.(d.start[d.h]?.id ?? null);
+        return;
+      }
       pushUndo(d.start);
       change.current?.(live.current);
     };
@@ -565,6 +580,7 @@ export default function Canvas({
     <main
       className={!locked && (tool === "box" || tool === "polygon") ? "cross" : undefined}
       onPointerDown={(e) => {
+        onEdit?.(null);
         if (locked || hold != null || boxHold != null) return;
         if (typeof polyHold === "number") return;
         if (tool === "box") {
@@ -697,7 +713,7 @@ export default function Canvas({
             ))}
           </div>
           {hands.map((obj, h) => obj.geom.t === "hand" && (
-          <div key={obj.id} className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`} style={{ "--c": HAND_COLOR[h % HAND_COLOR.length] } as CSSProperties}>
+          <div key={obj.id} className={`hand${tool === "landmarks" && !locked ? " edit" : ""}`} style={{ "--c": classColor(obj.label, classes) } as CSSProperties}>
             <svg viewBox="0 0 1 1" preserveAspectRatio="none">
               {CONNECTIONS.map(([a, b]) => (
                 <line key={`${a}-${b}`} x1={obj.geom.landmarks[a].x} y1={obj.geom.landmarks[a].y} x2={obj.geom.landmarks[b].x} y2={obj.geom.landmarks[b].y} />
@@ -733,9 +749,10 @@ export default function Canvas({
         {t.id === "assist" && <hr />}
         <button
           type="button"
+          className={t.id === "assist" ? "assist" : undefined}
           aria-label={t.label}
-          aria-pressed={t.id !== "assist" && tool === t.id}
-          onClick={() => (t.id === "assist" ? onAssist?.() : setTool(t.id))}
+          aria-pressed={t.id === "assist" ? assistOn : tool === t.id}
+          onClick={() => (t.id === "assist" ? onAssistOn?.() : setTool(t.id))}
         >
           <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
             <path d={t.d} fill="currentColor" />
