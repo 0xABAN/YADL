@@ -90,26 +90,35 @@ export default function Comments({
   const ranked = useMemo(() => {
     if (!at) return [];
     const q = live.toLowerCase();
-    const rows = objects.map((o) => ({ o, title: objTitle(o, objects) }));
-    const hits = (q ? rows.filter((r) => r.title.toLowerCase().includes(q)) : rows).slice();
-    hits.sort((a, b) => {
-      const ap = a.title.toLowerCase().startsWith(q) ? 0 : 1;
-      const bp = b.title.toLowerCase().startsWith(q) ? 0 : 1;
-      if (ap !== bp) return ap - bp;
-      if (a.o.id === selectedId) return -1;
-      if (b.o.id === selectedId) return 1;
-      return 0;
+    const rows = objects.map((o) => {
+      const title = objTitle(o, objects);
+      const low = title.toLowerCase();
+      const label = (o.label ?? "untitled").toLowerCase();
+      return { o, title, low, label };
     });
-    return hits.slice(0, 12);
+    // Prefer prefix on full title (`thumbs-up#1`), then prefix on label (`thumbs-up`)
+    const scored = rows
+      .map((r) => {
+        let score = -1;
+        if (!q) score = r.o.id === selectedId ? 3 : 2;
+        else if (r.low.startsWith(q)) score = 4;
+        else if (r.label.startsWith(q)) score = 3;
+        else if (r.low.includes(q)) score = 1;
+        return { ...r, score };
+      })
+      .filter((r) => r.score >= 0)
+      .sort((a, b) => b.score - a.score || (a.o.id === selectedId ? -1 : b.o.id === selectedId ? 1 : a.title.localeCompare(b.title)));
+    return scored.slice(0, 12);
   }, [at, live, objects, selectedId]);
 
   const suggestion = useMemo(() => {
     if (!at || !ranked.length) return null;
-    const hit = ranked[pick % ranked.length] ?? ranked[0];
-    const q = live.toLowerCase();
+    const hit = ranked[Math.min(pick, ranked.length - 1)] ?? ranked[0];
     const title = hit.title;
-    const prefix = title.toLowerCase().startsWith(q);
-    return { id: hit.o.id, title, rest: prefix ? title.slice(live.length) : title, prefix };
+    const ql = live.toLowerCase();
+    // shell-style: ghost is only the unread suffix of a prefix match
+    const rest = title.toLowerCase().startsWith(ql) ? title.slice(live.length) : "";
+    return { id: hit.o.id, title, rest };
   }, [at, ranked, pick, live]);
 
   useEffect(() => {
@@ -140,7 +149,10 @@ export default function Comments({
     return () => window.removeEventListener("pointermove", onMove);
   }, [open, onClose]);
 
-  useEffect(() => setPick(0), [live, at, ranked.length]);
+  const rankKey = ranked.map((r) => r.o.id).join(",");
+  useEffect(() => {
+    setPick(0);
+  }, [live, at, rankKey]);
 
   if (!open || !pos) return null;
 
@@ -189,7 +201,7 @@ export default function Comments({
   };
 
   const list = [...comments].reverse();
-  const ghost = suggestion ? (suggestion.prefix ? suggestion.rest : suggestion.title) : "";
+  const ghost = suggestion?.rest ?? "";
   const hasPrefix = parts.length > 0 || at;
 
   return (

@@ -114,16 +114,25 @@ input:focus-visible,
   position: fixed;
   z-index: 20;
   left: 50%;
-  bottom: 64px;
+  /* footer 58px + bottom margin + same 8px gap as .tip/.hist */
+  bottom: calc(58px + var(--rail-pad) / 2 + 8px);
   transform: translateX(-50%);
   padding: 8px 12px;
-  background: #111;
-  border: 1px solid var(--line);
+  background: #fff;
+  color: #000;
   font-size: 12px;
-  min-height: 1em;
+  animation: live-in 0.22s ease both;
 }
-.live:empty { display: none }
-.undo-link { text-decoration: underline; margin-left: 8px }
+.live.out { animation: live-out 0.18s ease both; }
+@keyframes live-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes live-out {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to { opacity: 0; transform: translateX(-50%) translateY(6px); }
+}
+.undo-link { text-decoration: underline; margin-left: 8px; color: inherit }
 .empty-main {
   grid-column: 1 / -1;
   grid-row: 1 / -1;
@@ -175,7 +184,8 @@ input:focus-visible,
 }
 .labels .row-main > .name,
 .labels .row-main > input { min-width: 0; }
-.labels li[aria-current], .labels .row-main[aria-current] { color: var(--cyan) }
+.labels li[aria-current], .labels .row-main[aria-current] { color: #fff }
+.labels .name { color: #fff }
 .hist li button {
   display: flex;
   flex-direction: column;
@@ -212,7 +222,7 @@ aside, .shell footer, .stack { z-index: 1 }
 
 .ann {
   position: absolute;
-  z-index: 4;
+  z-index: 7; /* above comments/history so L isn't "invisible" */
   top: var(--rail-top);
   left: calc(var(--rail) + var(--rail-pad));
   width: 200px;
@@ -309,11 +319,11 @@ aside, .shell footer, .stack { z-index: 1 }
 .brand {
   display: block;
   margin: 0 auto;
-  font-family: var(--font-display);
+  font-family: var(--font);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 300;
   font-style: italic;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
   line-height: 1;
   text-align: center;
 }
@@ -446,9 +456,59 @@ aside, .shell footer, .stack { z-index: 1 }
   box-sizing: border-box;
 }
 .shell .commit:disabled { opacity: 0.4; }
-.shell .commit:hover { background-color: #e5e5e5; color: #000; }
 .commit:hover { background: #e5e5e5 }
 .commit:active { transform: scale(0.98) }
+
+/* studio click feel — same as create */
+.studio-back,
+.shell .commit,
+.shell .add-label,
+.shell .ann .save,
+.shell .pager button,
+.shell .act-link,
+.shell .panel button,
+.shell .tabs button,
+.shell .labels .row-main,
+.shell .labels .kill,
+.shell .labels .swatch,
+.shell .hist li button,
+.shell .ann li button,
+.shell .hist header button,
+.shell .ann header button,
+.shell .ann .del,
+.shell .cmt-del,
+.shell .undo-link {
+  user-select: none;
+  transition: background-color 0.12s, color 0.12s, transform 0.08s, border-color 0.12s, opacity 0.12s;
+}
+.studio-back:active,
+.shell .commit:not(:disabled):active,
+.shell .add-label:active,
+.shell .ann .save:active,
+.shell .pager button:not(:disabled):active,
+.shell .act-link:active,
+.shell .panel button:not(:disabled):active,
+.shell .tabs button:active,
+.shell .labels .row-main:active,
+.shell .hist li button:active,
+.shell .ann li button:active {
+  transform: scale(0.98);
+}
+.studio-back:hover,
+.shell .commit:not(:disabled):hover,
+.shell .add-label:hover,
+.shell .ann .save:hover { background-color: #e5e5e5; color: #000; }
+.shell .pager button:not(:disabled):hover { background: #d4d4d4; }
+.shell .act-link:hover { color: #d4d4d4; }
+.shell .act-link[aria-pressed="true"]:hover { color: var(--lime); }
+.shell .panel button:not(:disabled):hover { color: #d4d4d4; }
+.shell .panel button:not(:disabled):hover svg { fill: currentColor; }
+.shell .panel button[aria-pressed="true"]:not(:disabled):hover { color: var(--lime); }
+.shell .panel .step:not(:disabled):hover { color: var(--cyan); }
+.shell .tabs button:hover { color: var(--text); }
+.shell .labels .row-main:hover .name { color: #d4d4d4; }
+.shell .labels li[aria-current] .row-main:hover .name,
+.shell .labels .row-main[aria-current]:hover .name { color: #fff; }
 
 aside,
 .shell footer,
@@ -838,6 +898,8 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .tools button.assist { color: var(--lime); }
 .tools button.assist[aria-pressed="false"] { color: var(--muted); }
+.tools button.assist[aria-pressed="false"]:hover { color: #d4d4d4; }
+.tools button.assist[aria-pressed="true"]:hover { color: var(--lime); }
 .tip {
   position: fixed;
   z-index: 6;
@@ -898,52 +960,65 @@ main.cross, main.cross:active { cursor: crosshair }
 .cmt-field.chips {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 4px;
-  padding: 6px 8px;
+  align-items: baseline;
+  gap: 0 4px;
+  padding: 8px 10px;
   min-height: 36px;
   cursor: text;
+  font-size: 12px;
+  line-height: 20px;
 }
 .cmt-field:focus-within { border-color: #333; }
 .cmt-txt {
   color: #fff;
-  font-size: 12px;
+  font-size: inherit;
+  line-height: inherit;
   white-space: pre-wrap;
 }
 .cmt-field .cmt-chip {
-  font-size: 12px;
-  line-height: 1.3;
+  display: inline;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 600;
+  vertical-align: baseline;
 }
 .cmt-live {
   position: relative;
   flex: 1 1 4ch;
   min-width: 4ch;
   display: inline-grid;
+  align-items: center;
+  font-size: inherit;
+  line-height: inherit;
 }
 .cmt-live > * { grid-area: 1 / 1; }
 .cmt-mirror {
   font: inherit;
-  font-size: 12px;
-  line-height: normal;
+  font-size: inherit;
+  line-height: inherit;
   white-space: pre;
   color: #fff;
   pointer-events: none;
-  padding: 2px 0;
+  padding: 0;
+  margin: 0;
 }
 .cmt-ghost { color: #555; }
 .cmt-field input {
   width: 100%;
   min-width: 4ch;
+  height: 20px;
   background: transparent;
   border: 0;
   color: transparent;
   caret-color: #fff;
   font: inherit;
-  font-size: 12px;
-  padding: 2px 0;
+  font-size: inherit;
+  line-height: inherit;
+  padding: 0;
+  margin: 0;
   outline: none;
 }
-.cmt-field input::placeholder { color: #555; opacity: 1; }
+.cmt-field input::placeholder { color: #555; opacity: 1; line-height: inherit; }
 .cmt-list {
   list-style: none;
   padding: 0 12px;
