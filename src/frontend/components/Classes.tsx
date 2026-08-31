@@ -10,7 +10,6 @@ export default function Classes({
   tab,
   onTab,
   onSelect,
-  onLabel,
   onRename,
   onDrop,
   onAdd,
@@ -22,7 +21,6 @@ export default function Classes({
   tab: "labels" | "objects";
   onTab: (t: "labels" | "objects") => void;
   onSelect: (id: string) => void;
-  onLabel: (label: string) => void;
   onRename: (old: string, name: string) => void;
   onDrop: (name: string) => void;
   onAdd: () => void;
@@ -37,7 +35,7 @@ export default function Classes({
 
   const row = (name: string) => (
     <li key={name}>
-      <button type="button" className="row-main" onClick={() => onLabel(name)}>
+      <div className="row-main">
         <span className="swatch" style={{ background: classColor(name, classes) }} aria-hidden="true" />
         {renaming === name ? (
           <input
@@ -48,7 +46,6 @@ export default function Classes({
             spellCheck={false}
             autoComplete="off"
             name="class-rename"
-            onClick={(e) => e.stopPropagation()}
             onChange={(e) => setText(e.target.value)}
             onBlur={() => {
               if (keep.current) onRename(name, text);
@@ -67,8 +64,7 @@ export default function Classes({
           <span
             className="name"
             title="Double-click to rename"
-            onDoubleClick={(e) => {
-              e.stopPropagation();
+            onDoubleClick={() => {
               setRenaming(name);
               setText(name);
             }}
@@ -76,7 +72,7 @@ export default function Classes({
             {name}
           </span>
         )}
-      </button>
+      </div>
       <span className="meta">
         <b className="nums">{counts[name] || 0}</b>
         <button
@@ -120,7 +116,7 @@ export default function Classes({
           {tab === "labels" && (
             <>
               {classes.length === 0 ? (
-                <p className="empty-pane">No labels yet. Create one, then stamp a selection.</p>
+                <p className="empty-pane">No labels yet. Create one, then assign it from an object.</p>
               ) : (
                 <ul className="labels poses">{used.map((n) => row(n))}</ul>
               )}

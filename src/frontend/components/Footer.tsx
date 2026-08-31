@@ -34,7 +34,6 @@ export default function Footer({
   histOpen,
   commentsOpen,
   commentCount,
-  saveState,
 }: {
   path: string;
   index: number;
@@ -54,7 +53,6 @@ export default function Footer({
   histOpen: boolean;
   commentsOpen: boolean;
   commentCount: number;
-  saveState: "idle" | "saving" | "saved" | "error";
 }) {
   const show = (el: HTMLElement, text: string) => {
     const r = el.getBoundingClientRect();
@@ -62,8 +60,6 @@ export default function Footer({
     onTip({ x: r.left + r.width / 2, y: foot?.top ?? r.top, text });
   };
   const commitHint = canCommit ? "Accept this sample" : commitReason;
-  const saveLabel =
-    saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Save failed" : "";
 
   return (
     <footer data-footer>
@@ -71,11 +67,6 @@ export default function Footer({
         <span className="file" title={path}>
           {path || "—"}
         </span>
-        {saveLabel && (
-          <span className="progress nums" aria-live="polite">
-            {saveLabel}
-          </span>
-        )}
       </div>
       <nav className="pager" aria-label="Images">
         <button type="button" disabled={index <= 0} aria-label="Previous image (K)" title="Previous (K)" onClick={onPrev}>

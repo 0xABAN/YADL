@@ -68,8 +68,17 @@ export default function Studio({ id }: { id: string }) {
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [toast, setToast] = useState<string | null>(null);
+  const [toastOut, setToastOut] = useState(false);
+  const toastHide = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undoToast = useRef<{ objects: AnnObj[]; t: ReturnType<typeof setTimeout> } | null>(null);
+
+  const showToast = useCallback((msg: string, holdMs?: number) => {
+    if (toastHide.current) clearTimeout(toastHide.current);
+    setToastOut(false);
+    setToast(msg);
+    if (holdMs != null) toastHide.current = setTimeout(() => setToastOut(true), holdMs);
+  }, []);
 
   // URL sync
   useEffect(() => {
@@ -216,21 +225,35 @@ export default function Studio({ id }: { id: string }) {
   const nCommitted = list.filter((x) => x.committed).length;
   const nOpen = list.filter((x) => !x.committed).length;
 
+  const openNewLabel = useCallback(() => {
+    setTip(null);
+    setHistOpen(false);
+    setCommentsOpen(false);
+    setTab("labels");
+    setDraft("");
+    setEdit("new");
+  }, []);
+
   const stamp = async (name: string) => {
     const label = name.trim();
     if (!label || !project) return;
+    const creating = edit === "new";
     if (!project.classes.includes(label)) {
+      setProject({ ...project, classes: [...project.classes, label] });
       const r = await fetch(`/api/projects/${id}/classes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: label }),
       });
       if (r.ok) setProject(await r.json());
-      else setProject({ ...project, classes: [...project.classes, label] });
     }
-    const target = editing?.id ?? selected;
-    if (target) save(objects.map((o) => (o.id === target ? { ...o, label } : o)));
+    // L / Create label = class only. Assign only when editing a specific object.
+    if (!creating) {
+      const target = editing?.id ?? selected;
+      if (target) save(objects.map((o) => (o.id === target ? { ...o, label } : o)));
+    }
     setEdit(null);
+    setTab("labels");
   };
 
   // Keyboard labeling mode
@@ -259,10 +282,9 @@ export default function Studio({ id }: { id: string }) {
         document.querySelector<HTMLButtonElement>("footer [data-tip=export]:not(:disabled)")?.click();
         return;
       }
-      if (k === "l") {
+      if (k === "l" || e.code === "KeyL") {
         e.preventDefault();
-        setDraft("");
-        setEdit("new");
+        openNewLabel();
         return;
       }
       if (k === "n") {
@@ -295,9 +317,9 @@ export default function Studio({ id }: { id: string }) {
         save(objects.map((o) => (o.id === selected ? { ...o, label: cls } : o)));
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [list.length, canCommit, selected, objects, classes, save]);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [list.length, canCommit, selected, objects, classes, save, openNewLabel]);
 
   const railStatus = useMemo(() => {
     if (loadState === "loading") return "Loading project…";
@@ -329,15 +351,12 @@ export default function Studio({ id }: { id: string }) {
         tab={tab}
         onTab={setTab}
         status={railStatus}
-        onSelect={setSelected}
-        onLabel={(label) => {
-          if (!selected) {
-            setTab("objects");
-            setToast("Select an object first");
-            setTimeout(() => setToast(null), 1500);
-            return;
-          }
-          save(objects.map((o) => (o.id === selected ? { ...o, label } : o)));
+        onSelect={(id) => {
+          setSelected(id);
+          setCommentsOpen(false);
+          setHistOpen(false);
+          setEdit(id);
+          setDraft(""); // empty search → show every class
         }}
         onRename={async (old, name) => {
           const label = name.trim();
@@ -351,10 +370,7 @@ export default function Studio({ id }: { id: string }) {
           setProject(await r.json());
           if (doc) setDoc({ ...doc, objects: doc.objects.map((o) => (o.label === old ? { ...o, label } : o)) });
         }}
-        onAdd={() => {
-          setDraft("");
-          setEdit("new");
-        }}
+        onAdd={openNewLabel}
         onDrop={async (name) => {
           if (!confirm(`Delete ${name}?`)) return;
           const r = await fetch(`/api/projects/${id}/classes`, {
@@ -397,11 +413,16 @@ export default function Studio({ id }: { id: string }) {
                 .catch(() => {});
             }}
             onEdit={(oid) => {
-              setEdit(oid);
-              if (oid) {
-                setSelected(oid);
-                setDraft(named(objects.find((o) => o.id === oid)?.label) ?? "");
+              if (oid == null) {
+                // don't dismiss in-progress create-label from a canvas click
+                setEdit((cur) => (cur === "new" ? "new" : null));
+                return;
               }
+              setCommentsOpen(false);
+              setHistOpen(false);
+              setEdit(oid);
+              setSelected(oid);
+              setDraft(""); // empty search → show every class
             }}
           />
         </div>
@@ -449,18 +470,20 @@ export default function Studio({ id }: { id: string }) {
           </header>
           <div className="ann-btns">
             <button type="submit" className="save">
-              Save
+              {edit === "new" ? "Create" : "Save"}
             </button>
-            <button
-              type="button"
-              className="del"
-              onClick={() => {
-                if (editing) save(objects.filter((o) => o.id !== editing.id));
-                setEdit(null);
-              }}
-            >
-              Delete
-            </button>
+            {edit !== "new" && (
+              <button
+                type="button"
+                className="del"
+                onClick={() => {
+                  if (editing) save(objects.filter((o) => o.id !== editing.id));
+                  setEdit(null);
+                }}
+              >
+                Delete
+              </button>
+            )}
           </div>
           {shown.length === 0 && !fresh ? (
             <p className="empty">No existing labels</p>
@@ -470,7 +493,12 @@ export default function Studio({ id }: { id: string }) {
                 <li key={name}>
                   <button
                     type="button"
-                    aria-current={q.toLowerCase() === name.toLowerCase() || undefined}
+                    aria-current={
+                      (editing && named(editing.label)?.toLowerCase() === name.toLowerCase()) ||
+                      q.toLowerCase() === name.toLowerCase()
+                        ? true
+                        : undefined
+                    }
                     style={{ "--cc": classColor(name, classes) } as CSSProperties}
                     onClick={() => stamp(name)}
                   >
@@ -525,18 +553,18 @@ export default function Studio({ id }: { id: string }) {
               : doc.history,
           });
           setList((ls) => ls.map((x) => (x.id === doc.id ? { ...x, committed: true } : x)));
-          setToast(first ? "Committed" : "Updated — undo available");
           if (!first) {
             if (undoToast.current) clearTimeout(undoToast.current.t);
+            showToast("Updated");
             undoToast.current = {
               objects: prev,
               t: setTimeout(() => {
                 undoToast.current = null;
-                setToast(null);
+                setToastOut(true);
               }, 5000),
             };
           } else {
-            setTimeout(() => setToast(null), 1200);
+            showToast("Committed", 1200);
             setIndex((i) => Math.min(i + 1, list.length - 1));
           }
         }}
@@ -643,28 +671,37 @@ export default function Studio({ id }: { id: string }) {
           {tip.text}
         </span>
       )}
-      <div className="live" aria-live="polite">
-        {toast}
-        {toast?.includes("undo") && undoToast.current && (
-          <>
-            {" "}
-            <button
-              type="button"
-              className="undo-link"
-              onClick={() => {
-                if (!undoToast.current) return;
-                save(undoToast.current.objects);
-                clearTimeout(undoToast.current.t);
-                undoToast.current = null;
-                setToast("Reverted");
-                setTimeout(() => setToast(null), 1000);
-              }}
-            >
-              Undo
-            </button>
-          </>
-        )}
-      </div>
+      {toast && (
+        <div
+          className={`live${toastOut ? " out" : ""}`}
+          aria-live="polite"
+          onAnimationEnd={(e) => {
+            if (e.animationName !== "live-out") return;
+            setToast(null);
+            setToastOut(false);
+          }}
+        >
+          {toast}
+          {toast === "Updated" && undoToast.current && (
+            <>
+              {" "}
+              <button
+                type="button"
+                className="undo-link"
+                onClick={() => {
+                  if (!undoToast.current) return;
+                  save(undoToast.current.objects);
+                  clearTimeout(undoToast.current.t);
+                  undoToast.current = null;
+                  showToast("Reverted", 1000);
+                }}
+              >
+                Undo
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
