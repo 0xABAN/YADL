@@ -1,125 +1,159 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Grainient from "./Grainient";
-import { HAND_COLOR } from "@/lib/hand";
-import { classColor, named, type HandObj } from "@/lib/doc";
+import { classColor, named, objTitle, type AnnObj } from "@/lib/doc";
 
 export default function Classes({
   classes,
   objects,
   selected,
+  tab,
+  onTab,
   onSelect,
   onLabel,
   onRename,
   onDrop,
   onAdd,
+  status,
 }: {
   classes: string[];
-  objects: HandObj[];
+  objects: AnnObj[];
   selected: string | null;
+  tab: "labels" | "objects";
+  onTab: (t: "labels" | "objects") => void;
   onSelect: (id: string) => void;
   onLabel: (label: string) => void;
   onRename: (old: string, name: string) => void;
   onDrop: (name: string) => void;
   onAdd: () => void;
+  status?: string;
 }) {
-  const [tab, setTab] = useState<"labels" | "objects">("labels");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [text, setText] = useState("");
   const keep = useRef(true);
   const counts = Object.fromEntries(classes.map((c) => [c, objects.filter((o) => o.label === c).length]));
   const used = classes.filter((c) => counts[c]);
   const unused = classes.filter((c) => !counts[c]);
+
   const row = (name: string) => (
-    <li key={name} onClick={() => onLabel(name)}>
-      <span className="swatch" style={{ background: classColor(name, classes) }} />
-      {renaming === name ? (
-        <input
-          autoFocus
-          value={text}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={() => {
-            if (keep.current) onRename(name, text);
-            keep.current = true;
-            setRenaming(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-            if (e.key === "Escape") {
-              keep.current = false;
+    <li key={name}>
+      <button type="button" className="row-main" onClick={() => onLabel(name)}>
+        <span className="swatch" style={{ background: classColor(name, classes) }} aria-hidden="true" />
+        {renaming === name ? (
+          <input
+            id={`rename-${name}`}
+            aria-label={`Rename ${name}`}
+            autoFocus
+            value={text}
+            spellCheck={false}
+            autoComplete="off"
+            name="class-rename"
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => {
+              if (keep.current) onRename(name, text);
+              keep.current = true;
               setRenaming(null);
-            }
-          }}
-        />
-      ) : (
-        <span
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              if (e.key === "Escape") {
+                keep.current = false;
+                setRenaming(null);
+              }
+            }}
+          />
+        ) : (
+          <span
+            className="name"
+            title="Double-click to rename"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setRenaming(name);
+              setText(name);
+            }}
+          >
+            {name}
+          </span>
+        )}
+      </button>
+      <span className="meta">
+        <b className="nums">{counts[name] || 0}</b>
+        <button
+          type="button"
+          className="kill"
+          aria-label={`Delete ${name}`}
           onClick={(e) => {
             e.stopPropagation();
-            setRenaming(name);
-            setText(name);
+            onDrop(name);
           }}
         >
-          {name}
-        </span>
-      )}
-      <b>{counts[name] || 0}</b>
-      <button
-        type="button"
-        className="kill"
-        aria-label={`delete ${name}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDrop(name);
-        }}
-      >
-        ×
-      </button>
+          ×
+        </button>
+      </span>
     </li>
   );
+
   return (
     <aside>
-      <Grainient
-        color1={HAND_COLOR[0]}
-        color2={HAND_COLOR[1]}
-        color3={HAND_COLOR[0]}
-        timeSpeed={0.4}
-        warpFrequency={5.5}
-        warpSpeed={2.2}
-        rotationAmount={520}
-        noiseScale={4}
-        centerX={0.06}
-        zoom={1}
-      />
       <div className="rail-ui">
-        <span className="brand">yadl.</span>
-        <p className="lede">yet another data labeler, but in this one, you don't have to click.</p>
-        <nav className="tabs">
-          <button type="button" aria-pressed={tab === "labels"} onClick={() => setTab("labels")}>Labels</button>
-          <button type="button" aria-pressed={tab === "objects"} onClick={() => setTab("objects")}>Objects</button>
+        <div className="rail-head">
+          <span className="brand" translate="no">
+            yadl.
+          </span>
+        </div>
+        <p className="lede">{"yet another data labeler, but in this one, you don't have to click."}</p>
+        {status && (
+          <p className="rail-status" aria-live="polite">
+            {status}
+          </p>
+        )}
+        <nav className="tabs" aria-label="Sidebar">
+          <button type="button" aria-pressed={tab === "labels"} onClick={() => onTab("labels")}>
+            Labels
+          </button>
+          <button type="button" aria-pressed={tab === "objects"} onClick={() => onTab("objects")}>
+            Objects
+          </button>
         </nav>
         <div className="pane">
           {tab === "labels" && (
             <>
-              <ul className="labels poses">{used.map(row)}</ul>
-              <div className="unused">
-                <h2>Unused labels</h2>
-                <ul className="labels poses">{unused.map(row)}</ul>
-              </div>
+              {classes.length === 0 ? (
+                <p className="empty-pane">No labels yet. Create one, then stamp a selection.</p>
+              ) : (
+                <ul className="labels poses">{used.map((n) => row(n))}</ul>
+              )}
+              {unused.length > 0 && (
+                <div className="unused">
+                  <h2>Unused labels</h2>
+                  <ul className="labels poses">{unused.map((n) => row(n))}</ul>
+                </div>
+              )}
               <button type="button" className="add-label" onClick={onAdd}>
-                Create label
+                Create label (L)
               </button>
             </>
           )}
           {tab === "objects" && (
             <ul className="labels">
-              {objects.map((o, i) => (
-                <li key={o.id} aria-current={selected === o.id || undefined} onClick={() => onSelect(o.id)}>
-                  <span className="swatch" style={{ background: classColor(o.label, classes) }} />
-                  Hand {i + 1}{named(o.label) ? ` · ${named(o.label)}` : ""}
+              {objects.length === 0 ? (
+                <li className="empty-pane" style={{ display: "block" }}>
+                  No objects. Draw one or run Assist.
                 </li>
-              ))}
+              ) : (
+                objects.map((o, i) => (
+                  <li key={o.id} aria-current={selected === o.id || undefined}>
+                    <button type="button" className="row-main" onClick={() => onSelect(o.id)}>
+                      <span className="swatch" style={{ background: classColor(o.label, classes) }} aria-hidden="true" />
+                      <span className="name">
+                        {objTitle(o, i)}
+                        {!named(o.label) ? " · unlabeled" : ""}
+                      </span>
+                    </button>
+                  </li>
+                ))
+              )}
             </ul>
           )}
         </div>
