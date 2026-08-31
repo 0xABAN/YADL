@@ -17,12 +17,14 @@ const api = (path: string) =>
 
 export default function Studio({ id }: { id: string }) {
   const [project, setProject] = useState<Project | null>(null);
-  const [list, setList] = useState<{ id: string; filename: string }[]>([]);
+  const [list, setList] = useState<{ id: string; filename: string; committed?: boolean }[]>([]);
   const [index, setIndex] = useState(0);
   const [doc, setDoc] = useState<Doc | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [edit, setEdit] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [histOpen, setHistOpen] = useState(false);
+  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [assistOn, setAssistOn] = useState(true);
   const assistOnRef = useRef(true);
   assistOnRef.current = assistOn;
@@ -52,6 +54,7 @@ export default function Studio({ id }: { id: string }) {
       return;
     }
     setEdit(null);
+    setHistOpen(false);
     const ac = new AbortController();
     fetch(`/api/projects/${id}/images/${iid}`, { signal: ac.signal })
       .then((r) => r.json())
@@ -222,19 +225,53 @@ export default function Studio({ id }: { id: string }) {
         onPrev={() => setIndex((i) => Math.max(0, i - 1))}
         onNext={() => setIndex((i) => Math.min(list.length - 1, i + 1))}
         onCommit={async () => {
-          if (!doc) return;
-          if (!doc.committed) {
-            if (!hands.some((o) => named(o.label))) return;
-            const r = await fetch(`/api/projects/${id}/images/${doc.id}/commit`, { method: "POST" });
-            if (!r.ok) return;
-            setDoc({ ...doc, committed: true });
-          }
-          setIndex((i) => Math.min(i + 1, list.length - 1));
+          if (!doc || !hands.some((o) => named(o.label))) return;
+          const first = !doc.committed;
+          const r = await fetch(`/api/projects/${id}/images/${doc.id}/commit`, { method: "POST" });
+          if (!r.ok) return;
+          const d = await r.json();
+          setDoc({ ...doc, committed: true, history: d.history ?? doc.history });
+          setList((ls) => ls.map((x) => (x.id === doc.id ? { ...x, committed: true } : x)));
+          if (first) setIndex((i) => Math.min(i + 1, list.length - 1));
         }}
         onExport={() => {
           location.href = `/api/projects/${id}/export`;
         }}
+        onHistory={() => setHistOpen((v) => !v)}
+        onTip={setTip}
+        committed={!!doc?.committed}
+        canCommit={hands.some((o) => named(o.label))}
+        nCommitted={list.filter((x) => x.committed).length}
+        histOpen={histOpen}
       />
+      {histOpen && (
+        <div className="hist">
+          <h2>History</h2>
+          {(doc?.history ?? []).length === 0 ? (
+            <p className="empty">No versions</p>
+          ) : (
+            <ul>
+              {[...(doc?.history ?? []).keys()].reverse().map((i) => (
+                <li
+                  key={i}
+                  onClick={() => {
+                    const objs = (doc?.history?.[i] ?? []).filter((o) => o.kind === "hand");
+                    save(objs);
+                    setHistOpen(false);
+                  }}
+                >
+                  Version {i + 1}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {tip && (
+        <span className="tip" data-foot-tip style={{ left: tip.x, top: tip.y }}>
+          {tip.text}
+        </span>
+      )}
     </div>
   );
 }

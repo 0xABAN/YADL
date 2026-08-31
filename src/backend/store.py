@@ -21,6 +21,7 @@ def as_doc(row: dict) -> dict:
         "objects": row["objects"] or [],
         "url": presign_get(row["s3_key"]),
         "committed": bool(row.get("committed")),
+        "history": row.get("history") or [],
     }
 
 
@@ -221,10 +222,16 @@ def commit_image(pid: str, iid: str, uid: str) -> dict | None:
     row = image_row(pid, iid, uid)
     if not row:
         return None
-    if not any(_named(o.get("label")) for o in (row["objects"] or [])):
+    objs = row["objects"] or []
+    if not any(_named(o.get("label")) for o in objs):
         raise ValueError("unlabeled")
-    execute("update images set committed=true where id=%s", (str(row["id"]),))
+    hist = [*(row.get("history") or []), objs]
+    execute(
+        "update images set committed=true, history=%s where id=%s",
+        (Json(hist), str(row["id"])),
+    )
     row["committed"] = True
+    row["history"] = hist
     return as_doc(row)
 
 

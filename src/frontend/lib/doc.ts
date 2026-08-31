@@ -14,6 +14,7 @@ export type Doc = {
   objects: HandObj[];
   url?: string | null;
   committed?: boolean;
+  history?: HandObj[][];
 };
 
 export type Project = {

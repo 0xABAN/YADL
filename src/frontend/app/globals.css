@@ -31,7 +31,7 @@
   --lime: #bfff00;
   --radius: 6px;
   --radius-lg: 12px;
-  --rail: 249px;
+  --rail: 274px;
   --rail-pad: clamp(10px, 1.54vh, 15px);
   --canvas: #0c0c0c;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
@@ -236,6 +236,26 @@ aside, .shell footer, .stack { z-index: 1 }
     0 var(--cut)
   );
 }
+.actions .pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 28px;
+  align-items: center;
+  align-self: stretch;
+  position: relative;
+}
+.actions .pair::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.shell footer .commit { width: 100%; text-align: center; }
+.actions .pair > span { display: grid; }
+.shell .commit:disabled { opacity: 0.4; }
 .shell .commit:hover { background-color: #e5e5e5; color: #000; }
 .commit:hover { background: #e5e5e5 }
 .commit:active { transform: scale(0.98) }
@@ -243,7 +263,8 @@ aside, .shell footer, .stack { z-index: 1 }
 aside,
 .shell footer,
 .panel,
-.ann {
+.ann,
+.hist {
   --cut: 16px;
   background-color: #000;
   background-image:
@@ -275,7 +296,8 @@ aside,
   );
 }
 .shell footer,
-.panel { --cut: 8px; }
+.panel,
+.hist { --cut: 8px; }
 aside {
   position: relative;
   overflow: visible;
@@ -611,12 +633,9 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .tools button.assist { color: var(--lime); }
 .tools button.assist[aria-pressed="false"] { color: var(--muted); }
-.stack > .tip {
-  position: absolute;
-  left: calc(100% + 8px);
-  top: var(--tip-y, 50%);
-  transform: translateY(-50%);
-  z-index: 5;
+.tip {
+  position: fixed;
+  z-index: 6;
   padding: 4px 8px;
   background: #000;
   color: #fff;
@@ -625,7 +644,34 @@ main.cross, main.cross:active { cursor: crosshair }
   letter-spacing: 0;
   white-space: nowrap;
   pointer-events: none;
+  transform: translate(-50%, calc(-100% - 8px));
 }
+.stack > .tip {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: var(--tip-y, 50%);
+  transform: translateY(-50%);
+  z-index: 5;
+}
+.hist {
+  position: absolute;
+  z-index: 4;
+  right: 16px;
+  bottom: calc(50px + var(--rail-pad) / 2 + 10px);
+  width: 180px;
+  font-size: 12px;
+}
+.hist h2 {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 500;
+}
+.hist ul { list-style: none; padding: 6px 8px calc(var(--cut) + 2px); }
+.hist li { padding: 6px 4px; cursor: pointer; }
+.hist li:hover { background: #171717; }
+.hist .empty { color: var(--muted); padding: 10px; }
+.extra button[aria-pressed="true"] { color: var(--lime); }
 .extra {
   align-self: center;
   display: flex;
