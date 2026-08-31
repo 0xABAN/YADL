@@ -69,6 +69,7 @@ aside, .shell footer, .stack { z-index: 1 }
   top: 16px;
   left: calc(var(--rail) + var(--rail-pad));
   width: 200px;
+  padding: 0 14px;
   font-size: 12px;
 }
 .ann header {
@@ -76,6 +77,7 @@ aside, .shell footer, .stack { z-index: 1 }
   align-items: center;
   justify-content: center;
   position: relative;
+  margin: 0 -14px;
   padding: 8px 28px;
   border-bottom: 1px solid var(--line);
 }
@@ -102,8 +104,17 @@ aside, .shell footer, .stack { z-index: 1 }
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 8px;
+  position: relative;
+}
+.ann-btns::after {
+  content: "";
+  position: absolute;
+  left: -14px;
+  right: -14px;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
 }
 .ann .del { color: #f87171; }
 .ann .save {
@@ -113,7 +124,12 @@ aside, .shell footer, .stack { z-index: 1 }
   font-size: 11px;
   font-weight: 500;
 }
-.ann ul { list-style: none; padding: 6px 8px calc(var(--cut) + 2px); }
+.ann ul {
+  list-style: none;
+  padding: 14px 8px calc(var(--cut) + 2px);
+  overflow-y: auto;
+  max-height: calc(5 * 3.1em);
+}
 .ann li {
   display: flex;
   align-items: center;
@@ -387,8 +403,8 @@ aside .grainient-container {
 }
 .labels.poses li { grid-template-columns: auto 1fr auto auto; }
 .labels .swatch {
-  width: 1.6em;
-  height: 1.6em;
+  width: 8px;
+  height: 8px;
   padding: 0;
 }
 .labels .kill { padding: 0 2px; color: var(--muted); line-height: 1; }
@@ -667,8 +683,21 @@ main.cross, main.cross:active { cursor: crosshair }
   font-size: 11px;
   font-weight: 500;
 }
-.hist ul { list-style: none; padding: 6px 8px calc(var(--cut) + 2px); }
-.hist li { padding: 6px 4px; cursor: pointer; }
+.hist ul {
+  list-style: none;
+  padding: 6px 8px calc(var(--cut) + 2px);
+  overflow-y: auto;
+  max-height: calc(5 * 3.1em);
+}
+.hist li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 4px;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+}
+.hist time { color: var(--muted); font-size: 11px; font-family: var(--font); }
 .hist li:hover { background: #171717; }
 .hist .empty { color: var(--muted); padding: 10px; }
 .extra button[aria-pressed="true"] { color: var(--lime); }
