@@ -27,7 +27,7 @@ export default function Footer({
   onNext: () => void;
   onCommit: () => void;
   onExport: () => void;
-  onHistory: () => void;
+  onHistory: (btn: HTMLElement) => void;
   onTip: (tip: Tip | null) => void;
   committed: boolean;
   canCommit: boolean;
@@ -65,7 +65,7 @@ export default function Footer({
               type="button"
               data-tip={t.id}
               aria-pressed={t.id === "history" ? histOpen : undefined}
-              onClick={t.id === "history" ? onHistory : undefined}
+              onClick={t.id === "history" ? (e) => onHistory(e.currentTarget) : undefined}
               onMouseEnter={(e) => show(e.currentTarget, t.hint)}
               onMouseLeave={() => onTip(null)}
             >

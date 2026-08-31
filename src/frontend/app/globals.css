@@ -670,18 +670,29 @@ main.cross, main.cross:active { cursor: crosshair }
   z-index: 5;
 }
 .hist {
-  position: absolute;
-  z-index: 4;
-  right: 16px;
-  bottom: calc(50px + var(--rail-pad) / 2 + 10px);
+  position: fixed;
+  z-index: 6;
   width: 180px;
   font-size: 12px;
+  transform: translate(-50%, calc(-100% - 8px));
 }
-.hist h2 {
-  padding: 8px 10px;
+.hist header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 8px 28px;
   border-bottom: 1px solid var(--line);
-  font-size: 11px;
-  font-weight: 500;
+}
+.hist h2 { font-size: 11px; font-weight: 500; }
+.hist header button {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0;
+  line-height: 1;
+  color: var(--muted);
 }
 .hist ul {
   list-style: none;

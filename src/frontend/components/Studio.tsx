@@ -24,6 +24,8 @@ export default function Studio({ id }: { id: string }) {
   const [edit, setEdit] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [histOpen, setHistOpen] = useState(false);
+  const [histPos, setHistPos] = useState<{ x: number; y: number } | null>(null);
+  const histRef = useRef<HTMLDivElement>(null);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [assistOn, setAssistOn] = useState(true);
   const assistOnRef = useRef(true);
@@ -46,6 +48,23 @@ export default function Studio({ id }: { id: string }) {
     setDoc({ ...d, objects });
     setSelected(objects[0]?.id ?? null);
   };
+
+  useEffect(() => {
+    if (!histOpen) return;
+    const onMove = (e: PointerEvent) => {
+      const panel = histRef.current?.getBoundingClientRect();
+      const btn = document.querySelector("[data-tip=history]")?.getBoundingClientRect();
+      if (!panel || !btn) return;
+      const pad = 40;
+      const left = Math.min(panel.left, btn.left) - pad;
+      const right = Math.max(panel.right, btn.right) + pad;
+      const top = Math.min(panel.top, btn.top) - pad;
+      const bottom = Math.max(panel.bottom, btn.bottom) + pad;
+      if (e.clientX < left || e.clientX > right || e.clientY < top || e.clientY > bottom) setHistOpen(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [histOpen]);
 
   const iid = list[index]?.id;
   useEffect(() => {
@@ -219,7 +238,7 @@ export default function Studio({ id }: { id: string }) {
         </form>
       )}
       <Footer
-        path={doc ? `/${doc.image}` : ""}
+        path={doc && project ? `${project.name}/${doc.image}` : ""}
         index={index}
         n={list.length}
         onPrev={() => setIndex((i) => Math.max(0, i - 1))}
@@ -237,16 +256,31 @@ export default function Studio({ id }: { id: string }) {
         onExport={() => {
           location.href = `/api/projects/${id}/export`;
         }}
-        onHistory={() => setHistOpen((v) => !v)}
+        onHistory={(btn) => {
+          setTip(null);
+          if (histOpen) {
+            setHistOpen(false);
+            return;
+          }
+          const r = btn.getBoundingClientRect();
+          const foot = btn.closest("footer")?.getBoundingClientRect();
+          setHistPos({ x: r.left + r.width / 2, y: foot?.top ?? r.top });
+          setHistOpen(true);
+        }}
         onTip={setTip}
         committed={!!doc?.committed}
         canCommit={hands.some((o) => named(o.label))}
         nCommitted={list.filter((x) => x.committed).length}
         histOpen={histOpen}
       />
-      {histOpen && (
-        <div className="hist">
-          <h2>History</h2>
+      {histOpen && histPos && (
+        <div className="hist" data-hist ref={histRef} style={{ left: histPos.x, top: histPos.y }}>
+          <header>
+            <h2>History</h2>
+            <button type="button" aria-label="close" onClick={() => setHistOpen(false)}>
+              ×
+            </button>
+          </header>
           {(doc?.history ?? []).length === 0 ? (
             <p className="empty">No versions</p>
           ) : (
