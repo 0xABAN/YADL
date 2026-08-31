@@ -137,6 +137,7 @@ export default function Canvas({
   const [polyDraft, setPolyDraft] = useState<Pt[] | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [polyHold, setPolyHold] = useState<number | "draw" | null>(null);
+  const [tip, setTip] = useState<string | null>(null);
   const [vertHold, setVertHold] = useState<number | null>(null);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -743,7 +744,7 @@ export default function Canvas({
       </div>
     </main>
     <div className="stack">
-    <div className="panel tools">
+    <div className="panel tools" onMouseLeave={() => setTip(null)}>
       {TOOLS.filter((t) => shown.includes(t.id)).map((t) => (
         <Fragment key={t.id}>
         {t.id === "assist" && <hr />}
@@ -752,6 +753,14 @@ export default function Canvas({
           className={t.id === "assist" ? "assist" : undefined}
           aria-label={t.label}
           aria-pressed={t.id === "assist" ? assistOn : tool === t.id}
+          onMouseEnter={(e) => {
+            const stack = e.currentTarget.closest(".stack");
+            if (!(stack instanceof HTMLElement)) return;
+            const b = e.currentTarget.getBoundingClientRect();
+            const s = stack.getBoundingClientRect();
+            stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
+            setTip(t.label);
+          }}
           onClick={() => (t.id === "assist" ? onAssistOn?.() : setTool(t.id))}
         >
           <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
@@ -761,6 +770,7 @@ export default function Canvas({
         </Fragment>
       ))}
     </div>
+    {tip && <span className="tip">{tip}</span>}
     <div className="panel zoom">
         <button
           type="button"

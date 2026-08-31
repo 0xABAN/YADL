@@ -571,6 +571,7 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 
 .stack {
+  position: relative;
   grid-column: 2;
   grid-row: 1;
   justify-self: start;
@@ -608,15 +609,12 @@ main.cross, main.cross:active { cursor: crosshair }
   border: 0;
   border-top: 1px solid var(--line);
 }
-.panel.tools { clip-path: none; overflow: visible; }
-.tools button { position: relative }
 .tools button.assist { color: var(--lime); }
 .tools button.assist[aria-pressed="false"] { color: var(--muted); }
-.tools button:hover::after {
-  content: attr(aria-label);
+.stack > .tip {
   position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
+  left: calc(100% + 8px);
+  top: var(--tip-y, 50%);
   transform: translateY(-50%);
   z-index: 5;
   padding: 4px 8px;
