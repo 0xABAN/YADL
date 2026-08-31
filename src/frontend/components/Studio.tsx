@@ -251,16 +251,16 @@ export default function Studio({ id }: { id: string }) {
             <p className="empty">No versions</p>
           ) : (
             <ul>
-              {[...(doc?.history ?? []).keys()].reverse().map((i) => (
+              {[...(doc?.history ?? [])].reverse().map((v) => (
                 <li
-                  key={i}
+                  key={v.id}
                   onClick={() => {
-                    const objs = (doc?.history?.[i] ?? []).filter((o) => o.kind === "hand");
-                    save(objs);
+                    save((v.objects ?? []).filter((o) => o.kind === "hand"));
                     setHistOpen(false);
                   }}
                 >
-                  Version {i + 1}
+                  {v.id}
+                  {v.at && <time dateTime={v.at}>{new Date(v.at).toLocaleString()}</time>}
                 </li>
               ))}
             </ul>

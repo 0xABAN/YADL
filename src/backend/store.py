@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from psycopg.types.json import Json
@@ -14,6 +15,22 @@ def as_project(row: dict) -> dict:
     return {"id": str(row["id"]), "name": row["name"], "type": row["type"], "classes": row["classes"]}
 
 
+def _hid(n: int, objs: list) -> str:
+    blob = f"{n}:{json.dumps(objs, sort_keys=True, separators=(',', ':'))}".encode()
+    return hashlib.sha1(blob).hexdigest()[:7]
+
+
+def _versions(raw: list) -> list[dict]:
+    out = []
+    for i, v in enumerate(raw or []):
+        if isinstance(v, dict) and "id" in v and "objects" in v:
+            out.append({"id": v["id"], "objects": v["objects"], "at": v.get("at")})
+        else:
+            objs = v if isinstance(v, list) else []
+            out.append({"id": _hid(i, objs), "objects": objs, "at": None})
+    return out
+
+
 def as_doc(row: dict) -> dict:
     return {
         "id": str(row["id"]),
@@ -21,7 +38,7 @@ def as_doc(row: dict) -> dict:
         "objects": row["objects"] or [],
         "url": presign_get(row["s3_key"]),
         "committed": bool(row.get("committed")),
-        "history": row.get("history") or [],
+        "history": _versions(row.get("history") or []),
     }
 
 
@@ -225,7 +242,14 @@ def commit_image(pid: str, iid: str, uid: str) -> dict | None:
     objs = row["objects"] or []
     if not any(_named(o.get("label")) for o in objs):
         raise ValueError("unlabeled")
-    hist = [*(row.get("history") or []), objs]
+    hist = _versions(row.get("history") or [])
+    hist.append(
+        {
+            "id": _hid(len(hist), objs),
+            "objects": objs,
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+    )
     execute(
         "update images set committed=true, history=%s where id=%s",
         (Json(hist), str(row["id"])),
