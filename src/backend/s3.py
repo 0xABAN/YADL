@@ -34,3 +34,7 @@ def presign_get(key: str, seconds: int = 120) -> str:
 
 def download(key: str, dest: Path) -> None:
     _client().download_file(_bucket(), key, str(dest))
+
+
+def delete(key: str) -> None:
+    _client().delete_object(Bucket=_bucket(), Key=key)

@@ -37,6 +37,9 @@ from backend.store import (
     put_objects,
     save_objects,
     seed_demo,
+    add_class,
+    drop_class,
+    rename_class,
 )
 from backend.s3 import download
 from demo.hands import seed
@@ -48,6 +51,15 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 class NewProject(BaseModel):
     name: str
     type: Literal["boxes", "polygons", "hands"]
+
+
+class ClassName(BaseModel):
+    name: str
+
+
+class Rename(BaseModel):
+    old: str
+    new: str
 
 
 class Creds(BaseModel):
@@ -271,6 +283,30 @@ def new_project(body: NewProject, user: str = Depends(uid)):
 def drop_project(pid: str, user: str = Depends(uid)):
     if not delete_project(pid, user):
         raise HTTPException(404)
+
+
+@app.post("/projects/{pid}/classes")
+def new_class(pid: str, body: ClassName, user: str = Depends(uid)):
+    row = add_class(pid, user, body.name)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@app.patch("/projects/{pid}/classes")
+def patch_class(pid: str, body: Rename, user: str = Depends(uid)):
+    row = rename_class(pid, user, body.old, body.new)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@app.delete("/projects/{pid}/classes")
+def remove_class(pid: str, body: ClassName, user: str = Depends(uid)):
+    row = drop_class(pid, user, body.name)
+    if not row:
+        raise HTTPException(404)
+    return row
 
 
 @app.get("/projects/{pid}")
