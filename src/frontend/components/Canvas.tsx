@@ -1,6 +1,11 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type PointerEvent as PE } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import {
+  TransformComponent,
+  TransformWrapper,
+  type ReactZoomPanPinchContentRef,
+} from "react-zoom-pan-pinch";
 import {
   DEFAULT_TOOL,
   SHOWN,
@@ -15,9 +20,38 @@ import Hands from "./editors/Hands";
 import Boxes from "./editors/Boxes";
 import Polys from "./editors/Polys";
 
-const STEP = 10;
-const MIN = 25;
-const MAX = 400;
+const STEP = 0.1;
+const MIN = 0.5;
+const MAX = 4;
+
+/** Physical scale → UI % (min→0, 1→100, above natural stays scale×100). */
+const zoomPct = (scale: number) =>
+  Math.round(scale <= 1 ? ((scale - MIN) / (1 - MIN)) * 100 : scale * 100);
+
+function toolKey(type: Project["type"]) {
+  return `yadl.tool.${type}`;
+}
+
+function readTool(type: Project["type"], fallback: ToolId): ToolId {
+  try {
+    const v = sessionStorage.getItem(toolKey(type));
+    if (v === "move") return "move";
+    if (type === "hands" && v === "landmarks") return "landmarks";
+    if (type === "boxes" && v === "box") return "box";
+    if (type === "polygons" && v === "polygon") return "polygon";
+  } catch {
+    /* private mode */
+  }
+  return fallback;
+}
+
+function writeTool(type: Project["type"], t: ToolId) {
+  try {
+    sessionStorage.setItem(toolKey(type), t);
+  } catch {
+    /* private mode */
+  }
+}
 
 const TOOLS = [
   {
@@ -74,15 +108,14 @@ export default function Canvas({
   onTool?: (t: ToolId) => void;
 }) {
   const shown = SHOWN[projectType];
-  const [pos, setPos] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(100);
   const [locked, setLocked] = useState(false);
-  const [tool, setToolInner] = useState<ToolId>(toolProp ?? DEFAULT_TOOL[projectType]);
+  const [spacePan, setSpacePan] = useState(false);
+  const [tool, setToolInner] = useState<ToolId>(() => toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]));
   const [tip, setTip] = useState<string | null>(null);
   const [imgReady, setImgReady] = useState(false);
-  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
-  const spacePan = useRef(false);
+  const zpp = useRef<ReactZoomPanPinchContentRef | null>(null);
   const undo = useRef<AnnObj[][]>([]);
   const redo = useRef<AnnObj[][]>([]);
   const [hist, setHist] = useState({ u: 0, r: 0 });
@@ -95,11 +128,17 @@ export default function Canvas({
   }, [toolProp]);
 
   useEffect(() => {
-    setToolInner(DEFAULT_TOOL[projectType]);
+    const t = toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]);
+    setToolInner(t);
+    onTool?.(t);
+  }, [projectType]); // eslint-disable-line react-hooks/exhaustive-deps -- only flip tool when project type changes
+
+  useEffect(() => {
     undo.current = [];
     redo.current = [];
     setHist({ u: 0, r: 0 });
-  }, [src, projectType]);
+    setZoom(100);
+  }, [src]);
 
   useEffect(() => {
     setImgReady(false);
@@ -119,6 +158,7 @@ export default function Canvas({
 
   const setTool = (t: ToolId) => {
     setToolInner(t);
+    writeTool(projectType, t);
     onTool?.(t);
   };
 
@@ -166,7 +206,7 @@ export default function Canvas({
     const down = (e: KeyboardEvent) => {
       if (e.code === "Space" && !(e.target instanceof HTMLInputElement)) {
         e.preventDefault();
-        spacePan.current = true;
+        setSpacePan(true);
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -176,7 +216,7 @@ export default function Canvas({
       }
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code === "Space") spacePan.current = false;
+      if (e.code === "Space") setSpacePan(false);
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -186,8 +226,11 @@ export default function Canvas({
     };
   }, [doUndo, doRedo]);
 
-  const panning = tool === "move" || locked || spacePan.current;
+  const move = tool === "move";
+  const panning = move || locked || spacePan;
   const drawing = !panning && (tool === "box" || tool === "polygon");
+  const nav = !locked && move;
+  const panOk = !locked && (move || spacePan);
 
   const hands = objects.filter((o): o is HandObj => o.kind === "hand");
   const boxes = objects.filter((o): o is BoxObj => o.kind === "box");
@@ -197,82 +240,89 @@ export default function Canvas({
     <>
       <main
         className={drawing ? "cross" : undefined}
-        onPointerDown={(e: PE<HTMLElement>) => {
-          if (!panning && drawing) return;
-          if (!panning && tool === "landmarks") {
-            onEdit?.(null);
-            return;
-          }
-          e.currentTarget.setPointerCapture(e.pointerId);
-          drag.current = { x: pos.x, y: pos.y, px: e.clientX, py: e.clientY };
-        }}
-        onPointerMove={(e) => {
-          if (!drag.current) return;
-          setPos({
-            x: drag.current.x + e.clientX - drag.current.px,
-            y: drag.current.y + e.clientY - drag.current.py,
-          });
-        }}
-        onPointerUp={() => {
-          drag.current = null;
+        onPointerDown={() => {
+          if (panning || drawing) return;
+          if (tool === "landmarks") onEdit?.(null);
         }}
       >
-        <div className="world" style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom / 100})` }}>
-          <div className="dots" aria-hidden="true" />
-          <div className="frame" ref={frame}>
-            <i />
-            <i />
-            <i />
-            <i />
-            <img
-              src={src}
-              alt={alt}
-              draggable={false}
-              width={1280}
-              height={720}
-              className={imgReady ? "ready" : undefined}
-            />
-            {imgReady && (projectType === "boxes" || boxes.length > 0) && (
-              <Boxes
-                objects={boxes}
-                classes={classes}
-                locked={locked || panning}
-                active={tool === "box"}
-                selectedId={selectedId}
-                frameRef={frame}
-                onChange={(next, u) => replaceKind("box", next, u)}
-                onSelect={(id) => onSelect?.(id)}
-                onEdit={(id) => onEdit?.(id)}
+        <TransformWrapper
+          key={src}
+          ref={zpp}
+          minScale={MIN}
+          maxScale={MAX}
+          initialScale={1}
+          limitToBounds={false}
+          disablePadding
+          disabled={locked}
+          doubleClick={{ disabled: true }}
+          zoomAnimation={{ disabled: true }}
+          panning={{ disabled: !panOk, velocityDisabled: true }}
+          wheel={{ disabled: !nav, step: 0.04 }}
+          pinch={{ disabled: !nav }}
+          onTransform={(_, s) => setZoom(zoomPct(s.scale))}
+        >
+          <TransformComponent
+            wrapperClass="zpp"
+            contentClass="world"
+            wrapperStyle={{ width: "100%", height: "100%" }}
+            contentStyle={{ width: "100%", height: "100%", display: "grid" }}
+          >
+            <div className="dots" aria-hidden="true" />
+            <div className="frame" ref={frame}>
+              <i />
+              <i />
+              <i />
+              <i />
+              <img
+                src={src}
+                alt={alt}
+                draggable={false}
+                width={1280}
+                height={720}
+                className={imgReady ? "ready" : undefined}
               />
-            )}
-            {imgReady && (projectType === "polygons" || polys.length > 0) && (
-              <Polys
-                objects={polys}
-                classes={classes}
-                locked={locked || panning}
-                active={tool === "polygon"}
-                selectedId={selectedId}
-                frameRef={frame}
-                onChange={(next, u) => replaceKind("polygon", next, u)}
-                onSelect={(id) => onSelect?.(id)}
-                onEdit={(id) => onEdit?.(id)}
-              />
-            )}
-            {imgReady && (projectType === "hands" || hands.length > 0) && (
-              <Hands
-                objects={hands}
-                classes={classes}
-                locked={locked || tool === "move"}
-                active={projectType === "hands" ? tool !== "move" : tool === "landmarks"}
-                selectedId={selectedId}
-                frameRef={frame}
-                onChange={(next, u) => replaceKind("hand", next, u)}
-                onSelect={(id) => onSelect?.(id)}
-                onEdit={(id) => onEdit?.(id)}
-              />
-            )}
-          </div>
-        </div>
+              {imgReady && (projectType === "boxes" || boxes.length > 0) && (
+                <Boxes
+                  objects={boxes}
+                  classes={classes}
+                  locked={locked || panning}
+                  active={tool === "box"}
+                  selectedId={selectedId}
+                  frameRef={frame}
+                  onChange={(next, u) => replaceKind("box", next, u)}
+                  onSelect={(id) => onSelect?.(id)}
+                  onEdit={(id) => onEdit?.(id)}
+                />
+              )}
+              {imgReady && (projectType === "polygons" || polys.length > 0) && (
+                <Polys
+                  objects={polys}
+                  classes={classes}
+                  locked={locked || panning}
+                  active={tool === "polygon"}
+                  selectedId={selectedId}
+                  frameRef={frame}
+                  onChange={(next, u) => replaceKind("polygon", next, u)}
+                  onSelect={(id) => onSelect?.(id)}
+                  onEdit={(id) => onEdit?.(id)}
+                />
+              )}
+              {imgReady && (projectType === "hands" || hands.length > 0) && (
+                <Hands
+                  objects={hands}
+                  classes={classes}
+                  locked={locked || tool === "move"}
+                  active={projectType === "hands" ? tool !== "move" : tool === "landmarks"}
+                  selectedId={selectedId}
+                  frameRef={frame}
+                  onChange={(next, u) => replaceKind("hand", next, u)}
+                  onSelect={(id) => onSelect?.(id)}
+                  onEdit={(id) => onEdit?.(id)}
+                />
+              )}
+            </div>
+          </TransformComponent>
+        </TransformWrapper>
       </main>
       <div className="stack">
         <div className="panel tools" onMouseLeave={() => setTip(null)}>
@@ -370,8 +420,8 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={locked || zoom <= MIN}
-            onClick={() => setZoom((z) => Math.max(MIN, z - STEP))}
+            disabled={locked || zoom <= 0}
+            onClick={() => zpp.current?.zoomOut(STEP)}
             aria-label="Zoom out"
           >
             −
@@ -380,8 +430,8 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={locked || zoom >= MAX}
-            onClick={() => setZoom((z) => Math.min(MAX, z + STEP))}
+            disabled={locked || zoom >= MAX * 100}
+            onClick={() => zpp.current?.zoomIn(STEP)}
             aria-label="Zoom in"
           >
             +
@@ -397,14 +447,7 @@ export default function Canvas({
               />
             </svg>
           </button>
-          <button
-            type="button"
-            disabled={locked}
-            onClick={() => {
-              setZoom(100);
-              setPos({ x: 0, y: 0 });
-            }}
-          >
+          <button type="button" disabled={locked} onClick={() => zpp.current?.resetTransform()}>
             RESET
           </button>
         </div>

@@ -615,6 +615,11 @@ main {
 main:active { cursor: grabbing }
 main.cross, main.cross:active { cursor: crosshair }
 
+.zpp {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
 .world {
   position: relative;
   display: grid;
@@ -623,7 +628,6 @@ main.cross, main.cross:active { cursor: crosshair }
   height: 100%;
   padding-left: var(--rail);
   container-type: size;
-  transform-origin: calc(50% + var(--rail) / 2) 50%;
 }
 .dots {
   position: absolute;

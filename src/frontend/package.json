@@ -12,7 +12,8 @@
   "dependencies": {
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-zoom-pan-pinch": "^4.0.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
