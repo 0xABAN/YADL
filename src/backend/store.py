@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import os
 import uuid
 from pathlib import Path
@@ -19,6 +20,7 @@ def as_doc(row: dict) -> dict:
         "image": row["filename"],
         "objects": row["objects"] or [],
         "url": presign_get(row["s3_key"]),
+        "committed": bool(row.get("committed")),
     }
 
 
@@ -169,10 +171,19 @@ def list_images(pid: str, uid: str) -> list[dict] | None:
     if not get_project(pid, uid):
         return None
     rows = fetch(
-        "select id, filename from images where project_id=%s order by created_at, id limit 50",
+        """select id, filename, committed, objects from images
+           where project_id=%s order by created_at, id limit 500""",
         (pid,),
     )
-    return [{"id": str(r["id"]), "filename": r["filename"]} for r in rows]
+    return [
+        {
+            "id": str(r["id"]),
+            "filename": r["filename"],
+            "committed": bool(r["committed"]),
+            "empty": not (r["objects"] or []),
+        }
+        for r in rows
+    ]
 
 
 def image_row(pid: str, iid: str, uid: str) -> dict | None:
@@ -200,6 +211,58 @@ def put_objects(pid: str, iid: str, uid: str, objects: list) -> dict | None:
     save_objects(str(row["id"]), objects)
     row["objects"] = objects
     return as_doc(row)
+
+
+def _named(label: object) -> bool:
+    return bool(label) and label != "untitled"
+
+
+def commit_image(pid: str, iid: str, uid: str) -> dict | None:
+    row = image_row(pid, iid, uid)
+    if not row:
+        return None
+    if not any(_named(o.get("label")) for o in (row["objects"] or [])):
+        raise ValueError("unlabeled")
+    execute("update images set committed=true where id=%s", (str(row["id"]),))
+    row["committed"] = True
+    return as_doc(row)
+
+
+def empty_images(pid: str, uid: str) -> list[dict] | None:
+    if not get_project(pid, uid):
+        return None
+    return fetch(
+        """select * from images where project_id=%s
+           and coalesce(objects, '[]'::jsonb) = '[]'::jsonb""",
+        (pid,),
+    )
+
+
+def export_jsonl(pid: str, uid: str) -> tuple[str, str] | None:
+    proj = get_project(pid, uid)
+    if not proj:
+        return None
+    rows = fetch(
+        """select filename, objects, committed from images
+           where project_id=%s order by created_at, id""",
+        (pid,),
+    )
+    lines = []
+    for row in rows:
+        if not row["committed"]:
+            continue
+        for o in row["objects"] or []:
+            label = o.get("label")
+            if not _named(label):
+                continue
+            geom = o.get("geom") or {}
+            lines.append(
+                json.dumps(
+                    {"image": row["filename"], "label": label, "landmarks": geom.get("landmarks") or []},
+                    separators=(",", ":"),
+                )
+            )
+    return proj["name"], ("\n".join(lines) + ("\n" if lines else ""))
 
 
 def add_images(pid: str, uid: str, files: list[tuple[str, bytes, str]]) -> list[dict] | None:

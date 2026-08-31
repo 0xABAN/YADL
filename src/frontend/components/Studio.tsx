@@ -34,6 +34,11 @@ export default function Studio({ id }: { id: string }) {
     });
   }, [id]);
 
+  useEffect(() => {
+    if (!assistOnRef.current || !list.length) return;
+    fetch(`/api/projects/${id}/assist`, { method: "POST" });
+  }, [id, list]);
+
   const apply = (d: Doc) => {
     const objects = (d.objects ?? []).filter((o) => o.kind === "hand") as HandObj[];
     setDoc({ ...d, objects });
@@ -145,12 +150,12 @@ export default function Studio({ id }: { id: string }) {
           onAssistOn={() => {
             const next = !assistOn;
             setAssistOn(next);
-            if (!next || !doc || hands.length) return;
+            if (!next) return;
+            fetch(`/api/projects/${id}/assist`, { method: "POST" });
+            if (!doc || hands.length) return;
             fetch(`/api/projects/${id}/images/${doc.id}/assist`, { method: "POST" })
               .then((r) => r.json())
-              .then((d) => {
-                apply(d);
-              });
+              .then(apply);
           }}
           onEdit={(id) => {
             setEdit(id);
@@ -216,6 +221,19 @@ export default function Studio({ id }: { id: string }) {
         n={list.length}
         onPrev={() => setIndex((i) => Math.max(0, i - 1))}
         onNext={() => setIndex((i) => Math.min(list.length - 1, i + 1))}
+        onCommit={async () => {
+          if (!doc) return;
+          if (!doc.committed) {
+            if (!hands.some((o) => named(o.label))) return;
+            const r = await fetch(`/api/projects/${id}/images/${doc.id}/commit`, { method: "POST" });
+            if (!r.ok) return;
+            setDoc({ ...doc, committed: true });
+          }
+          setIndex((i) => Math.min(i + 1, list.length - 1));
+        }}
+        onExport={() => {
+          location.href = `/api/projects/${id}/export`;
+        }}
       />
     </div>
   );

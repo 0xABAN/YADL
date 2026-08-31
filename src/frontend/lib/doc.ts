@@ -13,6 +13,7 @@ export type Doc = {
   image: string;
   objects: HandObj[];
   url?: string | null;
+  committed?: boolean;
 };
 
 export type Project = {

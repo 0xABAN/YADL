@@ -1,6 +1,6 @@
 const EXTRA = [
   { id: "comment", label: "Comment", d: "M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z" },
-  { id: "history", label: "History", d: "M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z" },
+  { id: "export", label: "Export", d: "M224,152v56a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V152a8,8,0,0,1,16,0v48H208V152a8,8,0,0,1,16,0Zm-94.34,2.34a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,132.69V40a8,8,0,0,0-16,0v92.69L99.31,103a8,8,0,0,0-11.32,11.32Z" },
 ] as const;
 
 export default function Footer({
@@ -9,12 +9,16 @@ export default function Footer({
   n,
   onPrev,
   onNext,
+  onCommit,
+  onExport,
 }: {
   path: string;
   index: number;
   n: number;
   onPrev: () => void;
   onNext: () => void;
+  onCommit: () => void;
+  onExport: () => void;
 }) {
   return (
     <footer>
@@ -35,7 +39,7 @@ export default function Footer({
       <div className="actions">
         <div className="extra">
           {EXTRA.map((t) => (
-            <button key={t.id} type="button">
+            <button key={t.id} type="button" onClick={t.id === "export" ? onExport : undefined}>
               <svg viewBox="0 0 256 256" width="22" height="22" aria-hidden="true">
                 <path d={t.d} fill="currentColor" />
               </svg>
@@ -43,7 +47,7 @@ export default function Footer({
             </button>
           ))}
         </div>
-        <button className="commit" type="button">
+        <button className="commit" type="button" onClick={onCommit}>
           Commit
         </button>
       </div>

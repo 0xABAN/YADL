@@ -40,6 +40,9 @@ from backend.store import (
     add_class,
     drop_class,
     rename_class,
+    commit_image,
+    empty_images,
+    export_jsonl,
 )
 from backend.s3 import download
 from demo.hands import seed
@@ -356,13 +359,9 @@ def save(pid: str, iid: str, body: Doc, user: str = Depends(uid)):
     return row
 
 
-@app.post("/projects/{pid}/images/{iid}/assist")
-def assist(pid: str, iid: str, user: str = Depends(uid)):
-    row = image_row(pid, iid, user)
-    if not row:
-        raise HTTPException(404)
+def seed_row(row: dict) -> dict:
     if row["objects"]:
-        return as_doc(row)
+        return row
     ext = Path(row["filename"]).suffix or ".jpg"
     with tempfile.NamedTemporaryFile(suffix=ext) as tmp:
         path = Path(tmp.name)
@@ -370,4 +369,50 @@ def assist(pid: str, iid: str, user: str = Depends(uid)):
         objs = [o.model_dump() for o in seed(path)]
     save_objects(str(row["id"]), objs)
     row["objects"] = objs
-    return as_doc(row)
+    return row
+
+
+@app.post("/projects/{pid}/images/{iid}/assist")
+def assist(pid: str, iid: str, user: str = Depends(uid)):
+    row = image_row(pid, iid, user)
+    if not row:
+        raise HTTPException(404)
+    return as_doc(seed_row(row))
+
+
+@app.post("/projects/{pid}/assist")
+def assist_all(pid: str, user: str = Depends(uid)):
+    rows = empty_images(pid, user)
+    if rows is None:
+        raise HTTPException(404)
+    # ponytail: sync loop, chunk/job if 500 images time out
+    n = 0
+    for row in rows:
+        seed_row(row)
+        n += 1
+    return {"seeded": n}
+
+
+@app.post("/projects/{pid}/images/{iid}/commit")
+def commit(pid: str, iid: str, user: str = Depends(uid)):
+    try:
+        row = commit_image(pid, iid, user)
+    except ValueError:
+        raise HTTPException(400)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@app.get("/projects/{pid}/export")
+def dump(pid: str, user: str = Depends(uid)):
+    out = export_jsonl(pid, user)
+    if out is None:
+        raise HTTPException(404)
+    name, body = out
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name) or "export"
+    return Response(
+        body,
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="{safe}.jsonl"'},
+    )
