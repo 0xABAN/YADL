@@ -13,6 +13,7 @@ export default function Classes({
   onLabel,
   onRename,
   onDrop,
+  onAdd,
 }: {
   classes: string[];
   objects: HandObj[];
@@ -21,12 +22,62 @@ export default function Classes({
   onLabel: (label: string) => void;
   onRename: (old: string, name: string) => void;
   onDrop: (name: string) => void;
+  onAdd: () => void;
 }) {
   const [tab, setTab] = useState<"labels" | "objects">("labels");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [text, setText] = useState("");
   const keep = useRef(true);
   const counts = Object.fromEntries(classes.map((c) => [c, objects.filter((o) => o.label === c).length]));
+  const used = classes.filter((c) => counts[c]);
+  const unused = classes.filter((c) => !counts[c]);
+  const row = (name: string) => (
+    <li key={name} onClick={() => onLabel(name)}>
+      <span className="swatch" style={{ background: classColor(name, classes) }} />
+      {renaming === name ? (
+        <input
+          autoFocus
+          value={text}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => {
+            if (keep.current) onRename(name, text);
+            keep.current = true;
+            setRenaming(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              keep.current = false;
+              setRenaming(null);
+            }
+          }}
+        />
+      ) : (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            setRenaming(name);
+            setText(name);
+          }}
+        >
+          {name}
+        </span>
+      )}
+      <b>{counts[name] || 0}</b>
+      <button
+        type="button"
+        className="kill"
+        aria-label={`delete ${name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDrop(name);
+        }}
+      >
+        ×
+      </button>
+    </li>
+  );
   return (
     <aside>
       <Grainient
@@ -50,55 +101,16 @@ export default function Classes({
         </nav>
         <div className="pane">
           {tab === "labels" && (
-            <ul className="labels poses">
-              {classes.map((name) => (
-                <li key={name} onClick={() => onLabel(name)}>
-                  <span className="swatch" style={{ background: classColor(name, classes) }} />
-                  {renaming === name ? (
-                    <input
-                      autoFocus
-                      value={text}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => setText(e.target.value)}
-                      onBlur={() => {
-                        if (keep.current) onRename(name, text);
-                        keep.current = true;
-                        setRenaming(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") e.currentTarget.blur();
-                        if (e.key === "Escape") {
-                          keep.current = false;
-                          setRenaming(null);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRenaming(name);
-                        setText(name);
-                      }}
-                    >
-                      {name}
-                    </span>
-                  )}
-                  <b>{counts[name] || 0}</b>
-                  <button
-                    type="button"
-                    className="kill"
-                    aria-label={`delete ${name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDrop(name);
-                    }}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="labels poses">{used.map(row)}</ul>
+              <div className="unused">
+                <h2>Unused labels</h2>
+                <ul className="labels poses">{unused.map(row)}</ul>
+              </div>
+              <button type="button" className="add-label" onClick={onAdd}>
+                Create label
+              </button>
+            </>
           )}
           {tab === "objects" && (
             <ul className="labels">

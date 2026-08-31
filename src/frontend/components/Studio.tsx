@@ -104,7 +104,7 @@ export default function Studio({ id }: { id: string }) {
   };
 
   const hands = doc?.objects ?? [];
-  const editing = hands.find((o) => o.id === edit);
+  const editing = edit && edit !== "new" ? hands.find((o) => o.id === edit) : undefined;
   const classes = (project?.classes ?? []).filter((c) => named(c));
   const q = draft.trim();
   const shown = q ? classes.filter((c) => c.toLowerCase().includes(q.toLowerCase())) : classes;
@@ -112,7 +112,7 @@ export default function Studio({ id }: { id: string }) {
 
   const stamp = async (name: string) => {
     const label = name.trim();
-    if (!label || !editing || !project) return;
+    if (!label || !project) return;
     if (!project.classes.includes(label)) {
       const r = await fetch(`/api/projects/${id}/classes`, {
         method: "POST",
@@ -122,7 +122,7 @@ export default function Studio({ id }: { id: string }) {
       if (r.ok) setProject(await r.json());
       else setProject({ ...project, classes: [...project.classes, label] });
     }
-    save(hands.map((o) => (o.id === editing.id ? { ...o, label } : o)));
+    if (editing) save(hands.map((o) => (o.id === editing.id ? { ...o, label } : o)));
     setEdit(null);
   };
 
@@ -148,6 +148,10 @@ export default function Studio({ id }: { id: string }) {
           if (!r.ok) return;
           setProject(await r.json());
           if (doc) setDoc({ ...doc, objects: doc.objects.map((o) => (o.label === old ? { ...o, label } : o)) });
+        }}
+        onAdd={() => {
+          setDraft("");
+          setEdit("new");
         }}
         onDrop={async (name) => {
           if (!confirm(`Delete ${name}?`)) return;
@@ -188,7 +192,7 @@ export default function Studio({ id }: { id: string }) {
           }}
         />
       )}
-      {editing && (
+      {edit && (
         <form
           className="ann"
           onSubmit={(e) => {
@@ -203,7 +207,7 @@ export default function Studio({ id }: { id: string }) {
             <input
               autoFocus
               value={draft}
-              placeholder="class"
+              placeholder="label"
               onChange={(e) => setDraft(e.target.value)}
             />
             <button type="button" aria-label="close" onClick={() => setEdit(null)}>×</button>
@@ -214,27 +218,31 @@ export default function Studio({ id }: { id: string }) {
               type="button"
               className="del"
               onClick={() => {
-                save(hands.filter((o) => o.id !== editing.id));
+                if (editing) save(hands.filter((o) => o.id !== editing.id));
                 setEdit(null);
               }}
             >
               Delete
             </button>
           </div>
-          <ul>
-            {shown.map((name) => (
-              <li
-                key={name}
-                aria-current={q.toLowerCase() === name.toLowerCase() || undefined}
-                style={{ "--cc": classColor(name, classes) } as CSSProperties}
-                onClick={() => stamp(name)}
-              >
-                <span className="swatch" />
-                {name}
-              </li>
-            ))}
-            {fresh && <li aria-current onClick={() => stamp(q)}>create {q}</li>}
-          </ul>
+          {shown.length === 0 && !fresh ? (
+            <p className="empty">no existing labels</p>
+          ) : (
+            <ul>
+              {shown.map((name) => (
+                <li
+                  key={name}
+                  aria-current={q.toLowerCase() === name.toLowerCase() || undefined}
+                  style={{ "--cc": classColor(name, classes) } as CSSProperties}
+                  onClick={() => stamp(name)}
+                >
+                  <span className="swatch" />
+                  {name}
+                </li>
+              ))}
+              {fresh && <li aria-current onClick={() => stamp(q)}>create {q}</li>}
+            </ul>
+          )}
         </form>
       )}
       <Footer

@@ -140,6 +140,11 @@ aside, .shell footer, .stack { z-index: 1 }
 .ann li .swatch { width: 8px; height: 8px; flex: none; background: var(--cc); }
 .ann li:hover { background: #171717; }
 .ann li[aria-current] { background: #fff; color: #000; }
+.ann .empty {
+  color: var(--muted);
+  padding: 14px 8px calc(var(--cut) + 2px);
+  min-height: calc(2 * 3.1em);
+}
 
 .shell footer {
   --cut: 8px;
@@ -379,9 +384,35 @@ aside .grainient-container {
 .pane {
   flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--canvas);
 }
+.pane > .labels { flex: 1; min-height: 0; overflow: auto; }
+.unused {
+  margin: auto var(--rail-pad) 0;
+  padding: var(--rail-pad);
+  min-height: 16%;
+  overflow: auto;
+  background: #171717;
+}
+.add-label {
+  margin: var(--rail-pad);
+  padding: 8px;
+  background: #fff;
+  color: #000;
+  font-size: 12px;
+  font-weight: 500;
+}
+.unused h2 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.unused .labels { padding: 0; }
+.unused .labels li { color: var(--subtle); }
 .rail-ui::after {
   content: "";
   flex: 0 0 25%;
