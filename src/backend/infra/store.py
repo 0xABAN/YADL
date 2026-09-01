@@ -260,6 +260,30 @@ def list_images(pid: str, uid: str) -> list[dict] | None:
     return [_image_item(r) for r in rows]
 
 
+def list_project_comments(pid: str, uid: str) -> list[dict] | None:
+    """All image comments in filmstrip order (id, filename, comments)."""
+    if not get_project(pid, uid):
+        return None
+    rows = fetch(
+        """select id, filename, comments
+           from images
+           where project_id=%s and deleted_at is null
+           order by created_at, id limit 500""",
+        (pid,),
+    )
+    out = []
+    for i, r in enumerate(rows):
+        out.append(
+            {
+                "id": str(r["id"]),
+                "filename": r["filename"],
+                "index": i,
+                "comments": _comments(r.get("comments") or []),
+            }
+        )
+    return out
+
+
 def count_images(pid: str, uid: str) -> int | None:
     if not get_project(pid, uid):
         return None

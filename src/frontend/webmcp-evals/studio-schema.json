@@ -15,8 +15,15 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "index": { "type": "integer", "minimum": 0, "description": "0-based filmstrip index" },
-          "id": { "type": "string", "description": "Image id" },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0-based filmstrip index"
+          },
+          "id": {
+            "type": "string",
+            "description": "Image id"
+          },
           "next_uncommitted": {
             "type": "boolean",
             "description": "Jump to next uncommitted image after current (wraps)"
@@ -31,13 +38,21 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "object_id": { "type": "string" },
+          "object_id": {
+            "type": "string"
+          },
           "label": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Label text, or null/\"\" to clear"
           }
         },
-        "required": ["object_id", "label"],
+        "required": [
+          "object_id",
+          "label"
+        ],
         "additionalProperties": false
       }
     },
@@ -46,8 +61,14 @@
       "description": "Remove one annotation object from the current image (geometry deleted).",
       "inputSchema": {
         "type": "object",
-        "properties": { "object_id": { "type": "string" } },
-        "required": ["object_id"],
+        "properties": {
+          "object_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "object_id"
+        ],
         "additionalProperties": false
       }
     },
@@ -70,16 +91,44 @@
       }
     },
     {
+      "name": "get_comments",
+      "description": "List comments for every image in the project (filmstrip order). Optional image_id filters to one image. Current-image comments also appear on get_studio.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "image_id": {
+            "type": "string",
+            "description": "If set, only that image's comments"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "comment",
       "description": "Add or delete a comment on the current image.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "op": { "type": "string", "enum": ["add", "delete"] },
-          "body": { "type": "string", "description": "Required for add" },
-          "id": { "type": "string", "description": "Comment id; required for delete" }
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "delete"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "description": "Required for add"
+          },
+          "id": {
+            "type": "string",
+            "description": "Comment id; required for delete"
+          }
         },
-        "required": ["op"],
+        "required": [
+          "op"
+        ],
         "additionalProperties": false
       }
     },

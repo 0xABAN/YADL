@@ -18,6 +18,7 @@ from backend.infra.store import (
     delete_image,
     get_image,
     list_images,
+    list_project_comments,
     put_objects,
     restore_image,
 )
@@ -210,6 +211,14 @@ def commit(pid: str, iid: str, user: str = Depends(uid)):
     if not row:
         raise HTTPException(404)
     return row
+
+
+@router.get("/projects/{pid}/comments")
+def project_comments(pid: str, user: str = Depends(uid)):
+    rows = list_project_comments(pid, user)
+    if rows is None:
+        raise HTTPException(404)
+    return {"images": rows}
 
 
 @router.post("/projects/{pid}/images/{iid}/comments")

@@ -94,6 +94,18 @@ export const STUDIO_TOOL_SCHEMAS = {
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
     {
+      name: "get_comments",
+      description:
+        "List comments for every image in the project (filmstrip order). Optional image_id filters to one image. Current-image comments also appear on get_studio.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          image_id: { type: "string", description: "If set, only that image's comments" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
       name: "comment",
       description: "Add or delete a comment on the current image.",
       inputSchema: {
@@ -131,13 +143,30 @@ export type StudioToolsDeps = {
   >;
   addComment: (body: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   deleteComment: (cid: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Project-wide comments (all images). */
+  listComments: () => Promise<
+    | {
+        ok: true;
+        images: {
+          id: string;
+          filename: string;
+          index: number;
+          comments: { id: string; body: string; at?: string | null }[];
+        }[];
+      }
+    | { ok: false; error: string }
+  >;
   openUpload: () => void;
   /** Wait until doc matches target image id (post open_image). */
   waitForImage?: (imageId: string, ms?: number) => Promise<boolean>;
 };
 
 function slimObjects(objects: AnnObj[]) {
-  return objects.map((o) => ({ id: o.id, kind: o.kind, label: o.label }));
+  return objects.map((o) => ({
+    id: o.id,
+    kind: o.kind,
+    label: o.label,
+  }));
 }
 
 function slimComments(comments: Comment[] | undefined) {
@@ -296,6 +325,31 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
     {
       ...schemas[6],
       execute: async (args) => {
+        const res = await deps.listComments();
+        if (!res.ok) return { error: res.error };
+        const iid = typeof args.image_id === "string" ? args.image_id.trim() : "";
+        const images = iid ? res.images.filter((x) => x.id === iid) : res.images;
+        if (iid && !images.length) return { error: "not_found" };
+        const n_comments = images.reduce((n, x) => n + x.comments.length, 0);
+        return {
+          n_images: images.length,
+          n_comments,
+          images: images.map((x) => ({
+            id: x.id,
+            filename: x.filename,
+            index: x.index,
+            comments: x.comments.map((c) => ({
+              id: c.id,
+              body: c.body,
+              at: c.at ?? null,
+            })),
+          })),
+        };
+      },
+    },
+    {
+      ...schemas[7],
+      execute: async (args) => {
         const op = args.op;
         if (op === "add") {
           const body = String(args.body ?? "").trim();
@@ -315,7 +369,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[7],
+      ...schemas[8],
       execute: async () => {
         deps.openUpload();
         return { opened: true, cu: "[data-webmcp=select-files]" };

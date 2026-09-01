@@ -81,6 +81,7 @@ Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geom
 | `delete_object` | `{object_id}` on current image |
 | `commit_image` | current only; Footer rules; first commit advances |
 | `delete_image` | current only |
+| `get_comments` | all images' comments (optional `image_id`); current also on `get_studio` |
 | `comment` | `add`+`body` or `delete`+`id` on current |
 | `open_upload` | open add-media modal; CU on `[data-webmcp=select-files]` (no bytes tool) |
 

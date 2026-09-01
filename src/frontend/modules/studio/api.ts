@@ -139,6 +139,19 @@ export async function deleteClass(projectId: string, name: string): Promise<Proj
   }
 }
 
+export type ProjectCommentRow = {
+  id: string;
+  filename: string;
+  index: number;
+  comments: { id: string; body: string; at?: string | null; mentions?: string[] }[];
+};
+
+/** All comments across the project filmstrip (one request). */
+export async function fetchProjectComments(projectId: string): Promise<ProjectCommentRow[]> {
+  const body = await api<{ images?: ProjectCommentRow[] }>(`/projects/${projectId}/comments`);
+  return Array.isArray(body.images) ? body.images : [];
+}
+
 export async function postComment(projectId: string, imageId: string, body: string): Promise<Doc> {
   const d = await api<Record<string, unknown>>(`/projects/${projectId}/images/${imageId}/comments`, {
     method: "POST",
