@@ -891,7 +891,7 @@ main.cross, main.cross:active { cursor: crosshair }
 /* label tab sits on the top edge */
 .box-tab {
   position: absolute;
-  left: 0;
+  left: var(--box-h); /* clear the NW corner square */
   bottom: 100%;
   z-index: 3;
   max-width: 100%;
