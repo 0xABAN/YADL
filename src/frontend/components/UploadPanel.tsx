@@ -189,9 +189,6 @@ export default function UploadPanel({
         <div className="formats">
           <b>Supported</b>
           {formats}
-          <span className="formats-cap">
-            up to {room} more · {fmtSize(MAX_B)} total
-          </span>
         </div>
       </div>
 
@@ -218,7 +215,7 @@ export default function UploadPanel({
                   <b>{r.file.name}</b>
                   <small>
                     {fmtSize(r.file.size)}
-                    {r.kind === "video" ? " · frames on upload" : r.kind === "zip" ? " · expands on upload" : ""}
+                    {r.kind === "zip" ? " · expands on upload" : ""}
                   </small>
                 </span>
                 <button type="button" aria-label={`Remove ${r.file.name}`} disabled={busy} onClick={() => remove(r.id)}>
