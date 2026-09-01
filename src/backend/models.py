@@ -46,5 +46,6 @@ class Doc(BaseModel):
 class Project(BaseModel):
     id: str
     name: str
-    type: Literal["boxes", "polygons", "hands"]
+    type: Literal["boxes", "polygons", "keypoints"]
+    template: Literal["hand", "pose", "face"] | None = None
     classes: list[str]

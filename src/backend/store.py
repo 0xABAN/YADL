@@ -13,7 +13,21 @@ from backend.db import ROOT, execute, fetch, fetchone
 from backend.s3 import delete as s3_delete, presign_get, put
 
 def as_project(row: dict) -> dict:
-    return {"id": str(row["id"]), "name": row["name"], "type": row["type"], "classes": row["classes"]}
+    t = row["type"]
+    if t == "hands":
+        t = "keypoints"
+    tmpl = row.get("template")
+    if t == "keypoints" and not tmpl:
+        tmpl = "hand"
+    if t != "keypoints":
+        tmpl = None
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "type": t,
+        "template": tmpl,
+        "classes": row["classes"],
+    }
 
 
 def _hid(n: int, objs: list) -> str:
@@ -133,25 +147,31 @@ def github_user(github_id: str, email: str | None, name: str | None) -> dict:
 
 def list_projects(uid: str) -> list[dict]:
     return [as_project(r) for r in fetch(
-        "select id, name, type, classes from projects where owner_id=%s order by created_at desc limit 50",
+        "select id, name, type, template, classes from projects where owner_id=%s order by created_at desc limit 50",
         (uid,),
     )]
 
 
 def get_project(pid: str, uid: str) -> dict | None:
     row = fetchone(
-        "select id, name, type, classes from projects where id=%s and owner_id=%s",
+        "select id, name, type, template, classes from projects where id=%s and owner_id=%s",
         (pid, uid),
     )
     return as_project(row) if row else None
 
 
-def create_project(uid: str, name: str, type: str) -> dict | None:
+def create_project(uid: str, name: str, type: str, template: str | None = None) -> dict | None:
+    if type == "hands":
+        type = "keypoints"
+    if type == "keypoints":
+        template = template if template in ("hand", "pose", "face") else "hand"
+    else:
+        template = None
     pid = uuid.uuid4()
     row = fetchone(
-        """insert into projects (id, owner_id, name, type, classes) values (%s,%s,%s,%s,%s)
+        """insert into projects (id, owner_id, name, type, template, classes) values (%s,%s,%s,%s,%s,%s)
            on conflict (owner_id, name) do nothing returning *""",
-        (str(pid), uid, name, type, Json([])),
+        (str(pid), uid, name, type, template, Json([])),
     )
     return as_project(row) if row else None
 
@@ -383,10 +403,13 @@ def export_line(filename: str, obj: dict) -> str | None:
     base = {"image": filename, "label": label, "kind": t}
     if t == "hand":
         lms = geom.get("landmarks") or []
-        if len(lms) != 21:
+        if len(lms) < 1:
             return None
         base["landmarks"] = lms
-        base["handedness"] = geom.get("handedness")
+        if geom.get("handedness") is not None:
+            base["handedness"] = geom.get("handedness")
+        if geom.get("template"):
+            base["template"] = geom.get("template")
     elif t == "box":
         x, y = float(geom.get("x") or 0), float(geom.get("y") or 0)
         w, h = float(geom.get("w") or 0), float(geom.get("h") or 0)
@@ -452,7 +475,7 @@ def seed_demo() -> None:
     src = ROOT / "src" / "frontend" / "public" / "default.jpg"
     if not src.exists():
         return
-    proj = create_project("dev", "Hands", "hands")
+    proj = create_project("dev", "Keypoints", "keypoints", "hand")
     if not proj:
         return
     add_images(proj["id"], "dev", [(src.name, src.read_bytes(), "image/jpeg")])

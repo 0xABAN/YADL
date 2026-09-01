@@ -51,7 +51,7 @@ from backend.store import (
     export_jsonl,
 )
 from backend.s3 import download
-from demo.hands import seed
+from demo.seed import seed
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -59,7 +59,8 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 class NewProject(BaseModel):
     name: str
-    type: Literal["boxes", "polygons", "hands"]
+    type: Literal["boxes", "polygons", "keypoints", "hands"]  # hands=legacy alias
+    template: Literal["hand", "pose", "face"] | None = None
 
 
 class ClassName(BaseModel):
@@ -340,7 +341,8 @@ def new_project(body: NewProject, user: str = Depends(uid)):
     name = body.name.strip()
     if not name:
         raise HTTPException(400, "name")
-    row = create_project(user, name, body.type)
+    ptype = "keypoints" if body.type == "hands" else body.type
+    row = create_project(user, name, ptype, body.template)
     if not row:
         raise HTTPException(409, "name")
     return row
@@ -464,17 +466,20 @@ def save(pid: str, iid: str, body: Doc, user: str = Depends(uid)):
     return row
 
 
-def seed_row(row: dict, ptype: str, *, force: bool = False) -> dict:
-    # MediaPipe hand landmarks only — never for boxes/polygons
-    if ptype != "hands":
+def seed_row(row: dict, ptype: str, template: str | None = None, *, force: bool = False) -> dict:
+    # MediaPipe keypoints only — never for boxes/polygons
+    if ptype in ("hands",):
+        ptype = "keypoints"
+    if ptype != "keypoints":
         return row
     if row["objects"] and not force:
         return row
+    tmpl = template if template in ("hand", "pose", "face") else "hand"
     ext = Path(row["filename"]).suffix or ".jpg"
     with tempfile.NamedTemporaryFile(suffix=ext) as tmp:
         path = Path(tmp.name)
         download(row["s3_key"], path)
-        objs = [o.model_dump() for o in seed(path)]
+        objs = [o.model_dump() for o in seed(path, tmpl)]
     save_objects(str(row["id"]), objs)
     row["objects"] = objs
     return row
@@ -490,12 +495,12 @@ def assist(
     proj = get_project(pid, user)
     if not proj:
         raise HTTPException(404)
-    if proj["type"] != "hands":
-        raise HTTPException(400, "assist is hands-only")
+    if proj["type"] not in ("keypoints", "hands"):
+        raise HTTPException(400, "assist is keypoints-only")
     row = image_row(pid, iid, user)
     if not row:
         raise HTTPException(404)
-    return as_doc(seed_row(row, proj["type"], force=force))
+    return as_doc(seed_row(row, proj["type"], proj.get("template"), force=force))
 
 
 @app.post("/projects/{pid}/assist")
@@ -503,7 +508,7 @@ def assist_all(pid: str, user: str = Depends(uid)):
     proj = get_project(pid, user)
     if not proj:
         raise HTTPException(404)
-    if proj["type"] != "hands":
+    if proj["type"] not in ("keypoints", "hands"):
         return {"seeded": 0}
     rows = empty_images(pid, user)
     if rows is None:
@@ -511,7 +516,7 @@ def assist_all(pid: str, user: str = Depends(uid)):
     # ponytail: sync loop, chunk/job if 500 images time out
     n = 0
     for row in rows:
-        seed_row(row, proj["type"])
+        seed_row(row, proj["type"], proj.get("template"))
         n += 1
     return {"seeded": n}
 

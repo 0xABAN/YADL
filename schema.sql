@@ -13,10 +13,16 @@ create table if not exists projects (
   id uuid primary key,
   owner_id text not null references users(id),
   name text not null,
-  type text not null check (type in ('boxes','polygons','hands')),
+  type text not null check (type in ('boxes','polygons','keypoints')),
   classes jsonb not null default '[]',
   created_at timestamptz not null default now()
 );
+-- migrate hands to keypoints and relax old type check
+alter table projects drop constraint if exists projects_type_check;
+update projects set type = 'keypoints' where type = 'hands';
+alter table projects add constraint projects_type_check check (type in ('boxes','polygons','keypoints'));
+alter table projects add column if not exists template text;
+update projects set template = 'hand' where type = 'keypoints' and (template is null or template = '');
 create index if not exists projects_owner_created on projects (owner_id, created_at desc);
 delete from projects a using projects b
   where a.owner_id = b.owner_id and a.name = b.name and a.id > b.id;
