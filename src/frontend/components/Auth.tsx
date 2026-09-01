@@ -95,7 +95,7 @@ export default function Auth() {
 
   return (
     <div className="sheet">
-      <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+      <div style={{ width: "100%", maxWidth: 540, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
         <div style={{ background: "#111", width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.15rem", marginBottom: "0.75rem", border: "1px solid #333" }}>Y+</div>
         <h1 style={{ fontSize: "1.35rem", fontWeight: 600, marginBottom: "0.25rem", letterSpacing: "-0.025em" }}>{login ? "Sign in to Account" : "Sign up for Account"}</h1>
         <p style={{ fontSize: "0.85rem", color: "#888", marginBottom: "0.85rem", lineHeight: 1.5 }}>{login ? "Sign in to your Account." : "Create a new account to get started."}</p>

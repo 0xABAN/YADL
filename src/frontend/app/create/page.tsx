@@ -4,6 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/doc";
+import UploadPanel, { type SubmitOpts } from "@/components/UploadPanel";
+import QrCard from "@/components/QrCard";
+import { uploadFiles } from "@/lib/upload";
 
 const EXAMPLES = [
   "faces", "hands", "dogs", "cats", "cars", "trucks", "buses", "bikes",
@@ -53,24 +56,44 @@ const TYPES = [
   { id: "hands", name: "Landmarks", blurb: "Identify keypoints on subjects." },
 ] as const;
 
-const EXTS = ".jpg,.jpeg,.png,.webp,.avif,.bmp,.heic,.heif,.zip";
 const DATA = [
   "data", "images", "frames", "photos", "pictures", "shots", "stills",
   "files", "samples", "examples", "batches", "media", "captures",
   "scans", "snaps", "assets", "inputs", "sets", "packs", "lots",
 ];
 
+function upErr(status: number, detail?: string): string {
+  const d = (detail || "").toLowerCase();
+  if (status === 409 || d.includes("taken")) return "Name already exists.";
+  if (d.includes("ffmpeg")) return "Video tools unavailable (ffmpeg).";
+  if (d.includes("video")) return "Could not read video.";
+  if (d.includes("files") || status === 400) return "Upload rejected (type, size, or count).";
+  return "Upload failed.";
+}
+
 export default function New() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof TYPES)[number]["id"]>("boxes");
-  const [err, setErr] = useState<"empty" | "taken" | "fail" | null>(null);
+  const [err, setErr] = useState<"empty" | "taken" | null>(null);
+  const [upMsg, setUpMsg] = useState<string | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
   const [ex, setEx] = useState(0);
   const [step, setStep] = useState<"form" | "up">("form");
-  const [files, setFiles] = useState<File[]>([]);
-  const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [qrUrl, setQrUrl] = useState("");
+
+  useEffect(() => {
+    // resume upload step from phone QR (?name=&type=&up=1)
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("up") === "1") {
+      const n = (q.get("name") || "").trim();
+      const t = q.get("type");
+      if (n) setName(n);
+      if (t === "boxes" || t === "polygons" || t === "hands") setType(t);
+      if (n) setStep("up");
+    }
+  }, []);
 
   useEffect(() => {
     fetch("/api/projects").then((r) => {
@@ -81,6 +104,15 @@ export default function New() {
       return r.json();
     }).then((d) => setRows(Array.isArray(d) ? d : []));
   }, []);
+
+  useEffect(() => {
+    if (step !== "up" || typeof window === "undefined") return;
+    const u = new URL("/create", window.location.origin);
+    u.searchParams.set("up", "1");
+    u.searchParams.set("name", name.trim());
+    u.searchParams.set("type", type);
+    setQrUrl(u.toString());
+  }, [step, name, type]);
 
   useEffect(() => {
     const list = step === "form" ? EXAMPLES : DATA;
@@ -109,41 +141,57 @@ export default function New() {
       return;
     }
     setErr(null);
+    setUpMsg(null);
     go("up");
   };
 
-  const take = (list: FileList | File[]) => {
-    setFiles([...list].filter((f) => EXTS.split(",").some((e) => f.name.toLowerCase().endsWith(e))));
-  };
-
-  const send = async () => {
+  const send = async (files: File[], opts: SubmitOpts) => {
     if (!files.length || busy) return;
     setBusy(true);
-    setErr(null);
+    setUpMsg(null);
+    let pid: string | null = null;
     try {
       const r = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), type }),
+        signal: opts.signal,
       });
-      const p = await r.json();
+      const p = await r.json().catch(() => ({}));
       if (r.status === 409) {
         setErr("taken");
+        setUpMsg("Name already exists.");
+        go("form");
         return;
       }
       if (!r.ok || !p.id) {
-        setErr("fail");
+        setUpMsg(upErr(r.status, typeof p.detail === "string" ? p.detail : undefined));
         return;
       }
-      const body = new FormData();
-      files.forEach((f) => body.append("files", f));
-      const up = await fetch(`/api/projects/${p.id}/images`, { method: "POST", body });
+      pid = p.id as string;
+      const up = await uploadFiles(`/api/projects/${pid}/images`, files, {
+        interval: opts.interval,
+        signal: opts.signal,
+        onProgress: opts.onProgress,
+      });
       if (!up.ok) {
-        fetch(`/api/projects/${p.id}`, { method: "DELETE" });
-        setErr("fail");
+        const detail =
+          up.json && typeof up.json === "object" && up.json !== null && "detail" in up.json
+            ? String((up.json as { detail: unknown }).detail)
+            : undefined;
+        fetch(`/api/projects/${pid}`, { method: "DELETE" });
+        setUpMsg(upErr(up.status, detail));
         return;
       }
-      router.push(`/studio/${p.id}`);
+      router.push(`/studio/${pid}`);
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") {
+        if (pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
+        setUpMsg("Upload cancelled.");
+        return;
+      }
+      if (pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
+      setUpMsg("Upload failed.");
     } finally {
       setBusy(false);
     }
@@ -201,7 +249,7 @@ export default function New() {
       </nav>
       <h1>
         {step === "form" ? (
-          <>let's detect <span className="ex">{EXAMPLES[ex % EXAMPLES.length]}</span></>
+          <>let&apos;s detect <span className="ex">{EXAMPLES[ex % EXAMPLES.length]}</span></>
         ) : (
           <>
             <button type="button" className="back" aria-label="Back" onClick={() => go("form")}>
@@ -246,75 +294,46 @@ export default function New() {
           </button>
             </>
           ) : (
-            <>
-              <div
-                className={over ? "drop over" : "drop"}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setOver(true);
-                }}
-                onDragLeave={() => setOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setOver(false);
-                  take(e.dataTransfer.files);
-                }}
-              >
-                {files.length > 0 && <p className="picked">{files.length} selected</p>}
-                <p className="lead">Drag and drop to upload, or:</p>
-                <div className="picks">
-                  <label className="pick">
-                    Select files
-                    <input type="file" accept={EXTS} multiple hidden onChange={(e) => e.target.files && take(e.target.files)} />
-                  </label>
-                  <label className="pick">
-                    Select folder
-                    <input type="file" multiple hidden ref={(n) => n?.setAttribute("webkitdirectory", "true")} onChange={(e) => e.target.files && take(e.target.files)} />
-                  </label>
-                </div>
-                <div className="formats">
-                  <b>Supported</b>
-                  {EXTS.replaceAll(",", " ")}
-                </div>
+            <UploadPanel busy={busy} err={upMsg} onSubmit={send} />
+          )}
+        </div>
+        {step === "up" ? (
+          <QrCard url={qrUrl} />
+        ) : (
+          <div className="history">
+            <h2>Recent</h2>
+            {rows.length === 0 ? (
+              <p className="empty">No projects yet.</p>
+            ) : (
+              <div className="history-list">
+                {rows.map((p) => (
+                  <div key={p.id} className="row">
+                    <a href={`/studio/${p.id}`}>
+                      {p.name}
+                      <small>{TYPES.find((t) => t.id === p.type)?.name ?? p.type}</small>
+                    </a>
+                    <button
+                      type="button"
+                      aria-label="delete"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!confirm(`Delete ${p.name}?`)) return;
+                        const id = p.id;
+                        setRows((rs) => rs.filter((x) => x.id !== id));
+                        fetch(`/api/projects/${id}`, { method: "DELETE" }).then((r) => {
+                          if (!r.ok) setRows((rs) => (rs.some((x) => x.id === id) ? rs : [...rs, p]));
+                        }).catch(() => setRows((rs) => (rs.some((x) => x.id === id) ? rs : [...rs, p])));
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
-              {err === "taken" && <small className="err">Name already exists.</small>}
-              {err === "fail" && <small className="err">Upload failed.</small>}
-              <button className="commit" type="button" disabled={!files.length || busy} onClick={send}>
-                {busy ? "Uploading" : "Upload"}
-              </button>
-              <a className="skip" href="/auth">Skip</a>
-            </>
-          )}
-        </div>
-        <div className="history">
-          <h2>Recent</h2>
-          {rows.length === 0 ? (
-            <p className="empty">No projects yet.</p>
-          ) : (
-            <div className="history-list">
-              {rows.map((p) => (
-                <div key={p.id} className="row">
-                  <a href={`/studio/${p.id}`}>
-                    {p.name}
-                    <small>{TYPES.find((t) => t.id === p.type)?.name ?? p.type}</small>
-                  </a>
-                  <button
-                    type="button"
-                    aria-label="delete"
-                    onClick={() => {
-                      if (!confirm(`Delete ${p.name}?`)) return;
-                      fetch(`/api/projects/${p.id}`, { method: "DELETE" }).then((r) => {
-                        if (r.ok) setRows((rs) => rs.filter((x) => x.id !== p.id));
-                      });
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
         </div>
       </div>
     </div>

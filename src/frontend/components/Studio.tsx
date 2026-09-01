@@ -7,7 +7,9 @@ import Classes from "./Classes";
 import Comments from "./Comments";
 import Synthetic from "./Synthetic";
 import Footer from "./Footer";
+import UploadPanel from "./UploadPanel";
 import { readComments } from "@/lib/comment";
+import { uploadFiles } from "@/lib/upload";
 import {
   classColor,
   named,
@@ -72,6 +74,9 @@ export default function Studio({ id }: { id: string }) {
   // once per image — never batch-seed the whole project
   const assistedRef = useRef(new Set<string>());
   const [assistBusy, setAssistBusy] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [toast, setToast] = useState<string | null>(null);
   const [toastOut, setToastOut] = useState(false);
@@ -693,6 +698,10 @@ export default function Studio({ id }: { id: string }) {
             }, 5000),
           };
         }}
+        onAdd={() => {
+          setUploadErr(null);
+          setUploadOpen(true);
+        }}
         onCommit={async () => {
           if (!doc || !canCommit) return;
           const first = !doc.committed;
@@ -848,6 +857,68 @@ export default function Studio({ id }: { id: string }) {
         <span className="tip" data-foot-tip style={{ left: tip.x, top: tip.y }}>
           {tip.text}
         </span>
+      )}
+      {uploadOpen && (
+        <div
+          className="studio-upload"
+          role="dialog"
+          aria-label="Add media"
+          onClick={() => !uploadBusy && setUploadOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !uploadBusy) setUploadOpen(false);
+          }}
+        >
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h2>Add media</h2>
+            <UploadPanel
+              busy={uploadBusy}
+              err={uploadErr}
+              existing={list.length}
+              submitLabel="Add"
+              onCancel={() => !uploadBusy && setUploadOpen(false)}
+              onSubmit={async (files, opts) => {
+                if (!files.length || uploadBusy) return;
+                setUploadBusy(true);
+                setUploadErr(null);
+                try {
+                  const r = await uploadFiles(`/api/projects/${id}/images`, files, {
+                    interval: opts.interval,
+                    signal: opts.signal,
+                    onProgress: opts.onProgress,
+                  });
+                  if (!r.ok) {
+                    const detail =
+                      r.json && typeof r.json === "object" && r.json !== null && "detail" in r.json
+                        ? String((r.json as { detail: unknown }).detail).toLowerCase()
+                        : "";
+                    setUploadErr(
+                      detail.includes("ffmpeg")
+                        ? "Video tools unavailable (ffmpeg)."
+                        : detail.includes("video")
+                          ? "Could not read video."
+                          : "Upload rejected (type, size, or count).",
+                    );
+                    return;
+                  }
+                  const added = (Array.isArray(r.json) ? r.json : []) as ImgRow[];
+                  const imgs = (await api(`/projects/${id}/images`)) as ImgRow[];
+                  setList(imgs);
+                  setUploadOpen(false);
+                  if (added[0]?.id) {
+                    const j = imgs.findIndex((x) => x.id === added[0].id);
+                    if (j >= 0) setIndex(j);
+                  }
+                  showToast(`Added ${added.length}`, 1200);
+                } catch (e) {
+                  if ((e as Error)?.name === "AbortError") setUploadErr("Upload cancelled.");
+                  else setUploadErr("Upload failed.");
+                } finally {
+                  setUploadBusy(false);
+                }
+              }}
+            />
+          </div>
+        </div>
       )}
       {toast && (
         <div
