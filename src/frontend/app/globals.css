@@ -1242,7 +1242,7 @@ main.cross, main.cross:active { cursor: crosshair }
     linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)),
     var(--canvas) url("/create.png") center / cover no-repeat;
 }
-/* layout guide — behind chrome; top-left = sheet −100x / +150y → page BR */
+/* layout guide — left = sheet−100; top = side panel bottom+20 → page BR */
 .create-guide {
   --cell-w: 520px;
   --cell-h: 280px;
@@ -1437,10 +1437,8 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create:not(.upload) { grid-template-rows: auto 1fr; }
 .create:not(.upload):not(.auth) {
-  /* same top for form + upload — don't re-center when sheet height changes */
   grid-template-rows: auto auto;
-  align-content: start;
-  padding-top: clamp(72px, 16vh, 140px);
+  align-content: safe center;
   overflow: auto;
 }
 /* page grain only — scanlines live on .create-guide dark cells */
@@ -1660,17 +1658,6 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .sheet {
   padding: 32px;
 }
-/* soft elevation on controls — not text; clip-path on parent clips these to the panel */
-.create .types button,
-.create .history a,
-.create .sheet .commit,
-.create .pick,
-.create input[type=text],
-.create .drop {
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.45),
-    0 1px 3px rgba(0, 0, 0, 0.3);
-}
 .create .sheet .commit {
   display: block;
   width: 100%;
@@ -1876,7 +1863,6 @@ main.cross, main.cross:active { cursor: crosshair }
   text-align: left;
 }
 .create .formats b, .studio-upload .formats b { display: block; margin: 0 0 4px; color: #fff; font-weight: 500; }
-.create .formats-cap, .studio-upload .formats-cap { display: block; margin-top: 6px; color: var(--muted); }
 .create .file-list, .studio-upload .file-list {
   margin: 12px 0 4px;
   border: 1px solid var(--line);
@@ -2041,6 +2027,9 @@ main.cross, main.cross:active { cursor: crosshair }
   background: #171717;
   border: 1px solid var(--line);
   color: #fff;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.55),
+    0 4px 10px rgba(0, 0, 0, 0.35);
 }
 .studio-upload .sheet h2 {
   margin: 0 0 12px;

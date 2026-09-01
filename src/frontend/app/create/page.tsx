@@ -198,24 +198,29 @@ export default function New() {
   };
 
   const sheetRef = useRef<HTMLDivElement>(null);
+  const sideRef = useRef<HTMLDivElement>(null);
   const [guide, setGuide] = useState<{ left: number; top: number } | null>(null);
 
   useLayoutEffect(() => {
-    const el = sheetRef.current;
-    if (!el) return;
+    const sheet = sheetRef.current;
+    const side = sideRef.current;
+    if (!sheet || !side) return;
     const place = () => {
-      const r = el.getBoundingClientRect();
-      setGuide({ left: r.left - 100, top: r.top + 150 });
+      const s = sheet.getBoundingClientRect();
+      const p = side.getBoundingClientRect();
+      // horizontal: sheet − 100 (unchanged); vertical: 20px below Recent/QR
+      setGuide({ left: s.left - 100, top: p.bottom + 20 });
     };
     place();
     const ro = new ResizeObserver(place);
-    ro.observe(el);
+    ro.observe(sheet);
+    ro.observe(side);
     window.addEventListener("resize", place);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", place);
     };
-  }, [step, rows.length]);
+  }, [step, rows.length, qrUrl]);
 
   return (
     <div className={step === "up" ? "create up" : "create"}>
@@ -298,9 +303,9 @@ export default function New() {
           )}
         </div>
         {step === "up" ? (
-          <QrCard url={qrUrl} />
+          <QrCard ref={sideRef} url={qrUrl} />
         ) : (
-          <div className="history">
+          <div className="history" ref={sideRef}>
             <h2>Recent</h2>
             {rows.length === 0 ? (
               <p className="empty">No projects yet.</p>
