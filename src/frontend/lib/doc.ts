@@ -1,6 +1,6 @@
 import type { Comment } from "./comment";
 import type { Landmark } from "./hand";
-import type { RigState } from "./rig/types";
+import { DEFAULT_ROOT, type RigState } from "./rig/types";
 
 export type Pt = { x: number; y: number };
 
@@ -171,10 +171,10 @@ function parseRig(raw: unknown): RigState | null {
   }
   return {
     root: {
-      x: Number(rootIn.x) || 0.5,
-      y: Number(rootIn.y) || 0.5,
-      scale: Number(rootIn.scale) || 0.22,
-      roll: Number(rootIn.roll) || 0,
+      x: Number(rootIn.x) || DEFAULT_ROOT.x,
+      y: Number(rootIn.y) || DEFAULT_ROOT.y,
+      scale: Number(rootIn.scale) || DEFAULT_ROOT.scale,
+      roll: Number(rootIn.roll) || DEFAULT_ROOT.roll,
     },
     joints,
   };

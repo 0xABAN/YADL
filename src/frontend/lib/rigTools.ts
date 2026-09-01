@@ -1,7 +1,28 @@
 import { newId, type AnnObj, type HandObj, type KeypointTemplate, type Project } from "./doc";
-import { catalogFor, clampJoint, DEFAULT_ROOT, resolveJoints, restRig, type RigRoot, type RigState } from "./rig";
+import {
+  catalogFor,
+  clampJoint,
+  DEFAULT_ROOT,
+  jointIndex,
+  resolveJoints,
+  restRig,
+  type RigRoot,
+  type RigState,
+  type TemplateCatalog,
+} from "./rig";
 import type { StudioSnapshot } from "./studioTools";
 import type { WebMcpTool } from "./webmcp";
+
+const ROOT_PROPS = {
+  type: "object",
+  properties: {
+    x: { type: "number" },
+    y: { type: "number" },
+    scale: { type: "number" },
+    roll: { type: "number" },
+  },
+  additionalProperties: false,
+} as const;
 
 /** Schema-only export for webmcp-evals. */
 export const RIG_TOOL_SCHEMAS = {
@@ -28,16 +49,7 @@ export const RIG_TOOL_SCHEMAS = {
         type: "object",
         properties: {
           object_id: { type: "string" },
-          root: {
-            type: "object",
-            properties: {
-              x: { type: "number" },
-              y: { type: "number" },
-              scale: { type: "number" },
-              roll: { type: "number" },
-            },
-            additionalProperties: false,
-          },
+          root: ROOT_PROPS,
           joints: {
             type: "object",
             additionalProperties: { type: "number" },
@@ -55,16 +67,7 @@ export const RIG_TOOL_SCHEMAS = {
       inputSchema: {
         type: "object",
         properties: {
-          root: {
-            type: "object",
-            properties: {
-              x: { type: "number" },
-              y: { type: "number" },
-              scale: { type: "number" },
-              roll: { type: "number" },
-            },
-            additionalProperties: false,
-          },
+          root: ROOT_PROPS,
           handedness: { type: ["string", "null"], enum: ["Left", "Right", null] },
         },
         additionalProperties: false,
@@ -103,26 +106,23 @@ function pickObject(
 }
 
 function clampRoot(partial: Partial<RigRoot>, base: RigRoot): RigRoot {
-  const n = (v: unknown, d: number, lo: number, hi: number) => {
+  const n = (v: unknown, d: number, lo?: number, hi?: number) => {
     if (v === undefined || v === null) return d;
     const x = Number(v);
     if (!Number.isFinite(x)) return d;
-    return Math.min(hi, Math.max(lo, x));
+    if (lo !== undefined && hi !== undefined) return Math.min(hi, Math.max(lo, x));
+    return x;
   };
   return {
     x: n(partial.x, base.x, 0, 1),
     y: n(partial.y, base.y, 0, 1),
     scale: n(partial.scale, base.scale, 0.02, 1.5),
-    roll: (() => {
-      if (partial.roll === undefined || partial.roll === null) return base.roll;
-      const x = Number(partial.roll);
-      return Number.isFinite(x) ? x : base.roll;
-    })(),
+    roll: n(partial.roll, base.roll),
   };
 }
 
 function applySparseJoints(
-  catalog: ReturnType<typeof catalogFor>,
+  catalog: TemplateCatalog,
   base: Record<string, number>,
   sparse: Record<string, number> | undefined,
 ): { joints: Record<string, number>; clamped_keys: string[]; unknown_keys: string[] } {
@@ -130,8 +130,9 @@ function applySparseJoints(
   const clamped_keys: string[] = [];
   const unknown_keys: string[] = [];
   if (!sparse) return { joints, clamped_keys, unknown_keys };
+  const idx = jointIndex(catalog);
   for (const [k, raw] of Object.entries(sparse)) {
-    const def = catalog.joints.find((d) => d.id === k);
+    const def = idx.get(k);
     if (!def) {
       unknown_keys.push(k);
       continue;
@@ -143,16 +144,6 @@ function applySparseJoints(
     joints[k] = c;
   }
   return { joints, clamped_keys, unknown_keys };
-}
-
-function buildLandmarks(
-  template: KeypointTemplate,
-  rig: RigState,
-  handedness: "Left" | "Right" | null,
-) {
-  const cat = catalogFor(template);
-  const resolved = resolveJoints(cat, rig.joints);
-  return cat.fk(rig.root, resolved, handedness);
 }
 
 function rigPayload(
@@ -175,15 +166,7 @@ function rigPayload(
     landmark_count: obj.geom.landmarks.length || cat.landmarkCount,
     label: obj.label,
   };
-  if (opts.include_defs) {
-    out.joint_defs = cat.joints.map((d) => ({
-      id: d.id,
-      min: d.min,
-      max: d.max,
-      default: d.default,
-      unit: d.unit,
-    }));
-  }
+  if (opts.include_defs) out.joint_defs = cat.joints;
   if (opts.include_landmarks) {
     out.landmarks = obj.geom.landmarks.map((p, i) => ({
       i,
@@ -236,9 +219,10 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         if (!hasRoot && !hasJoints && !hasHand) return { error: "empty_patch" };
 
         const live = obj.geom.rig;
-        // Human/assist cleared rig: require full root+joints replace
-        if (!live) {
-          if (!hasRoot || !hasJoints) return { error: "rig_invalidated" };
+        if (!live && (!hasRoot || !hasJoints)) return { error: "rig_invalidated" };
+
+        if (template !== "hand" && handIn !== undefined && handIn !== null) {
+          return { error: "not_applicable" };
         }
 
         const baseRoot = live?.root ?? DEFAULT_ROOT;
@@ -249,38 +233,21 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         if (hasJoints && unknown_keys.length) {
           return { error: "unknown_joint", unknown_keys };
         }
-        const handedness =
-          handIn !== undefined
-            ? handIn
-            : (obj.geom.handedness ?? null);
-
-        if (template !== "hand" && handIn !== undefined && handIn !== null) {
-          return { error: "not_applicable" };
-        }
-
+        const handedness = handIn !== undefined ? handIn : (obj.geom.handedness ?? null);
         const rig: RigState = { root, joints };
-        const landmarks = buildLandmarks(template, rig, handedness);
         const nextObj: HandObj = {
           ...obj,
           edited: true,
           geom: {
             ...obj.geom,
-            landmarks,
+            landmarks: cat.fk(root, joints, handedness),
             handedness: template === "hand" ? handedness : null,
             rig,
           },
         };
-        const objects = pick.others.map((o) => (o.id === obj.id ? nextObj : o));
-        await deps.saveObjects(objects);
+        await deps.saveObjects(pick.others.map((o) => (o.id === obj.id ? nextObj : o)));
         deps.setSelected?.(nextObj.id);
-
-        const after = deps.get();
-        const fresh = handObjs(after).find((h) => h.id === nextObj.id) ?? nextObj;
-        return {
-          ...rigPayload(after, fresh),
-          clamped_keys,
-          unknown_keys,
-        };
+        return { ...rigPayload(snap, nextObj), clamped_keys, unknown_keys };
       },
     },
     {
@@ -302,7 +269,6 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         } else if (template === "hand") {
           handedness = "Right";
         }
-        const landmarks = cat.fk(rig.root, rig.joints, handedness);
         const obj: HandObj = {
           id: newId("kp"),
           kind: "hand",
@@ -310,17 +276,14 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
           edited: false,
           geom: {
             t: "hand",
-            landmarks,
+            landmarks: cat.fk(rig.root, rig.joints, handedness),
             handedness,
             rig,
           },
         };
-        const objects = [...snap.doc.objects, obj];
-        await deps.saveObjects(objects);
+        await deps.saveObjects([...snap.doc.objects, obj]);
         deps.setSelected?.(obj.id);
-        const after = deps.get();
-        const fresh = handObjs(after).find((h) => h.id === obj.id) ?? obj;
-        return rigPayload(after, fresh, { include_defs: false });
+        return rigPayload(snap, obj);
       },
     },
   ];

@@ -1,8 +1,8 @@
 import type { Landmark } from "../hand";
 import type { JointDef, RigRoot, TemplateCatalog } from "./types";
-import { clampJoint } from "./types";
+import { clamp01 } from "../geom";
+import { jointVal, rot } from "./types";
 
-/** Unit flex/lean: 0 neutral; signed where noted. */
 const JOINTS: JointDef[] = [
   { id: "torso_lean", min: -1, max: 1, default: 0, unit: "unit" },
   { id: "neck", min: -1, max: 1, default: 0, unit: "unit" },
@@ -18,35 +18,21 @@ const JOINTS: JointDef[] = [
   { id: "r_knee", min: 0, max: 1, default: 0.05, unit: "unit" },
 ];
 
-function j(map: Record<string, number>, id: string): number {
-  const def = JOINTS.find((d) => d.id === id)!;
-  return clampJoint(def, map[id] ?? def.default);
-}
+const j = (map: Record<string, number>, id: string) => jointVal(JOINTS, map, id);
 
-function rot(x: number, y: number, a: number): [number, number] {
-  const c = Math.cos(a);
-  const s = Math.sin(a);
-  return [x * c - y * s, x * s + y * c];
-}
-
-/** BlazePose-ish 33 layout in local units (pelvis origin, −y up). */
 function fkPose(root: RigRoot, joints: Record<string, number>): Landmark[] {
   const lean = j(joints, "torso_lean") * 0.25;
   const neckA = j(joints, "neck") * 0.35;
   const pts: [number, number][] = Array.from({ length: 33 }, () => [0, 0]);
 
-  // pelvis / hips
-  pts[23] = [-0.12 + j(joints, "l_hip") * 0.05, 0]; // left hip
-  pts[24] = [0.12 + j(joints, "r_hip") * 0.05, 0]; // right hip
-  const midHip: [number, number] = [(pts[23][0] + pts[24][0]) / 2, 0];
+  pts[23] = [-0.12 + j(joints, "l_hip") * 0.05, 0];
+  pts[24] = [0.12 + j(joints, "r_hip") * 0.05, 0];
 
-  // shoulders
   const shY = -0.55;
   pts[11] = [-0.22 + lean, shY + j(joints, "l_shoulder") * 0.08];
   pts[12] = [0.22 + lean, shY + j(joints, "r_shoulder") * 0.08];
   const midSh: [number, number] = [(pts[11][0] + pts[12][0]) / 2, (pts[11][1] + pts[12][1]) / 2];
 
-  // nose / face cluster from mid shoulder + neck
   const head: [number, number] = [midSh[0] + neckA * 0.1, midSh[1] - 0.22];
   pts[0] = head;
   pts[1] = [head[0] - 0.04, head[1] + 0.02];
@@ -60,7 +46,6 @@ function fkPose(root: RigRoot, joints: Record<string, number>): Landmark[] {
   pts[9] = [head[0] - 0.03, head[1] + 0.06];
   pts[10] = [head[0] + 0.03, head[1] + 0.06];
 
-  // arms: shoulder → elbow → wrist → hand tips
   const arm = (sh: [number, number], side: 1 | -1, elbowJ: number, wristJ: number): [[number, number], [number, number], [number, number], [number, number], [number, number]] => {
     const down = Math.PI / 2 + side * 0.15 + elbowJ * 0.9;
     const [ex, ey] = rot(0, 0.32, down);
@@ -88,7 +73,6 @@ function fkPose(root: RigRoot, joints: Record<string, number>): Landmark[] {
   pts[20] = rArm[3];
   pts[22] = rArm[4];
 
-  // legs
   const leg = (hip: [number, number], kneeJ: number, side: 1 | -1): [[number, number], [number, number], [number, number], [number, number]] => {
     const kAng = Math.PI / 2 + side * 0.05 + kneeJ * 0.7;
     const [kx, ky] = rot(0, 0.4, kAng);
@@ -111,15 +95,10 @@ function fkPose(root: RigRoot, joints: Record<string, number>): Landmark[] {
   pts[30] = rLeg[2];
   pts[32] = rLeg[3];
 
-  void midHip;
   const s = root.scale * 1.4;
   return pts.map(([lx, ly]) => {
     const [rx, ry] = rot(lx * s, ly * s, root.roll);
-    return {
-      x: Math.min(1, Math.max(0, root.x + rx)),
-      y: Math.min(1, Math.max(0, root.y + ry)),
-      z: 0,
-    };
+    return { x: clamp01(root.x + rx), y: clamp01(root.y + ry), z: 0 };
   });
 }
 
@@ -128,5 +107,5 @@ export const poseCatalog: TemplateCatalog = {
   landmarkCount: 33,
   joints: JOINTS,
   landmarkName: (i) => String(i),
-  fk: (root, joints) => fkPose(root, joints),
+  fk: fkPose,
 };

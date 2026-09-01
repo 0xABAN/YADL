@@ -1,8 +1,8 @@
 import { NAMES, type Landmark } from "../hand";
 import type { JointDef, RigRoot, TemplateCatalog } from "./types";
-import { clampJoint } from "./types";
+import { clamp01 } from "../geom";
+import { jointVal, rot } from "./types";
 
-/** Closed joint ids — flex 0=open … 1=curled; spread −1..1. DIP follows PIP. */
 const JOINTS: JointDef[] = [
   { id: "thumb_oppose", min: 0, max: 1, default: 0.25, unit: "unit" },
   { id: "thumb_mcp", min: 0, max: 1, default: 0.1, unit: "unit" },
@@ -21,18 +21,8 @@ const JOINTS: JointDef[] = [
   { id: "pinky_spread", min: -1, max: 1, default: -0.2, unit: "unit" },
 ];
 
-function j(map: Record<string, number>, id: string): number {
-  const def = JOINTS.find((d) => d.id === id)!;
-  return clampJoint(def, map[id] ?? def.default);
-}
+const j = (map: Record<string, number>, id: string) => jointVal(JOINTS, map, id);
 
-function rot(x: number, y: number, a: number): [number, number] {
-  const c = Math.cos(a);
-  const s = Math.sin(a);
-  return [x * c - y * s, x * s + y * c];
-}
-
-/** Chain from base: each bone length, cumulative bend toward palm (−y). */
 function finger(
   base: [number, number],
   baseAngle: number,
@@ -56,8 +46,6 @@ function finger(
 function fkHand(root: RigRoot, joints: Record<string, number>, handedness?: "Left" | "Right" | null): Landmark[] {
   const mirror = handedness === "Left" ? -1 : 1;
   const local: [number, number][] = Array.from({ length: 21 }, () => [0, 0]);
-
-  // wrist at origin; open hand points −y (up in local)
   local[0] = [0, 0];
 
   const thumb = finger(
@@ -89,7 +77,6 @@ function fkHand(root: RigRoot, joints: Record<string, number>, handedness?: "Lef
       [0.38, 0.24, 0.18, 0.14],
       [mcp * 0.35, mcp, pip, dip],
     );
-    // chain[0]=mcp base already; MediaPipe: MCP, PIP, DIP, TIP
     local[f.mcp] = chain[1];
     local[f.mcp + 1] = chain[2];
     local[f.mcp + 2] = chain[3];

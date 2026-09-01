@@ -443,7 +443,7 @@ export default function Studio({ id }: { id: string }) {
           }),
       }),
       ...(projectRef.current?.type === "keypoints"
-        ? rigPageTools({ get, saveObjects, setSelected: (oid) => setSelected(oid) })
+        ? rigPageTools({ get, saveObjects, setSelected })
         : []),
     ];
     void registerWebMcpTools(tools, ac.signal);

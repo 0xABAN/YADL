@@ -38,12 +38,30 @@ export function clampJoint(def: JointDef, v: number): number {
   return Math.min(def.max, Math.max(def.min, v));
 }
 
+export function rot(x: number, y: number, a: number): [number, number] {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return [x * c - y * s, x * s + y * c];
+}
+
+/** Look up joint value with catalog default + clamp. */
+export function jointVal(defs: JointDef[], map: Record<string, number>, id: string): number {
+  const def = defs.find((d) => d.id === id);
+  if (!def) return 0;
+  return clampJoint(def, map[id] ?? def.default);
+}
+
+export function jointIndex(catalog: TemplateCatalog): Map<string, JointDef> {
+  return new Map(catalog.joints.map((d) => [d.id, d]));
+}
+
 export function resolveJoints(catalog: TemplateCatalog, sparse: Record<string, number> | null | undefined) {
   const out: Record<string, number> = {};
   for (const d of catalog.joints) out[d.id] = d.default;
   if (sparse) {
+    const idx = jointIndex(catalog);
     for (const [k, v] of Object.entries(sparse)) {
-      const def = catalog.joints.find((d) => d.id === k);
+      const def = idx.get(k);
       if (def) out[k] = clampJoint(def, Number(v));
     }
   }
