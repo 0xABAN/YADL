@@ -4,19 +4,35 @@ import { DEFAULT_ROOT, type RigState } from "./rig/types";
 
 export type Pt = { x: number; y: number };
 
+/** Landmark cloud kind — matches project.template (legacy rows may still be "hand"). */
+export type KeypointKind = "hand" | "pose" | "face";
+
 export type HandObj = {
   id: string;
-  kind: "hand";
+  kind: KeypointKind;
   label: string | null;
   edited: boolean;
   geom: {
-    t: "hand";
+    t: KeypointKind;
     landmarks: Landmark[];
     handedness: "Left" | "Right" | null;
     /** Agent FK state; null after human free-edit or assist. */
     rig?: RigState | null;
   };
 };
+
+/** Normalize wire t/kind; remap legacy face/pose stored as hand via landmark count. */
+export function keypointKindOf(t: unknown, landmarkCount: number): KeypointKind {
+  if (t === "pose" || t === "face") return t;
+  if (t === "hand") {
+    if (landmarkCount >= 100) return "face";
+    if (landmarkCount >= 30 && landmarkCount <= 40) return "pose";
+    return "hand";
+  }
+  if (landmarkCount >= 100) return "face";
+  if (landmarkCount >= 30 && landmarkCount <= 40) return "pose";
+  return "hand";
+}
 
 export type BoxObj = {
   id: string;
@@ -35,6 +51,10 @@ export type PolyObj = {
 };
 
 export type AnnObj = HandObj | BoxObj | PolyObj;
+
+export function isKeypoint(o: AnnObj): o is HandObj {
+  return o.kind === "hand" || o.kind === "pose" || o.kind === "face";
+}
 
 export type Doc = {
   id: string;
@@ -108,16 +128,21 @@ export function readObjects(raw: unknown): AnnObj[] {
     const id = String(row.id ?? "");
     const label = (row.label as string | null) ?? null;
     const edited = Boolean(row.edited);
-    if (geom.t === "hand" && Array.isArray(geom.landmarks)) {
+    if (
+      (geom.t === "hand" || geom.t === "pose" || geom.t === "face") &&
+      Array.isArray(geom.landmarks)
+    ) {
+      const landmarks = geom.landmarks as Landmark[];
+      const kt = keypointKindOf(geom.t, landmarks.length);
       const rig = parseRig(geom.rig);
       out.push({
         id,
-        kind: "hand",
+        kind: kt,
         label,
         edited,
         geom: {
-          t: "hand",
-          landmarks: geom.landmarks as Landmark[],
+          t: kt,
+          landmarks,
           handedness: (geom.handedness as HandObj["geom"]["handedness"]) ?? null,
           rig,
         },
@@ -189,12 +214,14 @@ export function writeObjects(objects: AnnObj[]) {
         geom: { t: "polygon" as const, pts: o.geom.pts.map((p) => [p.x, p.y] as [number, number]) },
       };
     }
-    if (o.kind === "hand") {
+    if (isKeypoint(o)) {
       const { rig, ...rest } = o.geom;
       return {
         ...o,
+        kind: o.geom.t,
         geom: {
           ...rest,
+          t: o.geom.t,
           ...(rig ? { rig } : {}),
         },
       };

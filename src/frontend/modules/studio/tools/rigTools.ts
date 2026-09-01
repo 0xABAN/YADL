@@ -1,4 +1,11 @@
-import { newId, type AnnObj, type HandObj, type KeypointTemplate, type Project } from "../geometry/doc";
+import {
+  isKeypoint,
+  newId,
+  type AnnObj,
+  type HandObj,
+  type KeypointTemplate,
+  type Project,
+} from "../geometry/doc";
 import {
   catalogFor,
   clampJoint,
@@ -30,7 +37,7 @@ export const RIG_TOOL_SCHEMAS = {
     {
       name: "get_rig",
       description:
-        "Read FK rig for one keypoint instance. object_id required when more than one instance. Optional include_landmarks / include_defs.",
+        "Read FK rig for one keypoint instance (kind/template = hand|pose|face). object_id required when more than one instance. Optional include_landmarks / include_defs (face landmarks are large).",
       inputSchema: {
         type: "object",
         properties: {
@@ -44,7 +51,7 @@ export const RIG_TOOL_SCHEMAS = {
     {
       name: "set_rig",
       description:
-        "Batch update root and/or joints (and optional handedness). FK overwrites landmarks. If rig was cleared by human/assist, send full root+joints or get rig_invalidated.",
+        "Batch update root and/or joints (handedness only when template=hand). Joint ids are template-specific — unknown_joint returns valid_joint_ids. If rig was cleared by human/assist, send full root+joints or get rig_invalidated.",
       inputSchema: {
         type: "object",
         properties: {
@@ -63,7 +70,7 @@ export const RIG_TOOL_SCHEMAS = {
     {
       name: "add_instance",
       description:
-        "Add a rest-pose keypoint instance for the project template (FK landmarks + live rig). Optional root and handedness (hand only).",
+        "Add a rest-pose keypoint instance for the project template (kind/t = hand|pose|face; FK landmarks + live rig). Optional root; handedness only when template=hand.",
       inputSchema: {
         type: "object",
         properties: {
@@ -87,7 +94,7 @@ function templateOf(p: Project | null): KeypointTemplate {
 }
 
 function handObjs(snap: StudioSnapshot): HandObj[] {
-  return (snap.doc?.objects ?? []).filter((o): o is HandObj => o.kind === "hand");
+  return (snap.doc?.objects ?? []).filter(isKeypoint);
 }
 
 function pickObject(
@@ -158,14 +165,15 @@ function rigPayload(
   const joints = resolveJoints(cat, obj.geom.rig?.joints ?? null);
   const out: Record<string, unknown> = {
     object_id: obj.id,
+    kind: template,
     template,
     rig_live: live,
     root,
     joints,
-    handedness: obj.geom.handedness ?? null,
     landmark_count: obj.geom.landmarks.length || cat.landmarkCount,
     label: obj.label,
   };
+  if (template === "hand") out.handedness = obj.geom.handedness ?? null;
   if (opts.include_defs) out.joint_defs = cat.joints;
   if (opts.include_landmarks) {
     out.landmarks = obj.geom.landmarks.map((p, i) => ({
@@ -231,15 +239,21 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         const sparse = hasJoints ? (args.joints as Record<string, number>) : undefined;
         const { joints, clamped_keys, unknown_keys } = applySparseJoints(cat, baseJoints, sparse);
         if (hasJoints && unknown_keys.length) {
-          return { error: "unknown_joint", unknown_keys };
+          return {
+            error: "unknown_joint",
+            unknown_keys,
+            valid_joint_ids: cat.joints.map((d) => d.id),
+          };
         }
         const handedness = handIn !== undefined ? handIn : (obj.geom.handedness ?? null);
         const rig: RigState = { root, joints };
         const nextObj: HandObj = {
           ...obj,
+          kind: template,
           edited: true,
           geom: {
             ...obj.geom,
+            t: template,
             landmarks: cat.fk(root, joints, handedness),
             handedness: template === "hand" ? handedness : null,
             rig,
@@ -271,11 +285,11 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         }
         const obj: HandObj = {
           id: newId("kp"),
-          kind: "hand",
+          kind: template,
           label: null,
           edited: false,
           geom: {
-            t: "hand",
+            t: template,
             landmarks: cat.fk(rig.root, rig.joints, handedness),
             handedness,
             rig,
