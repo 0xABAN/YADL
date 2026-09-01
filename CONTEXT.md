@@ -8,7 +8,7 @@
 - **Owner:** `0xABAN` (Adam T.)
 - **Purpose:** A WebMCP-powered hand-pose studio. An agent authors labeled landmark samples by moving a constrained hand rig. A human reviews. The product is the data, not a detector.
 
-Not a WebMCP registry. Not a browser extension. Not ASL-specific.
+Not a WebMCP registry. Not a browser extension. Core labeler stays product-agnostic; ASL→Codex Micro is a demo vocab on top.
 
 ## WebMCP Challenge
 
@@ -28,7 +28,22 @@ The page is a 21-point hand driven by **FK joints**, not raw dots.
 
 **Joints:** wrist pitch/yaw/roll; per finger MCP (flex, spread), PIP, DIP; thumb opposition. DIP follows PIP. Clamped so the hand stays legal.
 
-**Presets:** `open`, `fist`, `point`, `pinch`, `thumbs_up`, `ok`
+**Presets:** `open`, `fist`, `point`, `pinch`, `thumbs_up`, `thumbs_down`, `ok`, `rock`
+
+### ASL → Codex Micro (demo vocab)
+
+Static one-hand control signs mapped to Codex Micro Command Keys. Not full ASL.
+
+| Label | Sign | Emoji | Codex action |
+|---|---|---|---|
+| `thumbs_up` | thumbs up | 👍 | Approve |
+| `thumbs_down` | thumbs down | 👎 | Decline |
+| `point` | index point | ☝️ | Send |
+| `fist` | closed fist | ✊ | Push-to-talk (hold) |
+| `open` | open hand | 🖐️ | New chat / branch |
+| `rock` | index + pinky | 🤘 | Fast mode toggle |
+
+Hold `fist` = PTT on; release = stop. Skip Agent Keys / dial / stick until the demo needs them.
 
 ## v1 (build this)
 
@@ -67,6 +82,6 @@ Live camera stays in the browser. Stills seed and train may use RunPod. Image ge
 
 - Agent owns pose authoring. Human reviews.
 - Joint rig (A), not raw 21 `(x,y,z)` and not presets-only
-- Product-agnostic labels. ASL/Micro-keyboard demo is a separate product if ever.
+- Core labels stay free-form. Demo vocab above is the locked ASL→Codex Micro set when that path is shown.
 - Web app in a real browser tab (`document.modelContext`). Not Electron/Tauri.
 - License still unset (MIT or Apache-2.0 candidates)
