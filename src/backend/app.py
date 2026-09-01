@@ -33,6 +33,7 @@ from backend.store import (
     github_user,
     image_row,
     list_images,
+    count_images,
     list_projects,
     login_user,
     put_objects,
@@ -400,10 +401,10 @@ async def upload(
 ):
     if not 0.1 <= interval <= 5:
         raise HTTPException(400, "interval")
-    existing = list_images(pid, user)
-    if existing is None:
+    n = count_images(pid, user)
+    if n is None:
         raise HTTPException(404)
-    room = MAX_N - len(existing)
+    room = MAX_N - n
     if room <= 0:
         raise HTTPException(400, "files")
 

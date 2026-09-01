@@ -178,6 +178,14 @@ def add_class(pid: str, uid: str, name: str) -> dict | None:
     return proj
 
 
+def _relabel_images(pid: str, pred) -> None:
+    for row in fetch("select id, objects from images where project_id=%s", (pid,)):
+        objs = row["objects"] or []
+        nxt = [pred(o) for o in objs]
+        if nxt != objs:
+            save_objects(str(row["id"]), nxt)
+
+
 def rename_class(pid: str, uid: str, old: str, new: str) -> dict | None:
     old, new = old.strip(), new.strip()
     proj = get_project(pid, uid)
@@ -190,11 +198,7 @@ def rename_class(pid: str, uid: str, old: str, new: str) -> dict | None:
     else:
         classes = [new if c == old else c for c in proj["classes"]]
     execute("update projects set classes=%s where id=%s", (Json(classes), pid))
-    for row in fetch("select id, objects from images where project_id=%s", (pid,)):
-        objs = row["objects"] or []
-        nxt = [{**o, "label": new} if o.get("label") == old else o for o in objs]
-        if nxt != objs:
-            save_objects(str(row["id"]), nxt)
+    _relabel_images(pid, lambda o: {**o, "label": new} if o.get("label") == old else o)
     proj["classes"] = classes
     return proj
 
@@ -206,21 +210,18 @@ def drop_class(pid: str, uid: str, name: str) -> dict | None:
         return None
     classes = [c for c in proj["classes"] if c != name]
     execute("update projects set classes=%s where id=%s", (Json(classes), pid))
-    for row in fetch("select id, objects from images where project_id=%s", (pid,)):
-        objs = row["objects"] or []
-        nxt = [{**o, "label": None} if o.get("label") == name else o for o in objs]
-        if nxt != objs:
-            save_objects(str(row["id"]), nxt)
+    _relabel_images(pid, lambda o: {**o, "label": None} if o.get("label") == name else o)
     proj["classes"] = classes
     return proj
 
 
 def _image_item(r: dict) -> dict:
+    empty = r["empty"] if "empty" in r else not (r.get("objects") or [])
     return {
         "id": str(r["id"]),
         "filename": r["filename"],
         "committed": bool(r["committed"]),
-        "empty": not (r["objects"] or []),
+        "empty": bool(empty),
     }
 
 
@@ -228,12 +229,24 @@ def list_images(pid: str, uid: str) -> list[dict] | None:
     if not get_project(pid, uid):
         return None
     rows = fetch(
-        """select id, filename, committed, objects from images
+        """select id, filename, committed,
+                  (coalesce(objects, '[]'::jsonb) = '[]'::jsonb) as empty
+           from images
            where project_id=%s and deleted_at is null
            order by created_at, id limit 500""",
         (pid,),
     )
     return [_image_item(r) for r in rows]
+
+
+def count_images(pid: str, uid: str) -> int | None:
+    if not get_project(pid, uid):
+        return None
+    row = fetchone(
+        "select count(*)::int as n from images where project_id=%s and deleted_at is null",
+        (pid,),
+    )
+    return int(row["n"]) if row else 0
 
 
 def image_row(pid: str, iid: str, uid: str, *, gone: bool = False) -> dict | None:
