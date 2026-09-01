@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import secrets
+import subprocess
 import tempfile
 import time
 import urllib.error
@@ -89,6 +90,7 @@ OK = {
     ".heic": "image/heic",
     ".heif": "image/heif",
 }
+VIDEO = {".mp4", ".mov", ".webm", ".mkv"}
 MAX_N, MAX_B = 500, 100 * 1024 * 1024
 
 
@@ -179,6 +181,59 @@ def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
         return out
     ct = OK.get(ext)
     return [(Path(name).name or "image.jpg", body, ct)] if ct else []
+
+
+def frames_from_video(
+    name: str, body: bytes, interval: float, room: int
+) -> list[tuple[str, bytes, str]]:
+    """ffmpeg fixed-interval JPEGs. room = slots left under MAX_N."""
+    # 0.1–5s; matches frontend slider
+    if not 0.1 <= interval <= 5:
+        raise HTTPException(400, "interval")
+    if room <= 0:
+        raise HTTPException(400, "files")
+    ext = Path(name).suffix.lower() or ".mp4"
+    stem = Path(name).stem or "video"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        src = root / f"in{ext}"
+        src.write_bytes(body)
+        pat = root / "f_%06d.jpg"
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(src),
+                    "-vf",
+                    f"fps=1/{interval}",
+                    "-q:v",
+                    "2",
+                    str(pat),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=600,
+            )
+        except FileNotFoundError as e:
+            raise HTTPException(500, "ffmpeg") from e
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            raise HTTPException(400, "video") from e
+        out: list[tuple[str, bytes, str]] = []
+        for i, p in enumerate(sorted(root.glob("f_*.jpg"))):
+            if i >= room:
+                break
+            t = i * interval
+            # e.g. clip_t0.jpg, clip_t1.5.jpg
+            fn = f"{stem}_t{t:g}.jpg"
+            out.append((fn, p.read_bytes(), "image/jpeg"))
+        if not out:
+            raise HTTPException(400, "video")
+        return out
 
 
 @app.on_event("startup")
@@ -337,11 +392,36 @@ def images(pid: str, user: str = Depends(uid)):
 
 
 @app.post("/projects/{pid}/images")
-async def upload(pid: str, user: str = Depends(uid), files: list[UploadFile] = File()):
-    blobs = []
+async def upload(
+    pid: str,
+    interval: float = 1.0,
+    user: str = Depends(uid),
+    files: list[UploadFile] = File(),
+):
+    if not 0.1 <= interval <= 5:
+        raise HTTPException(400, "interval")
+    existing = list_images(pid, user)
+    if existing is None:
+        raise HTTPException(404)
+    room = MAX_N - len(existing)
+    if room <= 0:
+        raise HTTPException(400, "files")
+
+    blobs: list[tuple[str, bytes, str]] = []
+    total_in = 0
     for f in files:
-        blobs.extend(flatten(f.filename or "", await f.read()))
-        if len(blobs) > MAX_N:
+        body = await f.read()
+        total_in += len(body)
+        if total_in > MAX_B:
+            raise HTTPException(400, "files")
+        name = f.filename or ""
+        ext = Path(name).suffix.lower()
+        if ext in VIDEO:
+            left = room - len(blobs)
+            blobs.extend(frames_from_video(name, body, interval, left))
+        else:
+            blobs.extend(flatten(name, body))
+        if len(blobs) > room:
             raise HTTPException(400, "files")
     if not blobs:
         raise HTTPException(400, "files")
