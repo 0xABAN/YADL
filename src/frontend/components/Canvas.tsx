@@ -21,15 +21,38 @@ import Boxes from "./editors/Boxes";
 import Polys from "./editors/Polys";
 
 const STEP = 0.1;
-const MIN = 0.05; /* allow fit-to-view on large images */
+const MIN = 0.05;
 const MAX = 4;
-const FIT_PAD = 0.88; /* air around image so chrome doesn't kiss the frame */
-const STACK_W = 56; /* .stack tool rail */
-const FOOT_H = 58; /* .shell footer */
+const FIT_PAD = 0.88;
 
 /** UI % relative to fit scale — fit is always 100%. */
 const zoomPct = (scale: number, fit: number) =>
   Math.round((scale / Math.max(fit, 1e-6)) * 100);
+
+/**
+ * Free canvas rect in main-local coords, measured from live chrome.
+ * Scales with resize / layout — no hardcoded stack/footer pixel sizes.
+ */
+function freeRect(main: HTMLElement) {
+  const mr = main.getBoundingClientRect();
+  const pad =
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--rail-pad")) || 12;
+  const aside = document.querySelector(".shell aside")?.getBoundingClientRect();
+  const stack = document.querySelector(".shell .stack")?.getBoundingClientRect();
+  const footer = document.querySelector(".shell footer")?.getBoundingClientRect();
+
+  // left edge of free area = rightmost left-chrome (aside or tool stack)
+  const leftEdge = Math.max(aside?.right ?? mr.left, stack?.right ?? mr.left);
+  const topEdge = mr.top;
+  const rightEdge = mr.right;
+  const bottomEdge = footer?.top ?? mr.bottom;
+
+  const left = leftEdge - mr.left + pad;
+  const top = topEdge - mr.top + pad;
+  const width = Math.max(1, rightEdge - leftEdge - pad * 2);
+  const height = Math.max(1, bottomEdge - topEdge - pad * 2);
+  return { left, top, width, height };
+}
 
 function toolKey(type: Project["type"]) {
   return `yadl.tool.${type}`;
@@ -154,29 +177,34 @@ export default function Canvas({
   const zoomDirty = useRef(false);
   const fitting = useRef(false);
 
+  const setDotsPos = (x: number, y: number) => {
+    const el = mainRef.current;
+    if (!el) return;
+    el.style.setProperty("--dots-x", `${x}px`);
+    el.style.setProperty("--dots-y", `${y}px`);
+  };
+
   const fitView = useCallback(() => {
     const api = zpp.current;
-    const wrap = mainRef.current;
+    const main = mainRef.current;
     const size = imgSize;
-    if (!api || !wrap || !size?.w || !size?.h) return;
-    const cs = getComputedStyle(document.documentElement);
-    const rail = parseFloat(cs.getPropertyValue("--rail")) || 274;
-    const pad = parseFloat(cs.getPropertyValue("--rail-pad")) || 12;
-    // clear of labels rail, tool stack, footer (main spans under footer)
-    const left = rail + STACK_W + pad * 2;
-    const right = pad;
-    const top = pad * 2;
-    const bottom = FOOT_H + pad * 2;
-    const aw = Math.max(1, wrap.clientWidth - left - right);
-    const ah = Math.max(1, wrap.clientHeight - top - bottom);
-    const scale = Math.min(MAX, Math.max(MIN, Math.min(aw / size.w, ah / size.h) * FIT_PAD));
-    const x = left + (aw - size.w * scale) / 2;
-    const y = top + (ah - size.h * scale) / 2;
+    if (!api || !main || !size?.w || !size?.h) return;
+    const free = freeRect(main);
+    const scale = Math.min(
+      MAX,
+      Math.max(MIN, Math.min(free.width / size.w, free.height / size.h) * FIT_PAD),
+    );
+    // world === image box; place its top-left so the image is centered in the free rect
+    const x = free.left + (free.width - size.w * scale) / 2;
+    const y = free.top + (free.height - size.h * scale) / 2;
     fitScale.current = scale;
     zoomDirty.current = false;
     fitting.current = true;
     api.setTransform(x, y, scale, 0);
-    fitting.current = false;
+    setDotsPos(x, y);
+    queueMicrotask(() => {
+      fitting.current = false;
+    });
     setZoom(100);
   }, [imgSize]);
 
@@ -220,30 +248,33 @@ export default function Canvas({
     };
   }, [src]);
 
-  // fit once size is known (before opacity), then on resize if user hasn't zoomed/panned
+  // fit once size is known (before opacity); re-fit on resize unless user zoomed/panned away from 100%
   useEffect(() => {
     if (!imgSize) return;
+    let alive = true;
     const run = () => {
+      if (!alive) return;
       fitView();
       setImgReady(true);
     };
     const onResize = () => {
+      if (!alive) return;
+      // refit when still at default fit (or dirty flag never stuck true)
       if (!zoomDirty.current) fitView();
     };
-    const t = requestAnimationFrame(run);
+    const t = requestAnimationFrame(() => requestAnimationFrame(run));
     const wrap = mainRef.current;
-    if (!wrap || typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", onResize);
-      return () => {
-        cancelAnimationFrame(t);
-        window.removeEventListener("resize", onResize);
-      };
+    window.addEventListener("resize", onResize);
+    let ro: ResizeObserver | undefined;
+    if (wrap && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(onResize);
+      ro.observe(wrap);
     }
-    const ro = new ResizeObserver(onResize);
-    ro.observe(wrap);
     return () => {
+      alive = false;
       cancelAnimationFrame(t);
-      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+      ro?.disconnect();
     };
   }, [imgSize, fitView]);
 
@@ -344,7 +375,7 @@ export default function Canvas({
           if (tool === "landmarks") onEdit?.(null);
         }}
       >
-        {/* fixed-scale canvas dots — outside zoom so pattern never shrinks/grows */}
+        {/* full-bleed dots — pitch fixed; offset tracks pan */}
         <div className="dots" aria-hidden="true" />
         <TransformWrapper
           key={src}
@@ -361,16 +392,18 @@ export default function Canvas({
           pinch={{ disabled: !move }}
           onInit={fitView}
           onTransform={(_, s) => {
+            setDotsPos(s.positionX, s.positionY);
             const fit = fitScale.current ?? s.scale;
             setZoom(zoomPct(s.scale, fit));
-            if (!fitting.current && fitScale.current != null) zoomDirty.current = true;
+            if (fitting.current || fitScale.current == null) return;
+            if (Math.abs(s.scale - fitScale.current) > 0.01) zoomDirty.current = true;
           }}
         >
           <TransformComponent
             wrapperClass="zpp"
             contentClass="world"
             wrapperStyle={{ width: "100%", height: "100%" }}
-            contentStyle={{ width: "max-content", height: "max-content", display: "grid" }}
+            contentStyle={{ width: "max-content", height: "max-content" }}
           >
             <div className="frame" ref={frame}>
               <i />

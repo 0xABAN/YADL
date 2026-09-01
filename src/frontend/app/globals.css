@@ -34,6 +34,8 @@
   --rail: 274px;
   --rail-pad: clamp(10px, 1.54vh, 15px);
   --rail-top: 96px;
+  --stack-w: 56px; /* tools + zoom rail */
+  --foot-h: 58px; /* studio footer bar */
   --canvas: #0a0a0a; /* near-black, not pure #000 */
   --ink: #0c0c0c; /* soft black — rail insets, not pure #000 */
   --panel: #171717;
@@ -122,8 +124,8 @@ button:disabled { cursor: default; opacity: 0.62 }
   position: fixed;
   z-index: 20;
   left: 50%;
-  /* footer 58px + bottom margin + same 8px gap as .tip/.hist */
-  bottom: calc(58px + var(--rail-pad) / 2 + 8px);
+  /* footer + margin + same 8px gap as .tip/.hist */
+  bottom: calc(var(--foot-h) + var(--rail-pad) / 2 + 8px);
   transform: translateX(-50%);
   padding: 8px 12px;
   background: #fff;
@@ -359,8 +361,8 @@ aside, .shell footer, .stack { z-index: 1 }
   align-items: center;
   justify-content: flex-end;
   gap: var(--foot-gap);
-  min-height: 58px;
-  height: 58px;
+  min-height: var(--foot-h);
+  height: var(--foot-h);
   margin: 0 16px calc(var(--rail-pad) / 2) var(--rail-pad);
   padding: 0 14px;
 }
@@ -754,28 +756,30 @@ main:active { cursor: grabbing }
 main.cross, main.cross:active { cursor: crosshair }
 
 .zpp {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   width: 100%;
   height: 100%;
   overflow: hidden;
 }
+/* content hugs the image — pan/zoom moves the whole canvas view */
 .world {
   position: relative;
   display: grid;
   place-items: center;
-  /* size to image — JS fit places it in the column right of the rail */
   width: max-content;
   height: max-content;
 }
+/* full-bleed fixed pitch; position tracks pan so the field never “ends” */
 .dots {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  /* fixed screen scale — not inside TransformWrapper */
   background-image: radial-gradient(rgba(163, 163, 163, 0.28) 1px, transparent 1px);
   background-size: 20px 20px;
+  background-position: var(--dots-x, 0px) var(--dots-y, 0px);
 }
 
 .world img {
@@ -945,7 +949,7 @@ main.cross, main.cross:active { cursor: crosshair }
   display: flex;
   flex-direction: column;
   gap: var(--rail-pad);
-  width: 56px;
+  width: var(--stack-w);
 }
 
 .panel {
@@ -2162,3 +2166,55 @@ main.cross, main.cross:active { cursor: crosshair }
   }
   .create .split { grid-template-columns: 1fr; }
 }
+
+/* in-app confirm — centered, no browser chrome */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.confirm-dialog {
+  width: min(360px, 100%);
+  padding: 20px 20px 16px;
+  border-radius: 12px;
+  background: #2a2a2a;
+  color: #fff;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+.confirm-msg {
+  margin: 0 0 18px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm-cancel,
+.confirm-ok {
+  min-width: 72px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #555;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.confirm-cancel {
+  background: transparent;
+  color: #fff;
+}
+.confirm-cancel:hover { background: #3a3a3a; }
+.confirm-ok {
+  background: #fff;
+  color: #111;
+  border-color: #fff;
+}
+.confirm-ok:hover { background: #e8e8e8; }

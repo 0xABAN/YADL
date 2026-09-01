@@ -59,9 +59,9 @@ export const SHOWN: Record<ProjectType, ToolId[]> = {
 };
 
 export const DEFAULT_TOOL: Record<ProjectType, ToolId> = {
-  keypoints: "landmarks",
-  boxes: "box",
-  polygons: "polygon",
+  keypoints: "move",
+  boxes: "move",
+  polygons: "move",
 };
 
 export const CLASS_COLOR = ["#99edff", "#bfff00", "#ff9ffc", "#ffd43b", "#ffa8a8", "#c5f6fa"];
