@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   ACCEPT,
   ALL_EXTS,
@@ -26,14 +26,16 @@ export type SubmitOpts = {
   onProgress: (p: UploadProgress) => void;
 };
 
-export default function UploadPanel({
-  busy = false,
-  err = null,
-  existing = 0,
-  submitLabel = "Upload",
-  onSubmit,
-  onCancel,
-}: {
+export type UploadPanelHandle = {
+  /**
+   * Try to open the OS file picker (does not upload).
+   * Browsers often block this without a real user gesture (e.g. WebMCP tool calls) —
+   * then we focus/highlight the visible "Select files" control for computer-use.
+   */
+  openFilePicker: () => { opened: boolean; needsClick?: boolean };
+};
+
+const UploadPanel = forwardRef<UploadPanelHandle, {
   busy?: boolean;
   err?: string | null;
   /** images already in the project (studio add) */
@@ -41,7 +43,14 @@ export default function UploadPanel({
   submitLabel?: string;
   onSubmit: (files: File[], opts: SubmitOpts) => void | Promise<void>;
   onCancel?: () => void;
-}) {
+}>(function UploadPanel({
+  busy = false,
+  err = null,
+  existing = 0,
+  submitLabel = "Upload",
+  onSubmit,
+  onCancel,
+}, ref) {
   const [rows, setRows] = useState<Row[]>([]);
   const [over, setOver] = useState(false);
   const [skipped, setSkipped] = useState(0);
@@ -49,6 +58,27 @@ export default function UploadPanel({
   const [prog, setProg] = useState<UploadProgress | null>(null);
   const urls = useRef<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickLabelRef = useRef<HTMLLabelElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    openFilePicker: () => {
+      if (busy) return { opened: false, needsClick: true };
+      const input = fileInputRef.current;
+      const label = pickLabelRef.current;
+      label?.scrollIntoView({ block: "center", inline: "nearest" });
+      label?.classList.add("pick-aim");
+      window.setTimeout(() => label?.classList.remove("pick-aim"), 4000);
+      // May be ignored without a user gesture (WebMCP / automation).
+      try {
+        input?.click();
+      } catch {
+        return { opened: false, needsClick: true };
+      }
+      // Can't reliably detect a blocked picker; tell agents to click Select files if none opens.
+      return { opened: false, needsClick: true };
+    },
+  }));
 
   useEffect(() => {
     return () => {
@@ -156,9 +186,14 @@ export default function UploadPanel({
       >
         <p className="lead">Drag and drop to upload, or:</p>
         <div className="picks">
-          <label className={busy ? "pick off" : "pick"}>
+          <label
+            ref={pickLabelRef}
+            className={busy ? "pick off" : "pick"}
+            data-webmcp="select-files"
+          >
             Select files
             <input
+              ref={fileInputRef}
               type="file"
               accept={ACCEPT}
               multiple
@@ -293,4 +328,6 @@ export default function UploadPanel({
       )}
     </>
   );
-}
+});
+
+export default UploadPanel;

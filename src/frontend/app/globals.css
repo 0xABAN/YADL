@@ -326,20 +326,27 @@ aside, .shell footer, .stack { z-index: 1 }
   background: var(--line);
 }
 .foot-del,
+.foot-add,
 .foot-copy {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   flex: none;
+  line-height: 0;
+  padding: 0;
 }
 .foot-del { color: #f87171; }
 .foot-del:hover:not(:disabled) { color: #ef4444; }
+.foot-add,
 .foot-copy { color: #fff; }
+.foot-add:hover:not(:disabled),
 .foot-copy:hover:not(:disabled) { color: var(--muted); }
 .foot-del:disabled,
+.foot-add:disabled,
 .foot-copy:disabled { opacity: 0.35; }
 .foot-del svg,
+.foot-add svg,
 .foot-copy svg { width: 16px; height: 16px; display: block; }
 
 .shell footer {
@@ -526,6 +533,7 @@ aside, .shell footer, .stack { z-index: 1 }
 .shell .ann .del,
 .shell .cmt-del,
 .shell .foot-del,
+.shell .foot-add,
 .shell .foot-copy,
 .shell .undo-link {
   user-select: none;
@@ -543,6 +551,7 @@ aside, .shell footer, .stack { z-index: 1 }
 .shell .hist li button:active,
 .shell .ann li button:active,
 .shell .foot-del:not(:disabled):active,
+.shell .foot-add:not(:disabled):active,
 .shell .foot-copy:not(:disabled):active {
   transform: scale(0.98);
 }
@@ -745,6 +754,8 @@ main:active { cursor: grabbing }
 main.cross, main.cross:active { cursor: crosshair }
 
 .zpp {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -753,19 +764,20 @@ main.cross, main.cross:active { cursor: crosshair }
   position: relative;
   display: grid;
   place-items: center;
-  width: 100%;
-  height: 100%;
-  padding-left: var(--rail);
-  container-type: size;
+  /* size to image — JS fit places it in the column right of the rail */
+  width: max-content;
+  height: max-content;
 }
 .dots {
   position: absolute;
-  inset: -200vmax;
+  inset: 0;
+  z-index: 0;
   pointer-events: none;
-  /* gray dots on black canvas */
+  /* fixed screen scale — not inside TransformWrapper */
   background-image: radial-gradient(rgba(163, 163, 163, 0.28) 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
 .world img {
   display: block;
   width: auto;
@@ -1212,7 +1224,7 @@ main.cross, main.cross:active { cursor: crosshair }
     linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)),
     var(--canvas) url("/create.png") center / cover no-repeat;
 }
-/* layout guide — left = sheet−100; top = side panel bottom+20 → page BR */
+/* layout guide — left = sheet−100; top = Recent/QR bottom+20 (never sheet) → page BR */
 .create-guide {
   --cell-w: 520px;
   --cell-h: 280px;
@@ -1411,6 +1423,23 @@ main.cross, main.cross:active { cursor: crosshair }
   align-content: safe center;
   overflow: auto;
 }
+/* upload step: title on top, sheet vertically centered in leftover */
+.create.up:not(.auth) {
+  grid-template-rows: auto 1fr;
+  align-content: stretch;
+}
+.create.up .body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 0;
+  padding-bottom: 24px;
+}
+.create.up .split {
+  width: 100%;
+  align-items: center;
+}
 /* page grain only — scanlines live on .create-guide dark cells */
 .create::after {
   content: "";
@@ -1521,14 +1550,22 @@ main.cross, main.cross:active { cursor: crosshair }
   cursor: pointer;
 }
 .create h1 .back svg { width: 0.72em; height: 0.72em; display: block; }
-.create .sheet { view-transition-name: create-sheet; grid-column: 2; }
+.create .sheet { view-transition-name: create-sheet; }
 .create .history { view-transition-name: create-open; }
 .create .qr-side { view-transition-name: create-open; }
 .create .split {
   display: grid;
+  /* sheet centered in viewport; Recent/QR sit in the right free column */
   grid-template-columns: 1fr minmax(0, 560px) 1fr;
   column-gap: 16px;
   align-items: start;
+  width: 100%;
+}
+.create .sheet {
+  grid-column: 2;
+  width: 100%;
+  max-width: 560px;
+  justify-self: stretch;
 }
 .create .history {
   grid-column: 3;
@@ -1627,6 +1664,7 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create .sheet {
   padding: 32px;
+  box-sizing: border-box;
 }
 .create .sheet .commit {
   display: block;
@@ -1660,31 +1698,46 @@ main.cross, main.cross:active { cursor: crosshair }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: calc(3 * 62px + 2 * 8px); /* 3 types visible, scroll after */
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-.create .types button { flex: none; }
-.create .types button, .create .history a {
+.create .types .type-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #0a0a0a;
+  border: 1px solid #141414;
+}
+.create .types .type-group > button,
+.create .types .type-group > .type-card { flex: none; }
+.create .types .type-group > button,
+.create .types .type-group > .type-card,
+.create .history a {
   display: block; width: 100%; text-align: left; padding: 12px 16px;
   color: #fff; text-decoration: none;
-}
-.create .types button {
   border: 1px solid var(--line);
   border-radius: 0;
   background: #171717;
+  box-sizing: border-box;
 }
-.create .types button[aria-pressed="true"] { border-color: #fff; }
-.create .types button:hover, .create .history a:hover { background: #2a2a2a; }
-.create .types button,
+.create .types .type-group > button[aria-pressed="true"],
+.create .types .type-group > .type-card[data-on] { border-color: #fff; }
+.create .types .type-group > button:hover,
+.create .types .type-group > .type-card:hover,
+.create .history a:hover { background: #2a2a2a; }
+.create .types .type-group > button,
+.create .types .type-group > .type-card,
 .create .pick, .studio-upload .pick,
 .create .history a,
 .create .sheet .commit {
   user-select: none;
   transition: background-color 0.12s, transform 0.08s, border-color 0.12s;
+  cursor: pointer;
 }
-.create .types button:active,
+.create .types .type-group > button:active,
+.create .types .type-group > .type-card:active,
 .create .pick:active, .studio-upload .pick:active,
 .create .history a:active,
 .create .sheet .commit:active {
@@ -1692,13 +1745,35 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create .types b { display: block; font-size: 14px; font-weight: 500; }
 .create .types span { color: var(--muted); font-size: 12px; }
+.create .types .tmpl {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.create .types .tmpl button {
+  flex: 1;
+  width: auto;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: #0a0a0a;
+  cursor: pointer;
+}
+.create .types .tmpl button:hover { color: #fff; background: #2a2a2a; }
+.create .types .tmpl button[aria-pressed="true"] {
+  color: #fff;
+  border-color: #fff;
+}
 .create .history {
   align-self: start;
   display: flex;
   flex-direction: column;
   gap: 8px;
   box-sizing: border-box;
-  width: 220px;
   min-height: 148px;
   padding: 16px 12px;
 }
@@ -1824,6 +1899,13 @@ main.cross, main.cross:active { cursor: crosshair }
   clip-path: none;
 }
 .create .pick:hover, .studio-upload .pick:hover { background: #e5e5e5; color: #000; }
+/* WebMCP / agent aim — pulse so computer-use can find Select files */
+.create .pick.pick-aim,
+.studio-upload .pick.pick-aim {
+  outline: 2px solid var(--lime, #bfff00);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(191, 255, 0, 0.25);
+}
 .create .formats, .studio-upload .formats {
   width: 100%;
   padding: 12px 14px;
@@ -1985,8 +2067,10 @@ main.cross, main.cross:active { cursor: crosshair }
   position: fixed;
   inset: 0;
   z-index: 80;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
   background: rgba(0, 0, 0, 0.55);
 }
 .studio-upload .sheet {

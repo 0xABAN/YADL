@@ -4,9 +4,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/doc";
-import UploadPanel, { type SubmitOpts } from "@/components/UploadPanel";
+import UploadPanel, { type SubmitOpts, type UploadPanelHandle } from "@/components/UploadPanel";
 import QrCard from "@/components/QrCard";
 import { uploadFiles } from "@/lib/upload";
+import { registerWebMcpTools } from "@/lib/webmcp";
 
 const EXAMPLES = [
   "faces", "hands", "dogs", "cats", "cars", "trucks", "buses", "bikes",
@@ -53,7 +54,13 @@ const EXAMPLES = [
 const TYPES = [
   { id: "boxes", name: "Bounding boxes", blurb: "Identify objects and their positions with bounding boxes." },
   { id: "polygons", name: "Polygons", blurb: "Detect objects and their actual shape." },
-  { id: "hands", name: "Landmarks", blurb: "Identify keypoints on subjects." },
+  { id: "keypoints", name: "Keypoints", blurb: "Identify landmarks on subjects (hand, pose, face)." },
+] as const;
+
+const TEMPLATES = [
+  { id: "hand", name: "Hand" },
+  { id: "pose", name: "Pose" },
+  { id: "face", name: "Face" },
 ] as const;
 
 const DATA = [
@@ -75,6 +82,7 @@ export default function New() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof TYPES)[number]["id"]>("boxes");
+  const [template, setTemplate] = useState<(typeof TEMPLATES)[number]["id"]>("hand");
   const [err, setErr] = useState<"empty" | "taken" | null>(null);
   const [upMsg, setUpMsg] = useState<string | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
@@ -82,6 +90,20 @@ export default function New() {
   const [step, setStep] = useState<"form" | "up">("form");
   const [busy, setBusy] = useState(false);
   const [qrUrl, setQrUrl] = useState("");
+  const [agentPid, setAgentPid] = useState<string | null>(null);
+  const uploadRef = useRef<UploadPanelHandle>(null);
+  const nameRef = useRef(name);
+  const typeRef = useRef(type);
+  const templateRef = useRef(template);
+  const stepRef = useRef(step);
+  const rowsRef = useRef(rows);
+  const agentPidRef = useRef(agentPid);
+  nameRef.current = name;
+  typeRef.current = type;
+  templateRef.current = template;
+  stepRef.current = step;
+  rowsRef.current = rows;
+  agentPidRef.current = agentPid;
 
   useEffect(() => {
     // resume upload step from phone QR (?name=&type=&up=1)
@@ -90,7 +112,11 @@ export default function New() {
       const n = (q.get("name") || "").trim();
       const t = q.get("type");
       if (n) setName(n);
-      if (t === "boxes" || t === "polygons" || t === "hands") setType(t);
+      if (t === "boxes" || t === "polygons" || t === "keypoints" || t === "hands") {
+        setType(t === "hands" ? "keypoints" : t);
+      }
+      const tmpl = q.get("template");
+      if (tmpl === "hand" || tmpl === "pose" || tmpl === "face") setTemplate(tmpl);
       if (n) setStep("up");
     }
   }, []);
@@ -111,8 +137,9 @@ export default function New() {
     u.searchParams.set("up", "1");
     u.searchParams.set("name", name.trim());
     u.searchParams.set("type", type);
+    if (type === "keypoints") u.searchParams.set("template", template);
     setQrUrl(u.toString());
-  }, [step, name, type]);
+  }, [step, name, type, template]);
 
   useEffect(() => {
     const list = step === "form" ? EXAMPLES : DATA;
@@ -145,30 +172,168 @@ export default function New() {
     go("up");
   };
 
+  useEffect(() => {
+    const ac = new AbortController();
+    void registerWebMcpTools(
+      [
+        {
+          name: "list_projects",
+          description: "List the user's recent YADL projects (id, name, type, template).",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => {
+            const r = await fetch("/api/projects");
+            if (r.status === 401) return { error: "auth_required" };
+            if (!r.ok) return { error: "list_failed", status: r.status };
+            const data = await r.json();
+            return { projects: Array.isArray(data) ? data : [] };
+          },
+        },
+        {
+          name: "create_project",
+          description:
+            "Create a labeling project. type is boxes, polygons, or keypoints. For keypoints, pass template hand|pose|face (default hand). Does not upload files.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Project name" },
+              type: {
+                type: "string",
+                enum: ["boxes", "polygons", "keypoints"],
+                description: "Annotation type",
+              },
+              template: {
+                type: "string",
+                enum: ["hand", "pose", "face"],
+                description: "Keypoint skeleton when type=keypoints",
+              },
+            },
+            required: ["name", "type"],
+            additionalProperties: false,
+          },
+          execute: async (args) => {
+            const n = String(args.name ?? "").trim();
+            const t = args.type as string;
+            if (!n) return { error: "empty_name" };
+            if (t !== "boxes" && t !== "polygons" && t !== "keypoints") return { error: "bad_type" };
+            const tmpl =
+              t === "keypoints"
+                ? args.template === "pose" || args.template === "face" || args.template === "hand"
+                  ? args.template
+                  : "hand"
+                : undefined;
+            setName(n);
+            setType(t);
+            if (tmpl) setTemplate(tmpl);
+            setErr(null);
+            const r = await fetch("/api/projects", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: n, type: t, ...(tmpl ? { template: tmpl } : {}) }),
+            });
+            const p = await r.json().catch(() => ({}));
+            if (r.status === 409) {
+              setErr("taken");
+              return { error: "name_taken" };
+            }
+            if (!r.ok || !p.id) {
+              return { error: "create_failed", status: r.status, detail: p.detail };
+            }
+            setAgentPid(String(p.id));
+            setRows((rs) => [p as Project, ...rs.filter((x) => x.id !== p.id)]);
+            go("up");
+            return {
+              project: p,
+              studio_url: `/studio/${p.id}`,
+              next: "Call upload_images to open the file picker, then use computer use to choose files and submit.",
+            };
+          },
+        },
+        {
+          name: "open_project",
+          description: "Open a project studio by id or exact name.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+            },
+            additionalProperties: false,
+          },
+          execute: async (args) => {
+            let id = typeof args.id === "string" ? args.id.trim() : "";
+            if (!id && typeof args.name === "string") {
+              const want = args.name.trim();
+              const hit = rowsRef.current.find((p) => p.name === want);
+              if (hit) id = hit.id;
+              else {
+                const r = await fetch("/api/projects");
+                const data = r.ok ? await r.json() : [];
+                const list = Array.isArray(data) ? (data as Project[]) : [];
+                const found = list.find((p) => p.name === want);
+                if (found) id = found.id;
+              }
+            }
+            if (!id) return { error: "not_found" };
+            router.push(`/studio/${id}`);
+            return { opened: id, studio_url: `/studio/${id}` };
+          },
+        },
+        {
+          name: "upload_images",
+          description:
+            "Prepare the upload step file picker. Does not upload or submit. Browsers block programmatic pickers without a real click — after calling this, use computer use to click the highlighted control labeled Select files (data-webmcp=select-files), choose files, then click Upload.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => {
+            if (stepRef.current !== "up") {
+              return { error: "not_on_upload_step", hint: "create_project first or open upload UI" };
+            }
+            const r = uploadRef.current?.openFilePicker() ?? { opened: false, needsClick: true };
+            return {
+              ...r,
+              target: { label: "Select files", selector: '[data-webmcp="select-files"]' },
+              next: "Computer use: click Select files, choose files in the OS dialog, then click Upload.",
+            };
+          },
+        },
+      ],
+      ac.signal,
+    );
+    return () => ac.abort();
+  }, [router]);
+
   const send = async (files: File[], opts: SubmitOpts) => {
     if (!files.length || busy) return;
     setBusy(true);
     setUpMsg(null);
-    let pid: string | null = null;
+    let pid: string | null = agentPid;
+    let createdHere = false;
     try {
-      const r = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), type }),
-        signal: opts.signal,
-      });
-      const p = await r.json().catch(() => ({}));
-      if (r.status === 409) {
-        setErr("taken");
-        setUpMsg("Name already exists.");
-        go("form");
-        return;
+      if (!pid) {
+        const r = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name.trim(),
+            type,
+            ...(type === "keypoints" ? { template } : {}),
+          }),
+          signal: opts.signal,
+        });
+        const p = await r.json().catch(() => ({}));
+        if (r.status === 409) {
+          setErr("taken");
+          setUpMsg("Name already exists.");
+          go("form");
+          return;
+        }
+        if (!r.ok || !p.id) {
+          setUpMsg(upErr(r.status, typeof p.detail === "string" ? p.detail : undefined));
+          return;
+        }
+        pid = p.id as string;
+        createdHere = true;
+        setAgentPid(pid);
       }
-      if (!r.ok || !p.id) {
-        setUpMsg(upErr(r.status, typeof p.detail === "string" ? p.detail : undefined));
-        return;
-      }
-      pid = p.id as string;
       const up = await uploadFiles(`/api/projects/${pid}/images`, files, {
         interval: opts.interval,
         signal: opts.signal,
@@ -179,18 +344,18 @@ export default function New() {
           up.json && typeof up.json === "object" && up.json !== null && "detail" in up.json
             ? String((up.json as { detail: unknown }).detail)
             : undefined;
-        fetch(`/api/projects/${pid}`, { method: "DELETE" });
+        if (createdHere) fetch(`/api/projects/${pid}`, { method: "DELETE" });
         setUpMsg(upErr(up.status, detail));
         return;
       }
       router.push(`/studio/${pid}`);
     } catch (e) {
       if ((e as Error)?.name === "AbortError") {
-        if (pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
+        if (createdHere && pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
         setUpMsg("Upload cancelled.");
         return;
       }
-      if (pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
+      if (createdHere && pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
       setUpMsg("Upload failed.");
     } finally {
       setBusy(false);
@@ -208,17 +373,23 @@ export default function New() {
     const place = () => {
       const s = sheet.getBoundingClientRect();
       const p = side.getBoundingClientRect();
-      // horizontal: sheet − 100 (unchanged); vertical: 20px below Recent/QR
-      setGuide({ left: s.left - 100, top: p.bottom + 20 });
+      // locked anchors: 100px left of sheet, 20px under Recent/QR only (not sheet) → viewport BR
+      const left = s.left - 100;
+      const top = p.bottom + 20;
+      setGuide((g) => (g && g.left === left && g.top === top ? g : { left, top }));
     };
     place();
     const ro = new ResizeObserver(place);
     ro.observe(sheet);
     ro.observe(side);
     window.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
     };
   }, [step, rows.length, qrUrl]);
 
@@ -287,19 +458,62 @@ export default function New() {
             </small>
           </div>
           <div className="types">
-            {TYPES.map((t) => (
-              <button key={t.id} type="button" aria-pressed={type === t.id} onClick={() => setType(t.id)}>
-                <b>{t.name}</b>
-                <span>{t.blurb}</span>
-              </button>
-            ))}
+            <div className="type-group">
+              {TYPES.map((t) =>
+                t.id === "keypoints" ? (
+                  <div
+                    key={t.id}
+                    className="type-card"
+                    data-on={type === "keypoints" || undefined}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={type === "keypoints"}
+                    onClick={() => setType("keypoints")}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setType("keypoints");
+                      }
+                    }}
+                  >
+                    <b>{t.name}</b>
+                    <span>{t.blurb}</span>
+                    <div
+                      className="tmpl"
+                      role="group"
+                      aria-label="Keypoint template"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {TEMPLATES.map((tmpl) => (
+                        <button
+                          key={tmpl.id}
+                          type="button"
+                          aria-pressed={type === "keypoints" && template === tmpl.id}
+                          onClick={() => {
+                            setType("keypoints");
+                            setTemplate(tmpl.id);
+                          }}
+                        >
+                          {tmpl.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <button key={t.id} type="button" aria-pressed={type === t.id} onClick={() => setType(t.id)}>
+                    <b>{t.name}</b>
+                    <span>{t.blurb}</span>
+                  </button>
+                ),
+              )}
+            </div>
           </div>
           <button className="commit" type="button" onClick={create}>
             Create Project
           </button>
             </>
           ) : (
-            <UploadPanel busy={busy} err={upMsg} onSubmit={send} />
+            <UploadPanel ref={uploadRef} busy={busy} err={upMsg} onSubmit={send} />
           )}
         </div>
         {step === "up" ? (

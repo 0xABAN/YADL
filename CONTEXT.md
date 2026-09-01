@@ -52,18 +52,30 @@ Localhost. No login, no cloud, no rate limits.
 - **Frontend:** `src/frontend` — Next.js + TypeScript
 - **Backend:** `src/backend` — Python + uv + FastAPI. Writes `./data/`.
 
-Landmarks match MediaPipe Hands: 21 points, `{x, y, z}`, `x,y ∈ [0,1]` of the image, `z` wrist-relative, MediaPipe index order. Joints are the authoring type; landmarks are derived. WebMCP comes last.
+Project types: `boxes` | `polygons` | `keypoints` (renamed from `hands`).
+Keypoints carry `template`: `hand` (21) | `pose` (33) | `face` (mesh). Assist seeds via MediaPipe still-image models. Object wire format still `kind: hand` / `geom.t: hand` for now (shared landmark list).
 
-WebMCP tools (later):
+Joints are the **Phase 2** authoring type for hand FK; landmarks are derived. Phase 2 WebMCP (studio, not done yet):
 
 | Tool | Role |
 |---|---|
 | `set_pose` | named preset |
 | `set_joint` | one joint, clamped |
-| `get_landmarks` | 21 points from the rig |
-| `commit_sample` | confirm, then write `{label, joints, landmarks}` to `./data/` |
+| `get_landmarks` | points from the rig |
+| `commit_sample` | write `{label, joints, landmarks}` and advance |
 
 Do not rate-limit `set_joint`.
+
+### WebMCP Phase 1 (create page)
+
+| Tool | Role |
+|---|---|
+| `list_projects` | recent projects |
+| `create_project` | `{name, type, template?}` — requires type; template for keypoints |
+| `open_project` | by id or name → studio |
+| `upload_images` | **opens OS file picker only** — does not upload; Codex computer-use always finishes selection/submit |
+
+Register via `document.modelContext`; no-op if unavailable.
 
 ## Later (not v1)
 
