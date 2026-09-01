@@ -29,7 +29,10 @@ export default function Classes({
   const [renaming, setRenaming] = useState<string | null>(null);
   const [text, setText] = useState("");
   const keep = useRef(true);
-  const counts = Object.fromEntries(classes.map((c) => [c, objects.filter((o) => o.label === c).length]));
+  const counts: Record<string, number> = Object.fromEntries(classes.map((c) => [c, 0]));
+  for (const o of objects) {
+    if (o.label && o.label in counts) counts[o.label]++;
+  }
   const used = classes.filter((c) => counts[c]);
   const unused = classes.filter((c) => !counts[c]);
 

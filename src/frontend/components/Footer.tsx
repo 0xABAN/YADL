@@ -1,3 +1,5 @@
+import type { FocusEvent, MouseEvent } from "react";
+
 const EXTRA = [
   {
     id: "comment",
@@ -65,6 +67,12 @@ export default function Footer({
     const foot = el.closest("footer")?.getBoundingClientRect();
     onTip({ x: r.left + r.width / 2, y: foot?.top ?? r.top, text });
   };
+  const tip = (text: string) => ({
+    onMouseEnter: (e: MouseEvent<HTMLElement>) => show(e.currentTarget, text),
+    onMouseLeave: () => onTip(null),
+    onFocus: (e: FocusEvent<HTMLElement>) => show(e.currentTarget, text),
+    onBlur: () => onTip(null),
+  });
   const commitHint = canCommit ? "Accept this sample" : commitReason;
 
   return (
@@ -77,10 +85,7 @@ export default function Footer({
           aria-label="Delete image"
           title="Delete image"
           onClick={onDelete}
-          onMouseEnter={(e) => show(e.currentTarget, "Delete image")}
-          onMouseLeave={() => onTip(null)}
-          onFocus={(e) => show(e.currentTarget, "Delete image")}
-          onBlur={() => onTip(null)}
+          {...tip("Delete image")}
         >
           <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
             <path
@@ -95,10 +100,7 @@ export default function Footer({
           aria-label="Add media"
           title="Add media"
           onClick={onAdd}
-          onMouseEnter={(e) => show(e.currentTarget, "Add images or video")}
-          onMouseLeave={() => onTip(null)}
-          onFocus={(e) => show(e.currentTarget, "Add images or video")}
-          onBlur={() => onTip(null)}
+          {...tip("Add images or video")}
         >
           <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
             <path
@@ -114,10 +116,7 @@ export default function Footer({
           aria-label="Copy annotations"
           title="Copy annotations"
           onClick={onCopy}
-          onMouseEnter={(e) => show(e.currentTarget, "Copy annotations as JSON")}
-          onMouseLeave={() => onTip(null)}
-          onFocus={(e) => show(e.currentTarget, "Copy annotations as JSON")}
-          onBlur={() => onTip(null)}
+          {...tip("Copy annotations as JSON")}
         >
           <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
             <path
@@ -170,10 +169,7 @@ export default function Footer({
                   ? (e) => onComment(e.currentTarget)
                   : undefined
             }
-            onMouseEnter={(e) => show(e.currentTarget, t.hint)}
-            onMouseLeave={() => onTip(null)}
-            onFocus={(e) => show(e.currentTarget, t.hint)}
-            onBlur={() => onTip(null)}
+            {...tip(t.hint)}
           >
             <svg viewBox="0 0 256 256" width="22" height="22" aria-hidden="true">
               <path d={t.d} fill="currentColor" />
@@ -191,10 +187,7 @@ export default function Footer({
             title="Go to next uncommitted image"
             aria-label="Next open (N)"
             onClick={onNextOpen}
-            onMouseEnter={(e) => show(e.currentTarget, "Go to next uncommitted image")}
-            onMouseLeave={() => onTip(null)}
-            onFocus={(e) => show(e.currentTarget, "Go to next uncommitted image")}
-            onBlur={() => onTip(null)}
+            {...tip("Go to next uncommitted image")}
           >
             Next open (N)
           </button>
@@ -208,10 +201,7 @@ export default function Footer({
             title={commitHint}
             aria-label={canCommit ? "Commit (C)" : commitReason}
             onClick={onCommit}
-            onMouseEnter={(e) => show(e.currentTarget, commitHint)}
-            onMouseLeave={() => onTip(null)}
-            onFocus={(e) => show(e.currentTarget, commitHint)}
-            onBlur={() => onTip(null)}
+            {...tip(commitHint)}
           >
             Commit (C)
           </button>
@@ -225,10 +215,7 @@ export default function Footer({
             title={`${nCommitted} committed file${nCommitted === 1 ? "" : "s"}`}
             aria-label="Export (E)"
             onClick={onExport}
-            onMouseEnter={(e) => show(e.currentTarget, `${nCommitted} committed`)}
-            onMouseLeave={() => onTip(null)}
-            onFocus={(e) => show(e.currentTarget, `${nCommitted} committed`)}
-            onBlur={() => onTip(null)}
+            {...tip(`${nCommitted} committed`)}
           >
             Export (E)
           </button>

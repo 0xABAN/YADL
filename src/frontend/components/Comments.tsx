@@ -234,20 +234,19 @@ export default function Comments({
       <div className="cmt-compose">
         <div className="cmt-field chips" onClick={() => inputRef.current?.focus()}>
           {parts.map((c, i) =>
-            c.t === "m" ? (
+            c.t === "m" ? (() => {
+              const obj = objects.find((o) => o.id === c.id);
+              const color = classColor(obj?.label, classes);
+              return (
               <span
                 key={`m-${i}-${c.id}`}
-                className={`cmt-chip${objects.some((o) => o.id === c.id) ? "" : " missing"}`}
-                style={
-                  {
-                    color: classColor(objects.find((o) => o.id === c.id)?.label, classes),
-                    ["--glow" as string]: classColor(objects.find((o) => o.id === c.id)?.label, classes),
-                  } as CSSProperties
-                }
+                className={`cmt-chip${obj ? "" : " missing"}`}
+                style={{ color, ["--glow" as string]: color } as CSSProperties}
               >
                 @{titleOf(c.id, objects)}
               </span>
-            ) : (
+              );
+            })() : (
               <span key={`t-${i}`} className="cmt-txt">
                 {c.v}
               </span>

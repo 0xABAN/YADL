@@ -462,48 +462,21 @@ export default function Studio({ id }: { id: string }) {
           if (doc) setDoc({ ...doc, objects: doc.objects.map((o) => (o.label === name ? { ...o, label: null } : o)) });
         }}
       />
-      {loadState === "ready" && list.length === 0 ? (
+      {(loadState === "ready" && list.length === 0) || doc?.url ? (
         <div id="studio-main">
           <Canvas
-            src={undefined}
-            alt="No images"
-            objects={[]}
+            src={doc?.url ?? undefined}
+            alt={doc?.image || (list.length === 0 ? "No images" : "Sample")}
+            objects={doc ? objects : []}
             projectType={project?.type ?? "hands"}
             classes={classes}
-            selectedId={null}
+            selectedId={doc ? selected : null}
             assistOn={assistOn}
-            assistBusy={false}
+            assistBusy={!!doc && assistBusy}
             tool={tool}
             onTool={setTool}
-            onChange={() => {}}
-            onSelect={() => {}}
-            onAssistOn={() => {
-              if (project?.type === "hands") setAssistOn((v) => !v);
-            }}
-            onAssistReseed={() => {}}
-            commentsOpen={false}
-            commentCount={0}
-            syntheticOpen={false}
-            onComment={() => {}}
-            onSynthetic={() => {}}
-            onEdit={() => {}}
-          />
-        </div>
-      ) : doc?.url ? (
-        <div id="studio-main">
-          <Canvas
-            src={doc.url}
-            alt={doc.image || "Sample"}
-            objects={objects}
-            projectType={project?.type ?? "hands"}
-            classes={classes}
-            selectedId={selected}
-            assistOn={assistOn}
-            assistBusy={assistBusy}
-            tool={tool}
-            onTool={setTool}
-            onChange={save}
-            onSelect={setSelected}
+            onChange={doc ? save : () => {}}
+            onSelect={doc ? setSelected : () => {}}
             onAssistOn={() => {
               // toggle only — seed runs once per image on first view, never batch
               if (project?.type === "hands") setAssistOn((v) => !v);
@@ -522,48 +495,60 @@ export default function Studio({ id }: { id: string }) {
                 .catch(() => {})
                 .finally(() => setAssistBusy(false));
             }}
-            commentsOpen={commentsOpen}
+            commentsOpen={!!doc && commentsOpen}
             commentCount={doc?.comments?.length ?? 0}
-            syntheticOpen={synthOpen}
-            onComment={(btn) => {
-              setTip(null);
-              setHistOpen(false);
-              setSynthOpen(false);
-              setEdit(null);
-              if (commentsOpen) {
-                setCommentsOpen(false);
-                return;
-              }
-              const r = btn.getBoundingClientRect();
-              setCommentsSide(true);
-              setCommentsPos({ x: r.right + 12, y: r.top + r.height / 2 });
-              setCommentsOpen(true);
-            }}
-            onSynthetic={(btn) => {
-              setTip(null);
-              setHistOpen(false);
-              setCommentsOpen(false);
-              setEdit(null);
-              if (synthOpen) {
-                setSynthOpen(false);
-                return;
-              }
-              const r = btn.getBoundingClientRect();
-              setSynthPos({ x: r.right + 12, y: r.top + r.height / 2 });
-              setSynthOpen(true);
-            }}
-            onEdit={(oid) => {
-              if (oid == null) {
-                // don't dismiss in-progress create-label from a canvas click
-                setEdit((cur) => (cur === "new" ? "new" : null));
-                return;
-              }
-              setCommentsOpen(false);
-              setHistOpen(false);
-              setEdit(oid);
-              setSelected(oid);
-              setDraft(""); // empty search → show every class
-            }}
+            syntheticOpen={!!doc && synthOpen}
+            onComment={
+              doc
+                ? (btn) => {
+                    setTip(null);
+                    setHistOpen(false);
+                    setSynthOpen(false);
+                    setEdit(null);
+                    if (commentsOpen) {
+                      setCommentsOpen(false);
+                      return;
+                    }
+                    const r = btn.getBoundingClientRect();
+                    setCommentsSide(true);
+                    setCommentsPos({ x: r.right + 12, y: r.top + r.height / 2 });
+                    setCommentsOpen(true);
+                  }
+                : () => {}
+            }
+            onSynthetic={
+              doc
+                ? (btn) => {
+                    setTip(null);
+                    setHistOpen(false);
+                    setCommentsOpen(false);
+                    setEdit(null);
+                    if (synthOpen) {
+                      setSynthOpen(false);
+                      return;
+                    }
+                    const r = btn.getBoundingClientRect();
+                    setSynthPos({ x: r.right + 12, y: r.top + r.height / 2 });
+                    setSynthOpen(true);
+                  }
+                : () => {}
+            }
+            onEdit={
+              doc
+                ? (oid) => {
+                    if (oid == null) {
+                      // don't dismiss in-progress create-label from a canvas click
+                      setEdit((cur) => (cur === "new" ? "new" : null));
+                      return;
+                    }
+                    setCommentsOpen(false);
+                    setHistOpen(false);
+                    setEdit(oid);
+                    setSelected(oid);
+                    setDraft(""); // empty search → show every class
+                  }
+                : () => {}
+            }
           />
         </div>
       ) : (

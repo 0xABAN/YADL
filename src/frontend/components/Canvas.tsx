@@ -21,8 +21,9 @@ import Boxes from "./editors/Boxes";
 import Polys from "./editors/Polys";
 
 const STEP = 0.1;
-const MIN = 0.5;
+const MIN = 0.05; /* allow fit-to-view on large images */
 const MAX = 4;
+const FIT_PAD = 0.92; /* slight margin around image in canvas */
 
 /** Physical scale → UI % (min→0, 1→100, above natural stays scale×100). */
 const zoomPct = (scale: number) =>
@@ -130,12 +131,15 @@ export default function Canvas({
   onTool?: (t: ToolId) => void;
 }) {
   const shown = SHOWN[projectType];
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoom] = useState(0);
   const [spacePan, setSpacePan] = useState(false);
   const [tool, setToolInner] = useState<ToolId>(() => toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]));
   const [tip, setTip] = useState<string | null>(null);
   const [imgReady, setImgReady] = useState(false);
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const zpp = useRef<ReactZoomPanPinchContentRef | null>(null);
   const undo = useRef<AnnObj[][]>([]);
   const redo = useRef<AnnObj[][]>([]);
@@ -143,6 +147,21 @@ export default function Canvas({
   const live = useRef(objects);
   live.current = objects;
   const tickHist = () => setHist({ u: undo.current.length, r: redo.current.length });
+
+  const fitView = useCallback(() => {
+    const api = zpp.current;
+    const wrap = mainRef.current;
+    const size = imgSize;
+    if (!api || !wrap || !size?.w || !size?.h) return;
+    // editable area: main minus left rail padding baked into .world
+    const rail = parseFloat(getComputedStyle(wrap).getPropertyValue("--rail")) || 0;
+    const aw = Math.max(1, wrap.clientWidth - rail);
+    const ah = Math.max(1, wrap.clientHeight);
+    const fit = Math.min(aw / size.w, ah / size.h) * FIT_PAD;
+    const scale = Math.min(MAX, Math.max(MIN, fit));
+    api.centerView(scale, 0);
+    setZoom(zoomPct(scale));
+  }, [imgSize]);
 
   useEffect(() => {
     if (toolProp) setToolInner(toolProp);
@@ -158,16 +177,20 @@ export default function Canvas({
     undo.current = [];
     redo.current = [];
     setHist({ u: 0, r: 0 });
-    setZoom(100);
+    setZoom(0);
+    setImgSize(null);
   }, [src]);
 
   useEffect(() => {
     setImgReady(false);
+    setImgSize(null);
     if (!src) return;
     let dead = false;
     const im = new window.Image();
     const done = () => {
-      if (!dead) setImgReady(true);
+      if (dead) return;
+      if (im.naturalWidth > 0) setImgSize({ w: im.naturalWidth, h: im.naturalHeight });
+      setImgReady(true);
     };
     im.onload = done;
     im.onerror = done;
@@ -177,6 +200,28 @@ export default function Canvas({
       dead = true;
     };
   }, [src]);
+
+  // fit when image size known + after layout; again on resize
+  useEffect(() => {
+    if (!imgReady || !imgSize) return;
+    const run = () => fitView();
+    run();
+    const t = requestAnimationFrame(run);
+    const wrap = mainRef.current;
+    if (!wrap || typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", run);
+      return () => {
+        cancelAnimationFrame(t);
+        window.removeEventListener("resize", run);
+      };
+    }
+    const ro = new ResizeObserver(run);
+    ro.observe(wrap);
+    return () => {
+      cancelAnimationFrame(t);
+      ro.disconnect();
+    };
+  }, [imgReady, imgSize, fitView]);
 
   const setTool = (t: ToolId) => {
     setToolInner(t);
@@ -251,16 +296,24 @@ export default function Canvas({
   const move = tool === "move";
   const panning = move || spacePan;
   const drawing = !panning && (tool === "box" || tool === "polygon");
-  const nav = move;
-  const panOk = move || spacePan;
 
   const hands = objects.filter((o): o is HandObj => o.kind === "hand");
   const boxes = objects.filter((o): o is BoxObj => o.kind === "box");
   const polys = objects.filter((o): o is PolyObj => o.kind === "polygon");
 
+  const tipAt = (el: HTMLElement, text: string) => {
+    const stack = el.closest(".stack");
+    if (!(stack instanceof HTMLElement)) return;
+    const b = el.getBoundingClientRect();
+    const s = stack.getBoundingClientRect();
+    stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
+    setTip(text);
+  };
+
   return (
     <>
       <main
+        ref={mainRef}
         className={drawing ? "cross" : undefined}
         onPointerDown={() => {
           if (panning || drawing) return;
@@ -277,16 +330,17 @@ export default function Canvas({
           disablePadding
           doubleClick={{ disabled: true }}
           zoomAnimation={{ disabled: true }}
-          panning={{ disabled: !panOk, velocityDisabled: true }}
-          wheel={{ disabled: !nav, step: 0.04 }}
-          pinch={{ disabled: !nav }}
+          panning={{ disabled: !panning, velocityDisabled: true }}
+          wheel={{ disabled: !move, step: 0.04 }}
+          pinch={{ disabled: !move }}
+          onInit={fitView}
           onTransform={(_, s) => setZoom(zoomPct(s.scale))}
         >
           <TransformComponent
             wrapperClass="zpp"
             contentClass="world"
             wrapperStyle={{ width: "100%", height: "100%" }}
-            contentStyle={{ width: "100%", height: "100%", display: "grid" }}
+            contentStyle={{ width: "max-content", height: "max-content", display: "grid" }}
           >
             <div className="dots" aria-hidden="true" />
             <div className="frame" ref={frame}>
@@ -296,11 +350,12 @@ export default function Canvas({
               <i />
               {src ? (
                 <img
+                  ref={imgRef}
                   src={src}
                   alt={alt}
                   draggable={false}
-                  width={1280}
-                  height={720}
+                  width={imgSize?.w || undefined}
+                  height={imgSize?.h || undefined}
                   className={imgReady ? "ready" : undefined}
                 />
               ) : null}
@@ -336,7 +391,7 @@ export default function Canvas({
                   classes={classes}
                   locked={false}
                   canDrag={tool !== "move"}
-                  active={projectType === "hands" || tool === "landmarks"}
+                  active
                   selectedId={selectedId}
                   frameRef={frame}
                   onChange={(next, u) => replaceKind("hand", next, u)}
@@ -375,31 +430,20 @@ export default function Canvas({
                       ? syntheticOpen
                       : t.id === "seed"
                         ? false
-                        : tool === t.id || (t.id === "move" && tool === "move")
+                        : tool === t.id
                 }
                 title={t.label}
-                onMouseEnter={(e) => {
-                  const stack = e.currentTarget.closest(".stack");
-                  if (!(stack instanceof HTMLElement)) return;
-                  const b = e.currentTarget.getBoundingClientRect();
-                  const s = stack.getBoundingClientRect();
-                  stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
-                  setTip(
+                onMouseEnter={(e) =>
+                  tipAt(
+                    e.currentTarget,
                     assistBusy && (t.id === "assist" || t.id === "seed")
                       ? t.id === "seed"
                         ? "Detecting landmarks…"
                         : "Auto Label running…"
                       : t.label,
-                  );
-                }}
-                onFocus={(e) => {
-                  const stack = e.currentTarget.closest(".stack");
-                  if (!(stack instanceof HTMLElement)) return;
-                  const b = e.currentTarget.getBoundingClientRect();
-                  const s = stack.getBoundingClientRect();
-                  stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
-                  setTip(t.label);
-                }}
+                  )
+                }
+                onFocus={(e) => tipAt(e.currentTarget, t.label)}
                 onBlur={() => setTip(null)}
                 onClick={(e) => {
                   if (t.id === "assist") onAssistOn?.();
@@ -419,18 +463,12 @@ export default function Canvas({
                   <button
                     type="button"
                     data-tip="comment-tool"
-                    className={commentsOpen ? "on" : undefined}
                     aria-label="Comment (T)"
                     aria-pressed={commentsOpen}
                     title="Comment (T)"
-                    onMouseEnter={(e) => {
-                      const stack = e.currentTarget.closest(".stack");
-                      if (!(stack instanceof HTMLElement)) return;
-                      const b = e.currentTarget.getBoundingClientRect();
-                      const s = stack.getBoundingClientRect();
-                      stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
-                      setTip(commentCount ? `Comment (T) · ${commentCount}` : "Comment (T)");
-                    }}
+                    onMouseEnter={(e) =>
+                      tipAt(e.currentTarget, commentCount ? `Comment (T) · ${commentCount}` : "Comment (T)")
+                    }
                     onMouseLeave={() => setTip(null)}
                     onClick={(e) => onComment?.(e.currentTarget)}
                   >
@@ -446,14 +484,7 @@ export default function Canvas({
                     disabled={hist.u === 0}
                     aria-label="Undo"
                     title="Undo (⌘Z)"
-                    onMouseEnter={(e) => {
-                      const stack = e.currentTarget.closest(".stack");
-                      if (!(stack instanceof HTMLElement)) return;
-                      const b = e.currentTarget.getBoundingClientRect();
-                      const s = stack.getBoundingClientRect();
-                      stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
-                      setTip("Undo (⌘Z)");
-                    }}
+                    onMouseEnter={(e) => tipAt(e.currentTarget, "Undo (⌘Z)")}
                     onMouseLeave={() => setTip(null)}
                     onClick={doUndo}
                   >
@@ -469,14 +500,7 @@ export default function Canvas({
                     disabled={hist.r === 0}
                     aria-label="Redo"
                     title="Redo (⇧⌘Z)"
-                    onMouseEnter={(e) => {
-                      const stack = e.currentTarget.closest(".stack");
-                      if (!(stack instanceof HTMLElement)) return;
-                      const b = e.currentTarget.getBoundingClientRect();
-                      const s = stack.getBoundingClientRect();
-                      stack.style.setProperty("--tip-y", `${b.top + b.height / 2 - s.top}px`);
-                      setTip("Redo (⇧⌘Z)");
-                    }}
+                    onMouseEnter={(e) => tipAt(e.currentTarget, "Redo (⇧⌘Z)")}
                     onMouseLeave={() => setTip(null)}
                     onClick={doRedo}
                   >
@@ -513,7 +537,7 @@ export default function Canvas({
           >
             +
           </button>
-          <button type="button" onClick={() => zpp.current?.resetTransform()}>
+          <button type="button" onClick={fitView}>
             RESET
           </button>
         </div>
