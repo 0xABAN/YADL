@@ -14,6 +14,7 @@ export default function Classes({
   onDrop,
   onAdd,
   status,
+  onCollapse,
 }: {
   classes: string[];
   objects: AnnObj[];
@@ -25,6 +26,7 @@ export default function Classes({
   onDrop: (name: string) => void;
   onAdd: () => void;
   status?: string;
+  onCollapse?: () => void;
 }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -94,7 +96,16 @@ export default function Classes({
   );
 
   return (
-    <aside>
+    <aside
+      onDoubleClick={(e) => {
+        if (!onCollapse) return;
+        const t = e.target;
+        if (!(t instanceof Element)) return;
+        // only empty chrome — not buttons, inputs, rows, tabs
+        if (t.closest("button, a, input, label, .row-main, .labels li, .tabs")) return;
+        onCollapse();
+      }}
+    >
       <div className="rail-ui">
         <div className="rail-head">
           <span className="brand" translate="no">

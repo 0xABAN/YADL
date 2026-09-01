@@ -4,8 +4,8 @@ import { useEffect } from "react";
 import { named } from "../geometry/doc";
 import type { StudioSession } from "../session";
 
-/** Global studio keyboard shortcuts (label, nav, commit, undo toast). */
-export function useStudioHotkeys(session: StudioSession) {
+/** Global studio keyboard shortcuts (label, nav, commit, undo toast, rail). */
+export function useStudioHotkeys(session: StudioSession, opts?: { toggleRail?: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -14,6 +14,11 @@ export function useStudioHotkeys(session: StudioSession) {
         e.preventDefault();
         e.stopPropagation();
         void session.undoLast();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        opts?.toggleRail?.();
         return;
       }
       if (e.metaKey || e.ctrlKey) return;
@@ -83,5 +88,5 @@ export function useStudioHotkeys(session: StudioSession) {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [session]);
+  }, [session, opts?.toggleRail]);
 }
