@@ -57,31 +57,29 @@ async function imageCenterError(page: Page) {
     const img = document.querySelector(".world img") as HTMLImageElement | null;
     if (!main || !img || !img.naturalWidth) return { ok: false, reason: "missing" };
 
-    // same live-chrome free rect as Canvas.freeRect (viewport coords)
     const mr = main.getBoundingClientRect();
     const pad =
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--rail-pad")) || 12;
-    const aside = document.querySelector(".shell aside")?.getBoundingClientRect();
     const stack = document.querySelector(".shell .stack")?.getBoundingClientRect();
     const footer = document.querySelector(".shell footer")?.getBoundingClientRect();
-    const leftEdge = Math.max(aside?.right ?? mr.left, stack?.right ?? mr.left);
+    const left = (stack ? stack.right - mr.left : 0) + pad;
+    const right = mr.width - pad;
+    const top = pad;
+    const bottom = (footer ? footer.top - mr.top : mr.height) - pad;
     const free = {
-      left: leftEdge + pad,
-      top: mr.top + pad,
-      width: Math.max(1, mr.right - leftEdge - pad * 2),
-      height: Math.max(1, (footer?.top ?? mr.bottom) - mr.top - pad * 2),
+      left: mr.left + left,
+      top: mr.top + top,
+      width: right - left,
+      height: bottom - top,
     };
-    const freeCx = free.left + free.width / 2;
-    const freeCy = free.top + free.height / 2;
     const ir = img.getBoundingClientRect();
-    const imgCx = ir.left + ir.width / 2;
-    const imgCy = ir.top + ir.height / 2;
+    const dx = ir.left + ir.width / 2 - (free.left + free.width / 2);
+    const dy = ir.top + ir.height / 2 - (free.top + free.height / 2);
     return {
       ok: true,
-      dx: imgCx - freeCx,
-      dy: imgCy - freeCy,
-      free,
-      img: { w: ir.width, h: ir.height, left: ir.left, top: ir.top },
+      dx,
+      dy,
+      centered: Math.abs(dx) < 16 && Math.abs(dy) < 16,
       fits:
         ir.left >= free.left - 4 &&
         ir.top >= free.top - 4 &&
@@ -108,9 +106,8 @@ for (const vp of [
 
     const m = await imageCenterError(page);
     expect(m.ok).toBe(true);
-    expect(m.fits, `image should fit free rect @ ${vp.w}x${vp.h}: ${JSON.stringify(m)}`).toBe(true);
-    expect(Math.abs(m.dx!), `dx ${m.dx} @ ${vp.w}x${vp.h}`).toBeLessThan(24);
-    expect(Math.abs(m.dy!), `dy ${m.dy} @ ${vp.w}x${vp.h}`).toBeLessThan(24);
+    expect(m.fits, `fits free space @ ${vp.w}x${vp.h}: ${JSON.stringify(m)}`).toBe(true);
+    expect(m.centered, `centered @ ${vp.w}x${vp.h}: ${JSON.stringify(m)}`).toBe(true);
   });
 }
 

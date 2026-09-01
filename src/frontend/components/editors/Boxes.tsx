@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE, type RefObject } from "react";
-import { classColor, newId, type BoxObj } from "@/lib/doc";
+import { classColor, named, newId, type BoxObj } from "@/lib/doc";
 import {
   HANDLES,
   atRect,
@@ -195,6 +195,9 @@ export default function Boxes({
             }
             onPointerDown={(e) => start(e, { t: "move", i, x0: 0, y0: 0, start: b })}
           >
+            {named(o.label) && (
+              <span className="box-tab">{named(o.label)}</span>
+            )}
             {HANDLES.map((h) => (
               <span
                 key={h.c}

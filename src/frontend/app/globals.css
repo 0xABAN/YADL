@@ -92,7 +92,7 @@ button:disabled { cursor: default; opacity: 0.62 }
 .studio-back {
   position: absolute;
   z-index: 5;
-  left: calc(var(--rail-pad) / 2 + 10px);
+  left: calc(var(--rail-pad) + 10px);
   top: 12px;
   display: grid;
   place-items: center;
@@ -220,7 +220,7 @@ button:disabled { cursor: default; opacity: 0.62 }
 .ann li button:hover { background: #000 }
 .ann li button[aria-current] { background: #fff; color: #000 }
 .ann li .swatch { width: 8px; height: 8px; flex: none; background: var(--cc) }
-.box.sel, .poly.sel { outline: 1px solid var(--lime) }
+.poly.sel { outline: 1px solid var(--lime) }
 .hand.sel .chip { box-shadow: 0 0 0 1px #fff }
 
 .shell {
@@ -624,7 +624,8 @@ aside {
   grid-column: 1;
   grid-row: 1 / -1;
   /* shortened from the top; gap keeps back btn + skip link clear */
-  margin: var(--rail-top) 0 calc(var(--rail-pad) / 2) calc(var(--rail-pad) / 2);
+  /* left gap = same as rail→tools (.stack margin-left: var(--rail-pad)) */
+  margin: var(--rail-top) 0 calc(var(--rail-pad) / 2) var(--rail-pad);
   min-height: 0;
 }
 .rail-ui {
@@ -759,8 +760,6 @@ main.cross, main.cross:active { cursor: crosshair }
   position: absolute;
   inset: 0;
   z-index: 1;
-  width: 100%;
-  height: 100%;
   overflow: hidden;
 }
 /* content hugs the image — pan/zoom moves the whole canvas view */
@@ -859,25 +858,97 @@ main.cross, main.cross:active { cursor: crosshair }
 
 .boxes { position: absolute; inset: 0; pointer-events: none; user-select: none }
 .boxes.edit { pointer-events: auto }
+/* detector-style box: white edges, label-color corners, 2px */
 .box {
+  --box-h: 12px;
+  /* gap = half corner so edge lines meet the square edges */
+  --box-gap: calc(var(--box-h) / 2);
+  --box-stroke: 2px;
   position: absolute;
-  border: 2px solid var(--c, var(--cyan));
-  background: transparent;
+  border: 0;
+  background-color: transparent;
+  background-image:
+    linear-gradient(#fff, #fff),
+    linear-gradient(#fff, #fff),
+    linear-gradient(#fff, #fff),
+    linear-gradient(#fff, #fff);
+  background-repeat: no-repeat;
+  background-position:
+    var(--box-gap) 0,
+    100% var(--box-gap),
+    var(--box-gap) 100%,
+    0 var(--box-gap);
+  background-size:
+    calc(100% - 2 * var(--box-gap)) var(--box-stroke),
+    var(--box-stroke) calc(100% - 2 * var(--box-gap)),
+    calc(100% - 2 * var(--box-gap)) var(--box-stroke),
+    var(--box-stroke) calc(100% - 2 * var(--box-gap));
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
   pointer-events: none;
 }
 .boxes.edit .box { pointer-events: auto; cursor: grab }
 .boxes.edit .box.on { cursor: grabbing }
-.box.draft { pointer-events: none }
+/* label tab sits on the top edge */
+.box-tab {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 3;
+  max-width: 100%;
+  padding: 1px 6px 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--c, var(--cyan));
+  color: #000;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.box.draft {
+  pointer-events: none;
+  --c: var(--cyan);
+}
+/* draft has no handle nodes — cyan corner squares */
+.box.draft::before {
+  --sq: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Crect x='1' y='1' width='6' height='6' fill='none' stroke='%2399edff' stroke-width='2'/%3E%3C/svg%3E");
+  content: "";
+  position: absolute;
+  inset: calc(var(--box-h) / -2);
+  pointer-events: none;
+  background:
+    var(--sq) 0 0 / var(--box-h) var(--box-h) no-repeat,
+    var(--sq) 100% 0 / var(--box-h) var(--box-h) no-repeat,
+    var(--sq) 0 100% / var(--box-h) var(--box-h) no-repeat,
+    var(--sq) 100% 100% / var(--box-h) var(--box-h) no-repeat;
+}
 .box .h { position: absolute; z-index: 2; pointer-events: none }
-.box .nw, .box .ne, .box .se, .box .sw {
-  width: 12px;
-  height: 12px;
+.box .nw,
+.box .ne,
+.box .se,
+.box .sw {
+  width: var(--box-h);
+  height: var(--box-h);
+  box-sizing: border-box;
+  border: var(--box-stroke) solid var(--c, var(--cyan));
+  background: transparent;
   transform: translate(-50%, -50%);
+  transition: width 0.08s, height 0.08s;
+}
+/* only the corner under the cursor grows */
+.boxes.edit .nw:hover,
+.boxes.edit .ne:hover,
+.boxes.edit .se:hover,
+.boxes.edit .sw:hover {
+  width: 16px;
+  height: 16px;
 }
 .box .nw { left: 0; top: 0 }
 .box .ne { left: 100%; top: 0 }
 .box .se { left: 100%; top: 100% }
 .box .sw { left: 0; top: 100% }
+/* edge handles = hit targets only */
 .box .n, .box .s { z-index: 1; left: 0; width: 100%; height: 10px; transform: translateY(-50%) }
 .box .n { top: 0 }
 .box .s { top: 100% }

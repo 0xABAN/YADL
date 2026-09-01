@@ -29,31 +29,6 @@ const FIT_PAD = 0.88;
 const zoomPct = (scale: number, fit: number) =>
   Math.round((scale / Math.max(fit, 1e-6)) * 100);
 
-/**
- * Free canvas rect in main-local coords, measured from live chrome.
- * Scales with resize / layout — no hardcoded stack/footer pixel sizes.
- */
-function freeRect(main: HTMLElement) {
-  const mr = main.getBoundingClientRect();
-  const pad =
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--rail-pad")) || 12;
-  const aside = document.querySelector(".shell aside")?.getBoundingClientRect();
-  const stack = document.querySelector(".shell .stack")?.getBoundingClientRect();
-  const footer = document.querySelector(".shell footer")?.getBoundingClientRect();
-
-  // left edge of free area = rightmost left-chrome (aside or tool stack)
-  const leftEdge = Math.max(aside?.right ?? mr.left, stack?.right ?? mr.left);
-  const topEdge = mr.top;
-  const rightEdge = mr.right;
-  const bottomEdge = footer?.top ?? mr.bottom;
-
-  const left = leftEdge - mr.left + pad;
-  const top = topEdge - mr.top + pad;
-  const width = Math.max(1, rightEdge - leftEdge - pad * 2);
-  const height = Math.max(1, bottomEdge - topEdge - pad * 2);
-  return { left, top, width, height };
-}
-
 function toolKey(type: Project["type"]) {
   return `yadl.tool.${type}`;
 }
@@ -189,14 +164,26 @@ export default function Canvas({
     const main = mainRef.current;
     const size = imgSize;
     if (!api || !main || !size?.w || !size?.h) return;
-    const free = freeRect(main);
-    const scale = Math.min(
-      MAX,
-      Math.max(MIN, Math.min(free.width / size.w, free.height / size.h) * FIT_PAD),
-    );
-    // world === image box; place its top-left so the image is centered in the free rect
-    const x = free.left + (free.width - size.w * scale) / 2;
-    const y = free.top + (free.height - size.h * scale) / 2;
+
+    const mr = main.getBoundingClientRect();
+    const pad =
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--rail-pad")) || 12;
+    const stack = document.querySelector(".shell .stack")?.getBoundingClientRect();
+    const footer = document.querySelector(".shell footer")?.getBoundingClientRect();
+
+    // main-local edges: gap past zoom stack, gap above footer, pad on top/right
+    const left = (stack ? stack.right - mr.left : 0) + pad;
+    const right = mr.width - pad;
+    const top = pad;
+    const bottom = (footer ? footer.top - mr.top : mr.height) - pad;
+    const aw = Math.max(1, right - left);
+    const ah = Math.max(1, bottom - top);
+
+    const scale = Math.min(MAX, Math.max(MIN, Math.min(aw / size.w, ah / size.h) * FIT_PAD));
+    // center in free space (past stack, above footer)
+    const x = left + (aw - size.w * scale) / 2;
+    const y = top + (ah - size.h * scale) / 2;
+
     fitScale.current = scale;
     zoomDirty.current = false;
     fitting.current = true;
@@ -263,12 +250,17 @@ export default function Canvas({
       if (!zoomDirty.current) fitView();
     };
     const t = requestAnimationFrame(() => requestAnimationFrame(run));
-    const wrap = mainRef.current;
     window.addEventListener("resize", onResize);
     let ro: ResizeObserver | undefined;
-    if (wrap && typeof ResizeObserver !== "undefined") {
+    if (typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver(onResize);
-      ro.observe(wrap);
+      const main = mainRef.current;
+      if (main) ro.observe(main);
+      // chrome can move independently of main size (grid reflow)
+      for (const sel of [".shell .stack", ".shell footer", ".shell aside"]) {
+        const el = document.querySelector(sel);
+        if (el) ro.observe(el);
+      }
     }
     return () => {
       alive = false;
@@ -452,7 +444,7 @@ export default function Canvas({
                   objects={hands}
                   classes={classes}
                   locked={false}
-                  canDrag={tool !== "move"}
+                  canDrag
                   active
                   selectedId={selectedId}
                   frameRef={frame}
