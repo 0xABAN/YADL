@@ -11,6 +11,7 @@ import {
   resizeBox,
   shiftBox,
   tiny,
+  trackPointer,
   type Box,
 } from "@/lib/geom";
 
@@ -109,9 +110,6 @@ export default function Boxes({
     };
 
     const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
       const cur = gest.current;
       gest.current = null;
       setHold(null);
@@ -149,9 +147,7 @@ export default function Boxes({
       onChangeRef.current(live.current, true);
     };
 
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    trackPointer(move, up);
   };
 
   const start = (e: PE<HTMLElement>, g: Gest) => {

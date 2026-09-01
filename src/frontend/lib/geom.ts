@@ -33,6 +33,24 @@ export const boxStyle = (b: Box): CSSProperties => ({
   height: `${b.h * 100}%`,
 });
 
+export const ptStyle = (p: Pt): CSSProperties => ({
+  left: `${p.x * 100}%`,
+  top: `${p.y * 100}%`,
+});
+
+/** Window-level pointer drag: move + up/cancel with auto teardown. */
+export function trackPointer(move: (e: PointerEvent) => void, up: (e: PointerEvent) => void) {
+  const end = (e: PointerEvent) => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", end);
+    up(e);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+}
+
 export const ptsStr = (pts: Pt[]) => pts.map((p) => `${p.x},${p.y}`).join(" ");
 
 export const eqPoly = (a: Pt[], b: Pt[]) =>
@@ -78,7 +96,7 @@ export const onSeg = (a: Pt, b: Pt, p: Pt): Pt => {
   const abx = b.x - a.x,
     aby = b.y - a.y;
   const l2 = abx * abx + aby * aby;
-  const t = l2 === 0 ? 0 : Math.min(1, Math.max(0, ((p.x - a.x) * abx + (p.y - a.y) * aby) / l2));
+  const t = l2 === 0 ? 0 : clamp01(((p.x - a.x) * abx + (p.y - a.y) * aby) / l2);
   return { x: a.x + abx * t, y: a.y + aby * t };
 };
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE, type RefObject } from "react";
 import { classColor, newId, type PolyObj, type Pt } from "@/lib/doc";
-import { atRect, eqPoly, nearPx, onSeg, ptsStr, shiftPoly, tinyPoly } from "@/lib/geom";
+import { atRect, eqPoly, nearPx, onSeg, ptStyle, ptsStr, shiftPoly, tinyPoly, trackPointer } from "@/lib/geom";
 
 type Gest =
   | { t: "draw" }
@@ -38,7 +38,6 @@ export default function Polys({
   const gest = useRef<Gest | null>(null);
   const snap = useRef<PolyObj[]>([]);
   const draftRef = useRef<Pt[] | null>(null);
-  const frameR = useRef<DOMRect | null>(null);
   const selVert = useRef<{ i: number; j: number } | null>(null);
   live.current = objects;
 
@@ -46,7 +45,6 @@ export default function Polys({
     if (gest.current && gest.current.t !== "draw") onChange(snap.current, false);
     gest.current = null;
     draftRef.current = null;
-    frameR.current = null;
     setDraft(null);
     setCursor(null);
     setHold(null);
@@ -145,7 +143,6 @@ export default function Polys({
     e.stopPropagation();
     e.preventDefault();
     const r = frameRef.current!.getBoundingClientRect();
-    frameR.current = r;
     snap.current = live.current;
     if (g.t === "move") {
       const p = atRect(e, r);
@@ -193,12 +190,8 @@ export default function Polys({
       }
     };
     const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
       const gg = gest.current;
       gest.current = null;
-      frameR.current = null;
       setHold(null);
       setVertHold(null);
       if (!gg || gg.t === "draw") return;
@@ -217,9 +210,7 @@ export default function Polys({
       }
       onChange(live.current, true);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    trackPointer(move, up);
     setHold(g.i);
   };
 
@@ -301,7 +292,6 @@ export default function Polys({
                       const pt = onSeg(a, b, atRect(e, r));
                       const pts = [...o.geom.pts.slice(0, j + 1), pt, ...o.geom.pts.slice(j + 1)];
                       snap.current = live.current;
-                      frameR.current = r;
                       onChange(
                         live.current.map((q, k) =>
                           k === i ? { ...q, edited: true, geom: { t: "polygon", pts } } : q,
@@ -333,7 +323,7 @@ export default function Polys({
               tabIndex={-1}
               aria-label={`Vertex ${j + 1}`}
               className={`pv${hold === i && vertHold === j ? " on" : ""}`}
-              style={{ left: `${pt.x * 100}%`, top: `${pt.y * 100}%` }}
+              style={ptStyle(pt)}
               onPointerDown={(e) => start(e, { t: "vertex", i, j })}
             />
           )),
@@ -346,7 +336,7 @@ export default function Polys({
             tabIndex={-1}
             aria-label={j === 0 && draft.length >= 3 ? "Close polygon" : `Point ${j + 1}`}
             className={`pv${j === 0 && draft.length >= 3 ? " close" : ""}`}
-            style={{ left: `${pt.x * 100}%`, top: `${pt.y * 100}%` }}
+            style={ptStyle(pt)}
             onPointerDown={(e) => {
               e.stopPropagation();
               if (j === 0 && draft.length >= 3) close();

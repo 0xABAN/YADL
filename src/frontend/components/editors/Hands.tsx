@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE, type RefObject } from "react";
 import { CONNECTIONS, NAMES } from "@/lib/hand";
 import { classColor, type HandObj } from "@/lib/doc";
-import { atRect, clamp01 } from "@/lib/geom";
+import { atRect, clamp01, ptStyle, trackPointer } from "@/lib/geom";
 
 export default function Hands({
   objects,
@@ -91,9 +91,6 @@ export default function Hands({
       onChangeRef.current(patchLm(h, i, p.x, p.y), false);
     };
     const up = (ev: PointerEvent) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
       setHold(null);
       const dist = Math.hypot(ev.clientX - ox, ev.clientY - oy);
       if (!canDrag || dist <= 4) {
@@ -104,9 +101,7 @@ export default function Hands({
       }
       onChangeRef.current(live.current, true);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    trackPointer(move, up);
   };
 
   return objects.map((obj, h) => (
@@ -133,7 +128,7 @@ export default function Hands({
           tabIndex={active && !locked ? 0 : -1}
           aria-label={`${NAMES[i] ?? i}`}
           className={`pt${hold?.h === h && hold.i === i ? " on" : ""}`}
-          style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+          style={ptStyle(p)}
           onFocus={() => {
             sel.current = { h, i };
             onSelect(obj.id);
