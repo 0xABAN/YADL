@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/doc";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import CreateChrome from "@/components/CreateChrome";
 import { createPageTools } from "@/lib/createTools";
 import { fetchProjects } from "@/lib/projectsApi";
@@ -72,6 +73,7 @@ export default function New() {
   const [template, setTemplate] = useState<(typeof TEMPLATES)[number]["id"]>("hand");
   const [err, setErr] = useState<"empty" | "taken" | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
+  const [pendingDel, setPendingDel] = useState<Project | null>(null);
   const ex = useRotatingIndex(EXAMPLES.length);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -240,12 +242,7 @@ export default function New() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (!confirm(`Delete ${p.name}?`)) return;
-                        const id = p.id;
-                        setRows((rs) => rs.filter((x) => x.id !== id));
-                        fetch(`/api/projects/${id}`, { method: "DELETE" }).then((r) => {
-                          if (!r.ok) setRows((rs) => (rs.some((x) => x.id === id) ? rs : [...rs, p]));
-                        }).catch(() => setRows((rs) => (rs.some((x) => x.id === id) ? rs : [...rs, p])));
+                        setPendingDel(p);
                       }}
                     >
                       ×
@@ -257,6 +254,21 @@ export default function New() {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={!!pendingDel}
+        message={pendingDel ? `Delete ${pendingDel.name}?` : ""}
+        onCancel={() => setPendingDel(null)}
+        onConfirm={() => {
+          const p = pendingDel;
+          setPendingDel(null);
+          if (!p) return;
+          const id = p.id;
+          setRows((rs) => rs.filter((x) => x.id !== id));
+          fetch(`/api/projects/${id}`, { method: "DELETE" }).then((r) => {
+            if (!r.ok) setRows((rs) => (rs.some((x) => x.id === id) ? rs : [...rs, p]));
+          }).catch(() => setRows((rs) => (rs.some((x) => x.id === id) ? rs : [...rs, p])));
+        }}
+      />
     </div>
   );
 }
