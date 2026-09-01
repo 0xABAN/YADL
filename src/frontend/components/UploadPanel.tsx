@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ACCEPT,
   ALL_EXTS,
@@ -26,16 +26,14 @@ export type SubmitOpts = {
   onProgress: (p: UploadProgress) => void;
 };
 
-export type UploadPanelHandle = {
-  /**
-   * Aim Select files for computer-use. May try input.click() (often blocked without a user gesture).
-   * Does not upload.
-   */
-  preparePicker: () => { needsClick: true; selector: string; label: string };
-  setFrameInterval: (sec: number) => number;
-};
-
-const UploadPanel = forwardRef<UploadPanelHandle, {
+function UploadPanel({
+  busy = false,
+  err = null,
+  existing = 0,
+  submitLabel = "Upload",
+  onSubmit,
+  onCancel,
+}: {
   busy?: boolean;
   err?: string | null;
   /** images already in the project (studio add) */
@@ -43,14 +41,7 @@ const UploadPanel = forwardRef<UploadPanelHandle, {
   submitLabel?: string;
   onSubmit: (files: File[], opts: SubmitOpts) => void | Promise<void>;
   onCancel?: () => void;
-}>(function UploadPanel({
-  busy = false,
-  err = null,
-  existing = 0,
-  submitLabel = "Upload",
-  onSubmit,
-  onCancel,
-}, ref) {
+}) {
   const [rows, setRows] = useState<Row[]>([]);
   const [over, setOver] = useState(false);
   const [skipped, setSkipped] = useState(0);
@@ -58,36 +49,6 @@ const UploadPanel = forwardRef<UploadPanelHandle, {
   const [prog, setProg] = useState<UploadProgress | null>(null);
   const urls = useRef<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pickLabelRef = useRef<HTMLLabelElement>(null);
-
-  useImperativeHandle(ref, () => ({
-    preparePicker: () => {
-      const input = fileInputRef.current;
-      const label = pickLabelRef.current;
-      label?.scrollIntoView({ block: "center", inline: "nearest" });
-      label?.classList.add("pick-aim");
-      window.setTimeout(() => label?.classList.remove("pick-aim"), 4000);
-      if (!busy) {
-        try {
-          input?.click();
-        } catch {
-          /* gesture blocked */
-        }
-      }
-      return {
-        needsClick: true as const,
-        selector: '[data-webmcp="select-files"]',
-        label: "Select files",
-      };
-    },
-    setFrameInterval: (sec: number) => {
-      const v = clampInterval(sec);
-      setIntervalSec(v);
-      return v;
-    },
-  }));
-
   useEffect(() => {
     return () => {
       urls.current.forEach((u) => URL.revokeObjectURL(u));
@@ -173,7 +134,7 @@ const UploadPanel = forwardRef<UploadPanelHandle, {
     }
   };
 
-  const formats = useMemo(() => ALL_EXTS.join(" "), []);
+  const formats = ALL_EXTS.join(" ");
 
   return (
     <>
@@ -195,13 +156,11 @@ const UploadPanel = forwardRef<UploadPanelHandle, {
         <p className="lead">Drag and drop to upload, or:</p>
         <div className="picks">
           <label
-            ref={pickLabelRef}
             className={busy ? "pick off" : "pick"}
             data-webmcp="select-files"
           >
             Select files
             <input
-              ref={fileInputRef}
               type="file"
               accept={ACCEPT}
               multiple
@@ -336,6 +295,6 @@ const UploadPanel = forwardRef<UploadPanelHandle, {
       )}
     </>
   );
-});
+}
 
 export default UploadPanel;

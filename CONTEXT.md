@@ -71,23 +71,22 @@ Do not rate-limit `set_joint`.
 | Tool | Role |
 |---|---|
 | `list_projects` | recent projects |
-| `create_project` | `{name, type, template?}` — requires type; template for keypoints |
+| `create_project` | `{name, type, template?}` — returns `upload_url` / `studio_url`; does not upload |
 | `open_project` | by id or name → studio |
-| `prepare_media_upload` | `{ project_id, frame_interval? }` — opens `/upload?id=…`, aims Select files; does **not** upload; CU clicks picker → chooses media → Upload |
 
-Human flow: `/create` (name + type) → `/upload?name=&type=` (create-on-submit) or agent `/upload?id=`. Studio add-images modal unchanged.
+No WebMCP upload tool — media pick/submit is human or computer-use on `/upload`.
+
+Human flow: `/create` → `/upload?name=&type=` (create-on-submit). Agent: `create_project` then CU on `upload_url`. Studio add-images modal unchanged.
 
 Register via `document.modelContext`; no-op if unavailable.
 
 ### WebMCP evals (repo-scoped)
 
 - Package: `webmcp-evals` (devDep under `src/frontend` only)
-- Suite: `src/frontend/webmcp-evals/{schema,evals}.json` — create-page tools
-- Requires Next on `:3000` (and backend for create/list that hit the API)
-- Smoke (no LLM key): `cd src/frontend && npm run webmcp:smoke`
-- Schema-only LLM: `npm run webmcp:local` (needs provider key in env)
-- Live browser LLM: `npm run webmcp:browser` (Chrome with WebMCP; Canary/channel via CLI)
-- Reports land in `src/frontend/.evals/` (gitignored)
+- Tool SSOT: `src/frontend/lib/createTools.ts` (`CREATE_TOOL_SCHEMAS` + `createPageTools`)
+- Suite: `src/frontend/webmcp-evals/{schema,evals}.json` — keep schema text matched to `CREATE_TOOL_SCHEMAS`
+- Smoke: `cd src/frontend && npm run webmcp:smoke` (Next `:3000` + backend)
+- Reports: `src/frontend/.evals/` (gitignored)
 
 ## Infra (current)
 

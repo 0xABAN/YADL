@@ -1,5 +1,3 @@
-/** Thin WebMCP helpers — feature-detect + register with AbortSignal cleanup. */
-
 export type WebMcpTool = {
   name: string;
   description: string;
@@ -17,21 +15,18 @@ function ctx(): ModelContext | null {
   return mc && typeof mc.registerTool === "function" ? mc : null;
 }
 
-export function webmcpAvailable(): boolean {
-  return !!ctx();
-}
-
-/** Register tools; aborts previous registration when called again with a new signal. */
-export async function registerWebMcpTools(tools: WebMcpTool[], signal: AbortSignal): Promise<boolean> {
+/** Register tools in parallel; no-op when WebMCP is unavailable. */
+export async function registerWebMcpTools(tools: WebMcpTool[], signal: AbortSignal): Promise<void> {
   const mc = ctx();
-  if (!mc || signal.aborted) return false;
-  for (const tool of tools) {
-    if (signal.aborted) return false;
-    try {
-      await mc.registerTool(tool, { signal });
-    } catch {
-      // Origin trial / host may reject; page still works without WebMCP.
-    }
-  }
-  return true;
+  if (!mc || signal.aborted) return;
+  await Promise.all(
+    tools.map(async (tool) => {
+      if (signal.aborted) return;
+      try {
+        await mc.registerTool(tool, { signal });
+      } catch {
+        /* host may reject */
+      }
+    }),
+  );
 }

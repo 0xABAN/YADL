@@ -1423,22 +1423,31 @@ main.cross, main.cross:active { cursor: crosshair }
   align-content: safe center;
   overflow: auto;
 }
-/* upload step: title on top, sheet vertically centered in leftover */
+/* upload: title + sheet as one centered stack */
 .create.up:not(.auth) {
-  grid-template-rows: auto 1fr;
-  align-content: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
 }
 .create.up .body {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  align-self: stretch;
+  width: 100%;
   min-height: 0;
+  padding-top: 12px;
   padding-bottom: 24px;
 }
 .create.up .split {
   width: 100%;
   align-items: center;
+}
+.create.up:not(.auth) > h1 {
+  flex: 0 0 auto;
+  padding-bottom: 0;
+  width: min(880px, calc(100% - 80px));
 }
 /* page grain only — scanlines live on .create-guide dark cells */
 .create::after {
@@ -1899,13 +1908,6 @@ main.cross, main.cross:active { cursor: crosshair }
   clip-path: none;
 }
 .create .pick:hover, .studio-upload .pick:hover { background: #e5e5e5; color: #000; }
-/* WebMCP / agent aim — pulse so computer-use can find Select files */
-.create .pick.pick-aim,
-.studio-upload .pick.pick-aim {
-  outline: 2px solid var(--lime, #bfff00);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 6px rgba(191, 255, 0, 0.25);
-}
 .create .formats, .studio-upload .formats {
   width: 100%;
   padding: 12px 14px;
