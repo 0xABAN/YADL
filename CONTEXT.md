@@ -20,30 +20,18 @@ Not a WebMCP registry. Not a browser extension. Core labeler stays product-agnos
 
 ## Product
 
-The page is a 21-point hand driven by **FK joints**, not raw dots.
+Keypoints studio: **two paths, one landmark cloud**.
 
-- Agent sets joints → rig updates → MediaPipe-shaped landmarks are derived
-- Human sees the hand move and confirms commits
-- Camera is optional (seed a real pose). Most samples are agent-authored.
+| Actor | Geometry |
+|---|---|
+| **Agent (WebMCP)** | Template-agnostic **FK rig only** — joints in, landmarks out. No free-landmark tools, no presets/`set_pose`, no agent assist. |
+| **Human (UI)** | Free-dot drag + MediaPipe assist/reseed as today. **No** joint panel, **no** presets. |
 
-**Joints:** wrist pitch/yaw/roll; per finger MCP (flex, spread), PIP, DIP; thumb opposition. DIP follows PIP. Clamped so the hand stays legal.
+Shared store: `landmarks[]` (draw/export SSOT) + optional `rig: { root, joints }`. Human drag or assist → `rig = null`. Agent `set_rig` when `rig` is null → `rig_invalidated` unless full replace (root + joints).
 
-**Presets:** `open`, `fist`, `point`, `pinch`, `thumbs_up`, `thumbs_down`, `ok`, `rock`
+Same tool/schema shell for `hand` | `pose` | `face`. Catalogs differ (closed joint ids + `fk()`). Face is **expression-style controls**, not full anatomical FK — same wire shape, different skill. Photo-correct via agent is **N/A** (no IK / free-LM / assist on the agent pack).
 
-### ASL → Codex Micro (demo vocab)
-
-Static one-hand control signs mapped to Codex Micro Command Keys. Not full ASL.
-
-| Label | Sign | Emoji | Codex action |
-|---|---|---|---|
-| `thumbs_up` | thumbs up | 👍 | Approve |
-| `thumbs_down` | thumbs down | 👎 | Decline |
-| `point` | index point | ☝️ | Send |
-| `fist` | closed fist | ✊ | Push-to-talk (hold) |
-| `open` | open hand | 🖐️ | New chat / branch |
-| `rock` | index + pinky | 🤘 | Fast mode toggle |
-
-Hold `fist` = PTT on; release = stop. Skip Agent Keys / dial / stick until the demo needs them.
+ASL demo labels remain free-form **class names** only (not pose macros). Example vocab when that path is shown: `thumbs_up`, `thumbs_down`, `point`, `fist`, `open`, `rock`.
 
 ## v1 (build this)
 
@@ -55,16 +43,19 @@ Localhost. No login, no cloud, no rate limits.
 Project types: `boxes` | `polygons` | `keypoints` (renamed from `hands`).
 Keypoints carry `template`: `hand` (21) | `pose` (33) | `face` (mesh). Assist seeds via MediaPipe still-image models. Object wire format still `kind: hand` / `geom.t: hand` for now (shared landmark list).
 
-Joints are the **Phase 2** authoring type for hand FK; landmarks are derived. Phase 2 WebMCP (studio, not done yet):
+### WebMCP Studio (keypoints / FK agent pack)
+
+Registered on `/studio/:id` when `project.type === "keypoints"` (any template). SSOT: `src/frontend/lib/rigTools.ts` + `lib/rig/*` catalogs. General studio pack still handles nav/label/commit.
 
 | Tool | Role |
 |---|---|
-| `set_pose` | named preset |
-| `set_joint` | one joint, clamped |
-| `get_landmarks` | points from the rig |
-| `commit_sample` | write `{label, joints, landmarks}` and advance |
+| `get_rig` | `object_id?` (required if ≠1 instance), `include_landmarks?`, `include_defs?` → template, root, **resolved** joints, handedness?, `rig_live`, landmark_count, optional cloud/defs |
+| `set_rig` | one batch: partial `root`, sparse `joints`, optional `handedness` → echo + `clamped_keys[]`. If `rig` null → full replace or `rig_invalidated` |
+| `add_instance` | rest catalog for `project.template` → FK landmarks + live rig; optional root/handedness |
 
-Do not rate-limit `set_joint`.
+**Non-goals (locked):** presets / `set_pose`, agent free-landmark edit, agent assist/IK, human FK UI, solo `set_joint`/`set_root`/`set_handedness` tools, rate limits on joint writes.
+
+Agent loop: `open_image` → `add_instance` → `set_rig` → `get_rig(include_landmarks)` → `set_label` → `commit_image`.
 
 ### WebMCP Phase 1 (create page)
 
@@ -80,7 +71,7 @@ Human flow: `/create` → `/upload?name=&type=` (create-on-submit). Agent: `crea
 
 ### WebMCP Studio (general, type-agnostic)
 
-Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geometry** — label/delete existing objects only. FK/landmarks = later Phase 2.
+Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geometry** — label/delete existing objects only. Keypoints geometry = FK pack above.
 
 | Tool | Role |
 |---|---|
@@ -102,8 +93,10 @@ Register via `document.modelContext`; no-op if unavailable.
 - Package: `webmcp-evals` (devDep under `src/frontend` only)
 - Create SSOT: `lib/createTools.ts` → `webmcp-evals/{schema,evals}.json`
 - Studio SSOT: `lib/studioTools.ts` → `webmcp-evals/studio-{schema,evals}.json`
+- Rig SSOT: `lib/rigTools.ts` → `webmcp-evals/rig-{schema,evals}.json`
 - Smoke create: `npm run webmcp:smoke` (page `/create`)
-- Smoke studio: `npm run webmcp:smoke:studio` (needs a real `/studio/:id` URL — set `STUDIO_URL`)
+- Smoke studio: `npm run webmcp:smoke:studio`
+- Smoke rig: `npm run webmcp:smoke:rig` (keypoints + Playwright UI clicks)
 - Reports: `src/frontend/.evals/` (gitignored)
 
 ## Infra (current)
@@ -133,8 +126,9 @@ Live camera stays in the browser. Stills seed and train may use RunPod. Image ge
 
 ## Locked decisions
 
-- Agent owns pose authoring. Human reviews.
-- Joint rig (A), not raw 21 `(x,y,z)` and not presets-only
-- Core labels stay free-form. Demo vocab above is the locked ASL→Codex Micro set when that path is shown.
+- Agent owns FK pose authoring (template-agnostic schema). Human reviews / free-edits landmarks.
+- No presets in agent or human workflows. No agent free-landmark tools. No human FK UI.
+- Dual-path: human/assist clears `rig`; agent writes only via `set_rig` / `add_instance`.
+- Core labels stay free-form. ASL→Codex names are class labels only when that demo path is shown.
 - Web app in a real browser tab (`document.modelContext`). Not Electron/Tauri.
 - License still unset (MIT or Apache-2.0 candidates)

@@ -10,6 +10,7 @@ import Footer from "./Footer";
 import UploadPanel from "./UploadPanel";
 import { readComments } from "@/lib/comment";
 import { studioPageTools } from "@/lib/studioTools";
+import { rigPageTools } from "@/lib/rigTools";
 import { uploadFiles } from "@/lib/upload";
 import { registerWebMcpTools } from "@/lib/webmcp";
 import {
@@ -227,7 +228,7 @@ export default function Studio({ id }: { id: string }) {
   }, [id, iid, apply, project?.type]);
 
   const save = useCallback(
-    (objects: AnnObj[]) => {
+    async (objects: AnnObj[]) => {
       const d = docRef.current;
       if (!d) return;
       const next = { ...d, objects };
@@ -239,11 +240,12 @@ export default function Studio({ id }: { id: string }) {
         listRef.current = n;
         return n;
       });
-      fetch(`/api/projects/${id}/images/${d.id}`, {
+      const r = await fetch(`/api/projects/${id}/images/${d.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...next, objects: writeObjects(objects) }),
-      }).catch(() => {});
+      });
+      if (!r.ok) throw new Error("save");
     },
     [id],
   );
@@ -393,25 +395,27 @@ export default function Studio({ id }: { id: string }) {
   useEffect(() => {
     if (loadState !== "ready") return;
     const ac = new AbortController();
-    void registerWebMcpTools(
-      studioPageTools({
-        get: () => ({
-          projectId: id,
-          project: projectRef.current,
-          list: listRef.current,
-          index: indexRef.current,
-          doc: docRef.current,
-        }),
+    const get = () => ({
+      projectId: id,
+      project: projectRef.current,
+      list: listRef.current,
+      index: indexRef.current,
+      doc: docRef.current,
+    });
+    const saveObjects = async (objects: AnnObj[]) => {
+      await save(objects);
+      setSelected((cur) =>
+        cur && objects.some((o) => o.id === cur) ? cur : objects[0]?.id ?? null,
+      );
+    };
+    const tools = [
+      ...studioPageTools({
+        get,
         setIndex: (i) => {
           indexRef.current = i;
           setIndex(i);
         },
-        saveObjects: (objects) => {
-          save(objects);
-          setSelected((cur) =>
-            cur && objects.some((o) => o.id === cur) ? cur : objects[0]?.id ?? null,
-          );
-        },
+        saveObjects,
         ensureClass,
         commitCurrent,
         deleteCurrent,
@@ -438,10 +442,13 @@ export default function Studio({ id }: { id: string }) {
             tick();
           }),
       }),
-      ac.signal,
-    );
+      ...(projectRef.current?.type === "keypoints"
+        ? rigPageTools({ get, saveObjects, setSelected: (oid) => setSelected(oid) })
+        : []),
+    ];
+    void registerWebMcpTools(tools, ac.signal);
     return () => ac.abort();
-  }, [id, loadState, save, ensureClass, commitCurrent, deleteCurrent, addComment, deleteComment]);
+  }, [id, loadState, save, ensureClass, commitCurrent, deleteCurrent, addComment, deleteComment, project?.type]);
 
   const undoLast = useCallback(async () => {
     const u = undoToast.current;

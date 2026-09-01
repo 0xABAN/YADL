@@ -410,6 +410,8 @@ def export_line(filename: str, obj: dict) -> str | None:
             base["handedness"] = geom.get("handedness")
         if geom.get("template"):
             base["template"] = geom.get("template")
+        if geom.get("rig") is not None:
+            base["rig"] = geom.get("rig")
     elif t == "box":
         x, y = float(geom.get("x") or 0), float(geom.get("y") or 0)
         w, h = float(geom.get("w") or 0), float(geom.get("h") or 0)

@@ -22,10 +22,23 @@ class GeomPoly(BaseModel):
     pts: list[tuple[float, float]]
 
 
+class RigRoot(BaseModel):
+    x: float = 0.5
+    y: float = 0.5
+    scale: float = 0.22
+    roll: float = 0.0
+
+
+class RigState(BaseModel):
+    root: RigRoot
+    joints: dict[str, float] = Field(default_factory=dict)
+
+
 class GeomHand(BaseModel):
     t: Literal["hand"]
     landmarks: list[Landmark]
     handedness: Literal["Left", "Right"] | None = None
+    rig: RigState | None = None
 
 
 class Obj(BaseModel):

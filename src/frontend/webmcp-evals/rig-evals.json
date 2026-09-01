@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Add hand instance and set joints batch",
+    "messages": [
+      { "type": "message", "content": "Add a hand instance then curl the index finger." }
+    ],
+    "expectedCall": [
+      { "functionName": "add_instance", "arguments": {} },
+      {
+        "functionName": "set_rig",
+        "arguments": {
+          "joints": { "index_mcp": 1, "index_pip": 1 }
+        }
+      },
+      {
+        "functionName": "get_rig",
+        "arguments": { "include_landmarks": true }
+      }
+    ]
+  },
+  {
+    "name": "Multi-instance requires object_id",
+    "messages": [
+      { "type": "message", "content": "With two hands, set_rig without id should fail." }
+    ],
+    "expectedCall": [
+      { "functionName": "add_instance", "arguments": {} },
+      { "functionName": "add_instance", "arguments": { "root": { "x": 0.3 } } },
+      {
+        "functionName": "set_rig",
+        "arguments": { "joints": { "index_mcp": 0.5 } }
+      }
+    ]
+  },
+  {
+    "name": "rig_invalidated without full replace",
+    "messages": [
+      {
+        "type": "message",
+        "content": "After human clears rig, partial set_rig returns rig_invalidated."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "set_rig",
+        "arguments": { "joints": { "index_mcp": 1 } }
+      }
+    ]
+  }
+]

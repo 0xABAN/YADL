@@ -46,7 +46,12 @@ export default function Hands({
         : {
             ...o,
             edited: true,
-            geom: { ...o.geom, landmarks: o.geom.landmarks.map((q, j) => (j === i ? { ...q, x, y } : q)) },
+            // free-landmark edit invalidates agent FK rig
+            geom: {
+              ...o.geom,
+              rig: null,
+              landmarks: o.geom.landmarks.map((q, j) => (j === i ? { ...q, x, y } : q)),
+            },
           },
     );
 

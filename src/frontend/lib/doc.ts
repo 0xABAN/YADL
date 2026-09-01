@@ -1,5 +1,6 @@
 import type { Comment } from "./comment";
 import type { Landmark } from "./hand";
+import type { RigState } from "./rig/types";
 
 export type Pt = { x: number; y: number };
 
@@ -8,7 +9,13 @@ export type HandObj = {
   kind: "hand";
   label: string | null;
   edited: boolean;
-  geom: { t: "hand"; landmarks: Landmark[]; handedness: "Left" | "Right" | null };
+  geom: {
+    t: "hand";
+    landmarks: Landmark[];
+    handedness: "Left" | "Right" | null;
+    /** Agent FK state; null after human free-edit or assist. */
+    rig?: RigState | null;
+  };
 };
 
 export type BoxObj = {
@@ -102,6 +109,7 @@ export function readObjects(raw: unknown): AnnObj[] {
     const label = (row.label as string | null) ?? null;
     const edited = Boolean(row.edited);
     if (geom.t === "hand" && Array.isArray(geom.landmarks)) {
+      const rig = parseRig(geom.rig);
       out.push({
         id,
         kind: "hand",
@@ -111,6 +119,7 @@ export function readObjects(raw: unknown): AnnObj[] {
           t: "hand",
           landmarks: geom.landmarks as Landmark[],
           handedness: (geom.handedness as HandObj["geom"]["handedness"]) ?? null,
+          rig,
         },
       });
     } else if (geom.t === "box") {
@@ -147,14 +156,50 @@ export function readObjects(raw: unknown): AnnObj[] {
   return out;
 }
 
-/** Wire format for PUT — poly pts as [x,y] for backend tuples. */
+function parseRig(raw: unknown): RigState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const rootIn = r.root as Record<string, unknown> | undefined;
+  if (!rootIn || typeof rootIn !== "object") return null;
+  const jointsIn = r.joints;
+  const joints: Record<string, number> = {};
+  if (jointsIn && typeof jointsIn === "object" && !Array.isArray(jointsIn)) {
+    for (const [k, v] of Object.entries(jointsIn as Record<string, unknown>)) {
+      const n = Number(v);
+      if (Number.isFinite(n)) joints[k] = n;
+    }
+  }
+  return {
+    root: {
+      x: Number(rootIn.x) || 0.5,
+      y: Number(rootIn.y) || 0.5,
+      scale: Number(rootIn.scale) || 0.22,
+      roll: Number(rootIn.roll) || 0,
+    },
+    joints,
+  };
+}
+
+/** Wire format for PUT — poly pts as [x,y] for backend tuples; drop null rig. */
 export function writeObjects(objects: AnnObj[]) {
   return objects.map((o) => {
-    if (o.kind !== "polygon") return o;
-    return {
-      ...o,
-      geom: { t: "polygon" as const, pts: o.geom.pts.map((p) => [p.x, p.y] as [number, number]) },
-    };
+    if (o.kind === "polygon") {
+      return {
+        ...o,
+        geom: { t: "polygon" as const, pts: o.geom.pts.map((p) => [p.x, p.y] as [number, number]) },
+      };
+    }
+    if (o.kind === "hand") {
+      const { rig, ...rest } = o.geom;
+      return {
+        ...o,
+        geom: {
+          ...rest,
+          ...(rig ? { rig } : {}),
+        },
+      };
+    }
+    return o;
   });
 }
 

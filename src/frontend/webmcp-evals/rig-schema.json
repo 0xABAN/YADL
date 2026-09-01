@@ -1,0 +1,65 @@
+{
+  "tools": [
+    {
+      "name": "get_rig",
+      "description": "Read FK rig for one keypoint instance. object_id required when more than one instance. Optional include_landmarks / include_defs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": { "type": "string" },
+          "include_landmarks": { "type": "boolean" },
+          "include_defs": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_rig",
+      "description": "Batch update root and/or joints (and optional handedness). FK overwrites landmarks. If rig was cleared by human/assist, send full root+joints or get rig_invalidated.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": { "type": "string" },
+          "root": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "scale": { "type": "number" },
+              "roll": { "type": "number" }
+            },
+            "additionalProperties": false
+          },
+          "joints": {
+            "type": "object",
+            "additionalProperties": { "type": "number" },
+            "description": "Sparse joint id → value (catalog units)"
+          },
+          "handedness": { "type": ["string", "null"], "enum": ["Left", "Right", null] }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_instance",
+      "description": "Add a rest-pose keypoint instance for the project template (FK landmarks + live rig). Optional root and handedness (hand only).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "scale": { "type": "number" },
+              "roll": { "type": "number" }
+            },
+            "additionalProperties": false
+          },
+          "handedness": { "type": ["string", "null"], "enum": ["Left", "Right", null] }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

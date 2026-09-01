@@ -119,8 +119,8 @@ export const STUDIO_TOOL_SCHEMAS = {
 export type StudioToolsDeps = {
   get: () => StudioSnapshot;
   setIndex: (i: number) => void;
-  /** Persist objects on current doc (optimistic). */
-  saveObjects: (objects: AnnObj[]) => void;
+  /** Persist objects on current doc (optimistic local, awaited network). */
+  saveObjects: (objects: AnnObj[]) => void | Promise<void>;
   ensureClass: (name: string) => Promise<void>;
   commitCurrent: () => Promise<
     | { ok: true; advanced: boolean }
@@ -262,7 +262,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
           label = t === "" ? null : t;
         }
         if (label) await deps.ensureClass(label);
-        deps.saveObjects(snap.doc.objects.map((o) => (o.id === oid ? { ...o, label } : o)));
+        await deps.saveObjects(snap.doc.objects.map((o) => (o.id === oid ? { ...o, label } : o)));
         return { current: currentSummary(deps.get()) };
       },
     },
@@ -273,7 +273,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         if (!snap.doc) return { error: "no_image" };
         const oid = String(args.object_id ?? "").trim();
         if (!snap.doc.objects.some((o) => o.id === oid)) return { error: "not_found" };
-        deps.saveObjects(snap.doc.objects.filter((o) => o.id !== oid));
+        await deps.saveObjects(snap.doc.objects.filter((o) => o.id !== oid));
         return { current: currentSummary(deps.get()) };
       },
     },
