@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Canvas from "../canvas/Canvas";
 import { named, writeObjects, type AnnObj } from "../geometry/doc";
-import { exportUrl } from "../api";
+import { exportUrl, fetchProjectComments } from "../api";
 import { StudioProvider, useStudioSession, useStudioState } from "../session";
 import { studioPageTools } from "../tools/studioTools";
 import { rigPageTools } from "../tools/rigTools";
@@ -89,6 +89,14 @@ function StudioBody() {
         deleteCurrent: () => session.deleteCurrent(),
         addComment: (body) => session.addComment(body),
         deleteComment: (cid) => session.deleteComment(cid),
+        listComments: async () => {
+          try {
+            const images = await fetchProjectComments(session.getState().projectId);
+            return { ok: true as const, images };
+          } catch {
+            return { ok: false as const, error: "list_failed" };
+          }
+        },
         openUpload: () => session.openUpload(),
         waitForImage: (imageId, ms) => session.waitForImage(imageId, ms),
       }),
@@ -104,7 +112,9 @@ function StudioBody() {
     return () => ac.abort();
   }, [session, loadState, project?.type]);
 
-  useStudioHotkeys(session);
+  const [railOn, setRailOn] = useState(true);
+  const toggleRail = useCallback(() => setRailOn((v) => !v), []);
+  useStudioHotkeys(session, { toggleRail });
 
   const objects = doc?.objects ?? [];
   const editing = edit && edit !== "new" ? objects.find((o) => o.id === edit) : undefined;
@@ -143,18 +153,29 @@ function StudioBody() {
   const save = useCallback((objs: AnnObj[]) => void session.saveObjects(objs), [session]);
 
   return (
-    <div className="shell">
+    <div className={railOn ? "shell" : "shell rail-off"}>
       <a href="#studio-main" className="skip-in">
         Skip to canvas
       </a>
-      <a href="/create" className="studio-back" aria-label="Back to projects">
-        <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
-          <path
-            d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"
-            fill="currentColor"
-          />
-        </svg>
-      </a>
+      {railOn ? (
+        <a href="/create" className="studio-back" aria-label="Back to projects">
+          <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+            <path
+              d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"
+              fill="currentColor"
+            />
+          </svg>
+        </a>
+      ) : (
+        <button type="button" className="studio-back" aria-label="Show labels rail" onClick={toggleRail}>
+          <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+            <path
+              d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z"
+              fill="currentColor"
+            />
+          </svg>
+        </button>
+      )}
       <h1 className="sr-only">Studio{project ? ` — ${project.name}` : ""}</h1>
       {loadState === "ready" && list.length > 0 && (
         <div className={`validity ${canCommit ? "ok" : "bad"}`} aria-live="polite">
@@ -171,6 +192,7 @@ function StudioBody() {
         onSelect={(id) => session.selectObject(id)}
         onRename={(old, name) => void session.renameClass(old, name)}
         onAdd={() => session.openNewLabel()}
+        onCollapse={toggleRail}
         onDrop={async (name) => {
           if (!confirm(`Delete ${name}?`)) return;
           await session.dropClass(name);
@@ -199,6 +221,8 @@ function StudioBody() {
             onComment={doc ? (btn) => session.toggleComments(btn, true) : () => {}}
             onSynthetic={doc ? (btn) => session.toggleSynthetic(btn) : () => {}}
             onEdit={doc ? (oid) => session.editObject(oid) : () => {}}
+            railOn={railOn}
+            onToggleRail={toggleRail}
           />
         </div>
       ) : (
