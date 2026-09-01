@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_TOOL,
   SHOWN,
+  isKeypoint,
   type AnnObj,
   type BoxObj,
   type HandObj,
@@ -159,6 +160,13 @@ export default function Canvas({
     el.style.setProperty("--dots-y", `${y}px`);
   };
 
+  /** Keep landmark chips ~constant screen size under pan-zoom (image is natural px). */
+  const setViewScale = (scale: number) => {
+    const el = frame.current;
+    if (!el) return;
+    el.style.setProperty("--view-scale", String(Math.max(scale, 1e-6)));
+  };
+
   const fitView = useCallback(() => {
     const api = zpp.current;
     const main = mainRef.current;
@@ -189,6 +197,7 @@ export default function Canvas({
     fitting.current = true;
     api.setTransform(x, y, scale, 0);
     setDotsPos(x, y);
+    setViewScale(scale);
     queueMicrotask(() => {
       fitting.current = false;
     });
@@ -309,8 +318,11 @@ export default function Canvas({
   }, [onChange]);
 
   const replaceKind = useCallback(
-    <T extends AnnObj>(kind: T["kind"], next: T[], undoable = true) => {
-      const keep = live.current.filter((o) => o.kind !== kind);
+    <T extends AnnObj>(kind: T["kind"] | "keypoints", next: T[], undoable = true) => {
+      const keep =
+        kind === "keypoints"
+          ? live.current.filter((o) => !isKeypoint(o))
+          : live.current.filter((o) => o.kind !== kind);
       commit([...keep, ...next], undoable !== false);
     },
     [commit],
@@ -344,7 +356,7 @@ export default function Canvas({
   const panning = move || spacePan;
   const drawing = !panning && (tool === "box" || tool === "polygon");
 
-  const hands = objects.filter((o): o is HandObj => o.kind === "hand");
+  const hands = objects.filter(isKeypoint);
   const boxes = objects.filter((o): o is BoxObj => o.kind === "box");
   const polys = objects.filter((o): o is PolyObj => o.kind === "polygon");
 
@@ -385,6 +397,7 @@ export default function Canvas({
           onInit={fitView}
           onTransform={(_, s) => {
             setDotsPos(s.positionX, s.positionY);
+            setViewScale(s.scale);
             const fit = fitScale.current ?? s.scale;
             setZoom(zoomPct(s.scale, fit));
             if (fitting.current || fitScale.current == null) return;
@@ -448,7 +461,7 @@ export default function Canvas({
                   active
                   selectedId={selectedId}
                   frameRef={frame}
-                  onChange={(next, u) => replaceKind("hand", next, u)}
+                  onChange={(next, u) => replaceKind("keypoints", next, u)}
                   onSelect={(id) => onSelect?.(id)}
                   onEdit={(id) => onEdit?.(id)}
                 />
