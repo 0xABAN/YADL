@@ -38,10 +38,10 @@ ASL demo labels remain free-form **class names** only (not pose macros). Example
 Localhost. No login, no cloud, no rate limits.
 
 - **Frontend:** `src/frontend` — Next.js + TypeScript
-- **Backend:** `src/backend` — Python + uv + FastAPI. Writes `./data/`.
+- **Backend:** `src/backend` — Python + uv + FastAPI (`api/` routes, `domain/` models+rules, `infra/` db/s3/store/seed). Writes `./data/`.
 
 Project types: `boxes` | `polygons` | `keypoints` (renamed from `hands`).
-Keypoints carry `template`: `hand` (21) | `pose` (33) | `face` (mesh). Assist seeds via MediaPipe still-image models. Object wire format still `kind: hand` / `geom.t: hand` for now (shared landmark list).
+Keypoints carry `template`: `hand` (21) | `pose` (33) | `face` (mesh). Assist seeds via MediaPipe still-image models. Object wire `kind` / `geom.t` match the template (`hand` | `pose` | `face`). Legacy rows stored as `hand` are remapped on read via landmark count.
 
 ### WebMCP Studio (keypoints / FK agent pack)
 
@@ -49,7 +49,7 @@ Registered on `/studio/:id` when `project.type === "keypoints"` (any template). 
 
 | Tool | Role |
 |---|---|
-| `get_rig` | `object_id?` (required if ≠1 instance), `include_landmarks?`, `include_defs?` → template, root, **resolved** joints, handedness?, `rig_live`, landmark_count, optional cloud/defs |
+| `get_rig` | `object_id?` (required if ≠1 instance), `include_landmarks?`, `include_defs?` → `kind`+`template`, root, **resolved** joints, handedness (hand only), `rig_live`, landmark_count, optional cloud/defs |
 | `set_rig` | one batch: partial `root`, sparse `joints`, optional `handedness` → echo + `clamped_keys[]`. If `rig` null → full replace or `rig_invalidated` |
 | `add_instance` | rest catalog for `project.template` → FK landmarks + live rig; optional root/handedness |
 

@@ -9,8 +9,9 @@ from pathlib import Path
 
 from psycopg.types.json import Json
 
-from backend.db import ROOT, execute, fetch, fetchone
-from backend.s3 import delete as s3_delete, presign_get, put
+from backend.domain.export import export_line, named
+from backend.infra.db import ROOT, execute, fetch, fetchone
+from backend.infra.s3 import delete as s3_delete, presign_get, put
 
 def as_project(row: dict) -> dict:
     t = row["type"]
@@ -314,16 +315,12 @@ def put_objects(pid: str, iid: str, uid: str, objects: list) -> dict | None:
     return as_doc(row)
 
 
-def _named(label: object) -> bool:
-    return bool(label) and label != "untitled"
-
-
 def commit_image(pid: str, iid: str, uid: str) -> dict | None:
     row = image_row(pid, iid, uid)
     if not row:
         return None
     objs = row["objects"] or []
-    if not any(_named(o.get("label")) for o in objs):
+    if not any(named(o.get("label")) for o in objs):
         raise ValueError("unlabeled")
     hist = _versions(row.get("history") or [])
     hist.append(
@@ -391,47 +388,6 @@ def empty_images(pid: str, uid: str) -> list[dict] | None:
            and coalesce(objects, '[]'::jsonb) = '[]'::jsonb""",
         (pid,),
     )
-
-
-def export_line(filename: str, obj: dict) -> str | None:
-    """One JSONL row for a named object, or None if skip."""
-    label = obj.get("label")
-    if not _named(label):
-        return None
-    geom = obj.get("geom") or {}
-    t = geom.get("t") or obj.get("kind")
-    base = {"image": filename, "label": label, "kind": t}
-    if t == "hand":
-        lms = geom.get("landmarks") or []
-        if len(lms) < 1:
-            return None
-        base["landmarks"] = lms
-        if geom.get("handedness") is not None:
-            base["handedness"] = geom.get("handedness")
-        if geom.get("template"):
-            base["template"] = geom.get("template")
-        if geom.get("rig") is not None:
-            base["rig"] = geom.get("rig")
-    elif t == "box":
-        x, y = float(geom.get("x") or 0), float(geom.get("y") or 0)
-        w, h = float(geom.get("w") or 0), float(geom.get("h") or 0)
-        if w <= 0 or h <= 0:
-            return None
-        base["box"] = {"x": x, "y": y, "w": w, "h": h}
-    elif t == "polygon":
-        raw = geom.get("pts") or []
-        pts = []
-        for p in raw:
-            if isinstance(p, (list, tuple)) and len(p) >= 2:
-                pts.append([float(p[0]), float(p[1])])
-            elif isinstance(p, dict):
-                pts.append([float(p.get("x") or 0), float(p.get("y") or 0)])
-        if len(pts) < 3:
-            return None
-        base["pts"] = pts
-    else:
-        return None
-    return json.dumps(base, separators=(",", ":"))
 
 
 def export_jsonl(pid: str, uid: str) -> tuple[str, str] | None:

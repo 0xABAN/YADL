@@ -34,19 +34,32 @@ class RigState(BaseModel):
     joints: dict[str, float] = Field(default_factory=dict)
 
 
-class GeomHand(BaseModel):
-    t: Literal["hand"]
+class GeomLandmarks(BaseModel):
+    """Shared landmark cloud — t matches project template (hand|pose|face)."""
+
     landmarks: list[Landmark]
     handedness: Literal["Left", "Right"] | None = None
     rig: RigState | None = None
 
 
+class GeomHand(GeomLandmarks):
+    t: Literal["hand"] = "hand"
+
+
+class GeomPose(GeomLandmarks):
+    t: Literal["pose"] = "pose"
+
+
+class GeomFace(GeomLandmarks):
+    t: Literal["face"] = "face"
+
+
 class Obj(BaseModel):
     id: str
-    kind: Literal["box", "polygon", "hand"]
+    kind: Literal["box", "polygon", "hand", "pose", "face"]
     label: str | None = None
     edited: bool = False
-    geom: GeomBox | GeomPoly | GeomHand = Field(discriminator="t")
+    geom: GeomBox | GeomPoly | GeomHand | GeomPose | GeomFace = Field(discriminator="t")
 
 
 class Doc(BaseModel):

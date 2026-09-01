@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from backend.app import MAX_N, flatten, frames_from_video
+from backend.api.images import MAX_N, flatten, frames_from_video
 
 
 def _tiny_mp4(path: Path, seconds: float = 2.0) -> None:

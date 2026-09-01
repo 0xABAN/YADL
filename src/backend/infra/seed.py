@@ -7,8 +7,8 @@ from urllib.request import urlretrieve
 
 import mediapipe as mp
 
-from backend.db import ROOT
-from backend.models import GeomHand, Landmark, Obj
+from backend.domain.models import GeomFace, GeomHand, GeomPose, Landmark, Obj
+from backend.infra.db import ROOT
 
 MODELS = ROOT / "data" / "models"
 URLS = {
@@ -81,13 +81,14 @@ def _face() -> object:
 
 
 def _obj(landmarks: list[Landmark], *, handedness: str | None = None, template: str) -> Obj:
-    return Obj(
-        id=str(uuid.uuid4()),
-        kind="hand",
-        label=None,
-        edited=False,
-        geom=GeomHand(t="hand", landmarks=landmarks, handedness=handedness),
-    )
+    t = template if template in ("hand", "pose", "face") else "hand"
+    if t == "pose":
+        geom = GeomPose(landmarks=landmarks, handedness=None)
+    elif t == "face":
+        geom = GeomFace(landmarks=landmarks, handedness=None)
+    else:
+        geom = GeomHand(landmarks=landmarks, handedness=handedness)
+    return Obj(id=str(uuid.uuid4()), kind=t, label=None, edited=False, geom=geom)
 
 
 def seed_hand(path: Path) -> list[Obj]:

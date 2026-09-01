@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from backend.store import export_line  # noqa: E402
+from backend.domain.export import export_line  # noqa: E402
 
 
 def main() -> None:
@@ -18,6 +18,15 @@ def main() -> None:
             "t": "hand",
             "handedness": "Right",
             "landmarks": [{"x": i * 0.01, "y": 0.1, "z": 0.0} for i in range(21)],
+        },
+    }
+    face = {
+        "label": "thumbs_down",
+        "kind": "face",
+        "geom": {
+            "t": "face",
+            "handedness": None,
+            "landmarks": [{"x": 0.5, "y": 0.5, "z": 0.0} for _ in range(478)],
         },
     }
     box = {
@@ -34,6 +43,9 @@ def main() -> None:
 
     h = json.loads(export_line("a.jpg", hand) or "")
     assert h["kind"] == "hand" and len(h["landmarks"]) == 21 and h["handedness"] == "Right"
+
+    f = json.loads(export_line("f.jpg", face) or "")
+    assert f["kind"] == "face" and len(f["landmarks"]) == 478 and "handedness" not in f
 
     b = json.loads(export_line("b.jpg", box) or "")
     assert b["kind"] == "box" and b["box"] == {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}

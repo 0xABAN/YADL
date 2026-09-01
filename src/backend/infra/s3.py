@@ -4,7 +4,7 @@ from pathlib import Path
 
 import boto3
 
-import backend.db
+import backend.infra.db  # noqa: F401 — load_env
 
 
 @lru_cache(maxsize=1)
