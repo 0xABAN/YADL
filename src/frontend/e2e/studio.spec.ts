@@ -19,7 +19,7 @@ const hand = {
   },
 };
 
-const project = { id: PID, name: "demo", type: "hands", classes: ["open", "fist", "point"] };
+const project = { id: PID, name: "demo", type: "keypoints", template: "hand", classes: ["open", "fist", "point"] };
 
 async function mockApi(page: Page, images: unknown[] | null = null) {
   const imgs =

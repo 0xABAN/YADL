@@ -113,7 +113,7 @@ export default function Studio({ id }: { id: string }) {
         if (!Array.isArray(imgs)) throw new Error("images");
         setProject(p);
         setList(imgs);
-        setAssistOn(p.type === "hands");
+        setAssistOn(p.type === "keypoints");
         assistedRef.current = new Set();
         setLoadState("ready");
       })
@@ -181,7 +181,7 @@ export default function Studio({ id }: { id: string }) {
       .then((d) => {
         if (ac.signal.aborted) return;
         apply(d);
-        if (!assistOnRef.current || project?.type !== "hands" || (d.objects ?? []).length) return;
+        if (!assistOnRef.current || project?.type !== "keypoints" || (d.objects ?? []).length) return;
         if (assistedRef.current.has(iid)) return;
         assistedRef.current.add(iid);
         setAssistBusy(true);
@@ -468,7 +468,7 @@ export default function Studio({ id }: { id: string }) {
             src={doc?.url ?? undefined}
             alt={doc?.image || (list.length === 0 ? "No images" : "Sample")}
             objects={doc ? objects : []}
-            projectType={project?.type ?? "hands"}
+            projectType={project?.type ?? "keypoints"}
             classes={classes}
             selectedId={doc ? selected : null}
             assistOn={assistOn}
@@ -479,10 +479,10 @@ export default function Studio({ id }: { id: string }) {
             onSelect={doc ? setSelected : () => {}}
             onAssistOn={() => {
               // toggle only — seed runs once per image on first view, never batch
-              if (project?.type === "hands") setAssistOn((v) => !v);
+              if (project?.type === "keypoints") setAssistOn((v) => !v);
             }}
             onAssistReseed={() => {
-              if (project?.type !== "hands" || !doc || assistBusy) return;
+              if (project?.type !== "keypoints" || !doc || assistBusy) return;
               const iid = doc.id;
               assistedRef.current.add(iid);
               setAssistBusy(true);

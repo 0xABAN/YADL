@@ -23,11 +23,13 @@ import Polys from "./editors/Polys";
 const STEP = 0.1;
 const MIN = 0.05; /* allow fit-to-view on large images */
 const MAX = 4;
-const FIT_PAD = 0.92; /* slight margin around image in canvas */
+const FIT_PAD = 0.88; /* air around image so chrome doesn't kiss the frame */
+const STACK_W = 56; /* .stack tool rail */
+const FOOT_H = 58; /* .shell footer */
 
-/** Physical scale → UI % (min→0, 1→100, above natural stays scale×100). */
-const zoomPct = (scale: number) =>
-  Math.round(scale <= 1 ? ((scale - MIN) / (1 - MIN)) * 100 : scale * 100);
+/** UI % relative to fit scale — fit is always 100%. */
+const zoomPct = (scale: number, fit: number) =>
+  Math.round((scale / Math.max(fit, 1e-6)) * 100);
 
 function toolKey(type: Project["type"]) {
   return `yadl.tool.${type}`;
@@ -37,7 +39,7 @@ function readTool(type: Project["type"], fallback: ToolId): ToolId {
   try {
     const v = sessionStorage.getItem(toolKey(type));
     if (v === "move") return "move";
-    if (type === "hands" && v === "landmarks") return "landmarks";
+    if (type === "keypoints" && v === "landmarks") return "landmarks";
     if (type === "boxes" && v === "box") return "box";
     if (type === "polygons" && v === "polygon") return "polygon";
   } catch {
@@ -91,7 +93,7 @@ export default function Canvas({
   src = "/default.jpg",
   alt = "Sample",
   objects = [],
-  projectType = "hands",
+  projectType = "keypoints",
   onChange,
   onAssistOn,
   onAssistReseed,
@@ -148,19 +150,34 @@ export default function Canvas({
   live.current = objects;
   const tickHist = () => setHist({ u: undo.current.length, r: redo.current.length });
 
+  const fitScale = useRef<number | null>(null);
+  const zoomDirty = useRef(false);
+  const fitting = useRef(false);
+
   const fitView = useCallback(() => {
     const api = zpp.current;
     const wrap = mainRef.current;
     const size = imgSize;
     if (!api || !wrap || !size?.w || !size?.h) return;
-    // editable area: main minus left rail padding baked into .world
-    const rail = parseFloat(getComputedStyle(wrap).getPropertyValue("--rail")) || 0;
-    const aw = Math.max(1, wrap.clientWidth - rail);
-    const ah = Math.max(1, wrap.clientHeight);
-    const fit = Math.min(aw / size.w, ah / size.h) * FIT_PAD;
-    const scale = Math.min(MAX, Math.max(MIN, fit));
-    api.centerView(scale, 0);
-    setZoom(zoomPct(scale));
+    const cs = getComputedStyle(document.documentElement);
+    const rail = parseFloat(cs.getPropertyValue("--rail")) || 274;
+    const pad = parseFloat(cs.getPropertyValue("--rail-pad")) || 12;
+    // clear of labels rail, tool stack, footer (main spans under footer)
+    const left = rail + STACK_W + pad * 2;
+    const right = pad;
+    const top = pad * 2;
+    const bottom = FOOT_H + pad * 2;
+    const aw = Math.max(1, wrap.clientWidth - left - right);
+    const ah = Math.max(1, wrap.clientHeight - top - bottom);
+    const scale = Math.min(MAX, Math.max(MIN, Math.min(aw / size.w, ah / size.h) * FIT_PAD));
+    const x = left + (aw - size.w * scale) / 2;
+    const y = top + (ah - size.h * scale) / 2;
+    fitScale.current = scale;
+    zoomDirty.current = false;
+    fitting.current = true;
+    api.setTransform(x, y, scale, 0);
+    fitting.current = false;
+    setZoom(100);
   }, [imgSize]);
 
   useEffect(() => {
@@ -184,13 +201,15 @@ export default function Canvas({
   useEffect(() => {
     setImgReady(false);
     setImgSize(null);
+    zoomDirty.current = false;
+    fitScale.current = null;
     if (!src) return;
     let dead = false;
     const im = new window.Image();
     const done = () => {
       if (dead) return;
       if (im.naturalWidth > 0) setImgSize({ w: im.naturalWidth, h: im.naturalHeight });
-      setImgReady(true);
+      else setImgReady(true); // error / empty — show shell anyway
     };
     im.onload = done;
     im.onerror = done;
@@ -201,27 +220,32 @@ export default function Canvas({
     };
   }, [src]);
 
-  // fit when image size known + after layout; again on resize
+  // fit once size is known (before opacity), then on resize if user hasn't zoomed/panned
   useEffect(() => {
-    if (!imgReady || !imgSize) return;
-    const run = () => fitView();
-    run();
+    if (!imgSize) return;
+    const run = () => {
+      fitView();
+      setImgReady(true);
+    };
+    const onResize = () => {
+      if (!zoomDirty.current) fitView();
+    };
     const t = requestAnimationFrame(run);
     const wrap = mainRef.current;
     if (!wrap || typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", run);
+      window.addEventListener("resize", onResize);
       return () => {
         cancelAnimationFrame(t);
-        window.removeEventListener("resize", run);
+        window.removeEventListener("resize", onResize);
       };
     }
-    const ro = new ResizeObserver(run);
+    const ro = new ResizeObserver(onResize);
     ro.observe(wrap);
     return () => {
       cancelAnimationFrame(t);
       ro.disconnect();
     };
-  }, [imgReady, imgSize, fitView]);
+  }, [imgSize, fitView]);
 
   const setTool = (t: ToolId) => {
     setToolInner(t);
@@ -320,6 +344,8 @@ export default function Canvas({
           if (tool === "landmarks") onEdit?.(null);
         }}
       >
+        {/* fixed-scale canvas dots — outside zoom so pattern never shrinks/grows */}
+        <div className="dots" aria-hidden="true" />
         <TransformWrapper
           key={src}
           ref={zpp}
@@ -334,7 +360,11 @@ export default function Canvas({
           wheel={{ disabled: !move, step: 0.04 }}
           pinch={{ disabled: !move }}
           onInit={fitView}
-          onTransform={(_, s) => setZoom(zoomPct(s.scale))}
+          onTransform={(_, s) => {
+            const fit = fitScale.current ?? s.scale;
+            setZoom(zoomPct(s.scale, fit));
+            if (!fitting.current && fitScale.current != null) zoomDirty.current = true;
+          }}
         >
           <TransformComponent
             wrapperClass="zpp"
@@ -342,7 +372,6 @@ export default function Canvas({
             wrapperStyle={{ width: "100%", height: "100%" }}
             contentStyle={{ width: "max-content", height: "max-content", display: "grid" }}
           >
-            <div className="dots" aria-hidden="true" />
             <div className="frame" ref={frame}>
               <i />
               <i />
@@ -385,7 +414,7 @@ export default function Canvas({
                   onEdit={(id) => onEdit?.(id)}
                 />
               )}
-              {imgReady && projectType === "hands" && hands.length > 0 && (
+              {imgReady && projectType === "keypoints" && hands.length > 0 && (
                 <Hands
                   objects={hands}
                   classes={classes}
@@ -521,7 +550,7 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={zoom <= 0}
+            disabled={zoom <= zoomPct(MIN, fitScale.current ?? 1)}
             onClick={() => zpp.current?.zoomOut(STEP)}
             aria-label="Zoom out"
           >
@@ -531,7 +560,7 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={zoom >= MAX * 100}
+            disabled={zoom >= zoomPct(MAX, fitScale.current ?? 1)}
             onClick={() => zpp.current?.zoomIn(STEP)}
             aria-label="Zoom in"
           >

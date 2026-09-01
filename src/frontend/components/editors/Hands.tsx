@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE, type RefObject } from "react";
-import { CONNECTIONS, NAMES } from "@/lib/hand";
+import { connectionsFor, nameFor } from "@/lib/hand";
 import { classColor, type HandObj } from "@/lib/doc";
 import { atRect, clamp01, ptStyle, trackPointer } from "@/lib/geom";
 
@@ -111,22 +111,27 @@ export default function Hands({
       style={{ "--c": classColor(obj.label, classes) } as CSSProperties}
     >
       <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
-        {CONNECTIONS.map(([a, b]) => (
-          <line
-            key={`${a}-${b}`}
-            x1={obj.geom.landmarks[a].x}
-            y1={obj.geom.landmarks[a].y}
-            x2={obj.geom.landmarks[b].x}
-            y2={obj.geom.landmarks[b].y}
-          />
-        ))}
+        {connectionsFor(obj.geom.landmarks.length).map(([a, b]) => {
+          const pa = obj.geom.landmarks[a];
+          const pb = obj.geom.landmarks[b];
+          if (!pa || !pb) return null;
+          return (
+            <line
+              key={`${a}-${b}`}
+              x1={pa.x}
+              y1={pa.y}
+              x2={pb.x}
+              y2={pb.y}
+            />
+          );
+        })}
       </svg>
       {obj.geom.landmarks.map((p, i) => (
         <span
           key={i}
           role="button"
           tabIndex={active && !locked ? 0 : -1}
-          aria-label={`${NAMES[i] ?? i}`}
+          aria-label={nameFor(i, obj.geom.landmarks.length)}
           className={`pt${hold?.h === h && hold.i === i ? " on" : ""}`}
           style={ptStyle(p)}
           onFocus={() => {

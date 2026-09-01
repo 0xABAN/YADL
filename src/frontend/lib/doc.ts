@@ -39,23 +39,27 @@ export type Doc = {
   comments?: Comment[];
 };
 
+export type ProjectType = "boxes" | "polygons" | "keypoints";
+export type KeypointTemplate = "hand" | "pose" | "face";
+
 export type Project = {
   id: string;
   name: string;
-  type: "boxes" | "polygons" | "hands";
+  type: ProjectType;
+  template?: KeypointTemplate | null;
   classes: string[];
 };
 
 export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist" | "seed" | "synthetic";
 
-export const SHOWN: Record<Project["type"], ToolId[]> = {
-  hands: ["move", "seed", "assist", "synthetic"],
+export const SHOWN: Record<ProjectType, ToolId[]> = {
+  keypoints: ["move", "seed", "assist", "synthetic"],
   boxes: ["move", "box", "synthetic"],
   polygons: ["move", "polygon", "synthetic"],
 };
 
-export const DEFAULT_TOOL: Record<Project["type"], ToolId> = {
-  hands: "landmarks",
+export const DEFAULT_TOOL: Record<ProjectType, ToolId> = {
+  keypoints: "landmarks",
   boxes: "box",
   polygons: "polygon",
 };
