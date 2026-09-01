@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
     return [
       { source: "/", destination: "/auth", permanent: false },
       { source: "/new", destination: "/create", permanent: false },
-      { source: "/upload", destination: "/create", permanent: false },
       { source: "/p/:id", destination: "/studio/:id", permanent: false },
     ];
   },

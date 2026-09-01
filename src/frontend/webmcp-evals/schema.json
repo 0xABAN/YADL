@@ -1,0 +1,66 @@
+{
+  "tools": [
+    {
+      "name": "list_projects",
+      "description": "List the user's recent YADL projects (id, name, type, template).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_project",
+      "description": "Create a labeling project. type is boxes, polygons, or keypoints. For keypoints, pass template hand|pose|face (default hand). Does not upload files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Project name" },
+          "type": {
+            "type": "string",
+            "enum": ["boxes", "polygons", "keypoints"],
+            "description": "Annotation type"
+          },
+          "template": {
+            "type": "string",
+            "enum": ["hand", "pose", "face"],
+            "description": "Keypoint skeleton when type=keypoints"
+          }
+        },
+        "required": ["name", "type"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "open_project",
+      "description": "Open a project studio by id or exact name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "prepare_media_upload",
+      "description": "Prepare media upload for an existing project (images, video, or zip). Sets the upload UI for project_id, optional video frame_interval, and aims the Select files control. Does not upload or submit — computer use must click Select files, choose files, then click Upload.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "description": "Project id from create_project or list_projects"
+          },
+          "frame_interval": {
+            "type": "number",
+            "description": "Seconds between video frames (0.1–5). Applied when Upload runs if a video was selected."
+          }
+        },
+        "required": ["project_id"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+[
+  {
+    "name": "List existing projects",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "What YADL projects do I already have?"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "list_projects",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Create keypoints hand project",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Create a new keypoints project named ASL signs using the hand template."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_project",
+        "arguments": {
+          "name": { "$contains": "ASL" },
+          "type": "keypoints",
+          "template": "hand"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Create boxes project",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Make a bounding-box project called Dog Breeds."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_project",
+        "arguments": {
+          "name": { "$contains": "Dog" },
+          "type": "boxes"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Create then prepare upload",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Create a keypoints face project named Face mesh demo, then prepare media upload for that project id so I can pick files on /upload."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_project",
+        "arguments": {
+          "name": { "$contains": "Face" },
+          "type": "keypoints",
+          "template": "face"
+        }
+      },
+      {
+        "functionName": "prepare_media_upload",
+        "arguments": {
+          "project_id": { "$type": "string" }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Prepare upload with frame interval",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Prepare media upload for project id abc-123 with a 0.5 second video frame interval."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "prepare_media_upload",
+        "arguments": {
+          "project_id": { "$contains": "abc" },
+          "frame_interval": 0.5
+        }
+      }
+    ]
+  },
+  {
+    "name": "Open project by name",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Open my project named Dog Breeds in the studio."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "open_project",
+        "arguments": {
+          "name": { "$contains": "Dog" }
+        }
+      }
+    ]
+  }
+]

@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/lib/doc";
-import UploadPanel, { type SubmitOpts, type UploadPanelHandle } from "@/components/UploadPanel";
-import QrCard from "@/components/QrCard";
-import { uploadFiles } from "@/lib/upload";
 import { registerWebMcpTools } from "@/lib/webmcp";
 
 const EXAMPLES = [
@@ -63,19 +59,23 @@ const TEMPLATES = [
   { id: "face", name: "Face" },
 ] as const;
 
-const DATA = [
-  "data", "images", "frames", "photos", "pictures", "shots", "stills",
-  "files", "samples", "examples", "batches", "media", "captures",
-  "scans", "snaps", "assets", "inputs", "sets", "packs", "lots",
-];
-
-function upErr(status: number, detail?: string): string {
-  const d = (detail || "").toLowerCase();
-  if (status === 409 || d.includes("taken")) return "Name already exists.";
-  if (d.includes("ffmpeg")) return "Video tools unavailable (ffmpeg).";
-  if (d.includes("video")) return "Could not read video.";
-  if (d.includes("files") || status === 400) return "Upload rejected (type, size, or count).";
-  return "Upload failed.";
+function uploadPath(opts: {
+  id?: string;
+  name?: string;
+  type?: string;
+  template?: string;
+  aim?: boolean;
+  interval?: number;
+}) {
+  const u = new URLSearchParams();
+  if (opts.id) u.set("id", opts.id);
+  if (opts.name) u.set("name", opts.name);
+  if (opts.type) u.set("type", opts.type);
+  if (opts.template) u.set("template", opts.template);
+  if (opts.aim) u.set("aim", "1");
+  if (opts.interval != null) u.set("interval", String(opts.interval));
+  const q = u.toString();
+  return q ? `/upload?${q}` : "/upload";
 }
 
 export default function New() {
@@ -84,42 +84,23 @@ export default function New() {
   const [type, setType] = useState<(typeof TYPES)[number]["id"]>("boxes");
   const [template, setTemplate] = useState<(typeof TEMPLATES)[number]["id"]>("hand");
   const [err, setErr] = useState<"empty" | "taken" | null>(null);
-  const [upMsg, setUpMsg] = useState<string | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
   const [ex, setEx] = useState(0);
-  const [step, setStep] = useState<"form" | "up">("form");
-  const [busy, setBusy] = useState(false);
-  const [qrUrl, setQrUrl] = useState("");
-  const [agentPid, setAgentPid] = useState<string | null>(null);
-  const uploadRef = useRef<UploadPanelHandle>(null);
-  const nameRef = useRef(name);
-  const typeRef = useRef(type);
-  const templateRef = useRef(template);
-  const stepRef = useRef(step);
   const rowsRef = useRef(rows);
-  const agentPidRef = useRef(agentPid);
-  nameRef.current = name;
-  typeRef.current = type;
-  templateRef.current = template;
-  stepRef.current = step;
   rowsRef.current = rows;
-  agentPidRef.current = agentPid;
 
   useEffect(() => {
-    // resume upload step from phone QR (?name=&type=&up=1)
+    // old phone QR /create?up=1&name=… → /upload
     const q = new URLSearchParams(window.location.search);
     if (q.get("up") === "1") {
       const n = (q.get("name") || "").trim();
-      const t = q.get("type");
-      if (n) setName(n);
-      if (t === "boxes" || t === "polygons" || t === "keypoints" || t === "hands") {
-        setType(t === "hands" ? "keypoints" : t);
+      const t = q.get("type") || undefined;
+      const tmpl = q.get("template") || undefined;
+      if (n) {
+        router.replace(uploadPath({ name: n, type: t, template: tmpl }));
       }
-      const tmpl = q.get("template");
-      if (tmpl === "hand" || tmpl === "pose" || tmpl === "face") setTemplate(tmpl);
-      if (n) setStep("up");
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     fetch("/api/projects").then((r) => {
@@ -132,30 +113,13 @@ export default function New() {
   }, []);
 
   useEffect(() => {
-    if (step !== "up" || typeof window === "undefined") return;
-    const u = new URL("/create", window.location.origin);
-    u.searchParams.set("up", "1");
-    u.searchParams.set("name", name.trim());
-    u.searchParams.set("type", type);
-    if (type === "keypoints") u.searchParams.set("template", template);
-    setQrUrl(u.toString());
-  }, [step, name, type, template]);
-
-  useEffect(() => {
-    const list = step === "form" ? EXAMPLES : DATA;
     const t = setInterval(() => setEx((i) => {
-      let n = i % list.length;
-      while (n === i % list.length) n = Math.floor(Math.random() * list.length);
+      let n = i % EXAMPLES.length;
+      while (n === i % EXAMPLES.length) n = Math.floor(Math.random() * EXAMPLES.length);
       return n;
     }), 2200);
     return () => clearInterval(t);
-  }, [step]);
-
-  const go = (next: "form" | "up") => {
-    const run = () => flushSync(() => setStep(next));
-    if ("startViewTransition" in document) document.startViewTransition(run);
-    else run();
-  };
+  }, []);
 
   const create = () => {
     const n = name.trim();
@@ -168,8 +132,13 @@ export default function New() {
       return;
     }
     setErr(null);
-    setUpMsg(null);
-    go("up");
+    router.push(
+      uploadPath({
+        name: n,
+        type,
+        template: type === "keypoints" ? template : undefined,
+      }),
+    );
   };
 
   useEffect(() => {
@@ -238,13 +207,13 @@ export default function New() {
             if (!r.ok || !p.id) {
               return { error: "create_failed", status: r.status, detail: p.detail };
             }
-            setAgentPid(String(p.id));
             setRows((rs) => [p as Project, ...rs.filter((x) => x.id !== p.id)]);
-            go("up");
+            const upload_url = uploadPath({ id: String(p.id) });
             return {
               project: p,
               studio_url: `/studio/${p.id}`,
-              next: "Call upload_images to open the file picker, then use computer use to choose files and submit.",
+              upload_url,
+              next: "Call prepare_media_upload with this project id (or open upload_url), then computer-use Select files → choose media → Upload.",
             };
           },
         },
@@ -279,19 +248,52 @@ export default function New() {
           },
         },
         {
-          name: "upload_images",
+          name: "prepare_media_upload",
           description:
-            "Prepare the upload step file picker. Does not upload or submit. Browsers block programmatic pickers without a real click — after calling this, use computer use to click the highlighted control labeled Select files (data-webmcp=select-files), choose files, then click Upload.",
-          inputSchema: { type: "object", properties: {}, additionalProperties: false },
-          execute: async () => {
-            if (stepRef.current !== "up") {
-              return { error: "not_on_upload_step", hint: "create_project first or open upload UI" };
+            "Prepare media upload for an existing project. Opens /upload for project_id, optional frame_interval, aims Select files. Does not upload — computer use finishes picker and Upload.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              project_id: { type: "string", description: "Project id from create_project or list_projects" },
+              frame_interval: {
+                type: "number",
+                description: "Seconds between video frames (0.1–5).",
+              },
+            },
+            required: ["project_id"],
+            additionalProperties: false,
+          },
+          execute: async (args) => {
+            const project_id = String(args.project_id ?? "").trim();
+            if (!project_id) {
+              return { error: "missing_project_id", code: "missing_project_id", message: "project_id is required" };
             }
-            const r = uploadRef.current?.openFilePicker() ?? { opened: false, needsClick: true };
+            const check = await fetch(`/api/projects/${project_id}`);
+            if (check.status === 404) {
+              return { error: "not_found", code: "not_found", message: "project not found", project_id };
+            }
+            if (check.status === 401) {
+              return { error: "auth_required", code: "auth_required", message: "sign in required" };
+            }
+            if (!check.ok) {
+              return { error: "project_check_failed", code: "project_check_failed", status: check.status, project_id };
+            }
+            const proj = (await check.json().catch(() => null)) as Project | null;
+            const interval =
+              typeof args.frame_interval === "number" && Number.isFinite(args.frame_interval)
+                ? args.frame_interval
+                : undefined;
+            const upload_url = uploadPath({ id: project_id, aim: true, interval });
+            router.push(upload_url);
             return {
-              ...r,
+              prepared: true,
+              project_id,
+              project: proj,
+              frame_interval: interval,
+              upload_url,
+              needs_user_gesture: true,
               target: { label: "Select files", selector: '[data-webmcp="select-files"]' },
-              next: "Computer use: click Select files, choose files in the OS dialog, then click Upload.",
+              next: "Upload page highlights Select files. Computer use: click it, choose media, then Upload.",
             };
           },
         },
@@ -300,67 +302,6 @@ export default function New() {
     );
     return () => ac.abort();
   }, [router]);
-
-  const send = async (files: File[], opts: SubmitOpts) => {
-    if (!files.length || busy) return;
-    setBusy(true);
-    setUpMsg(null);
-    let pid: string | null = agentPid;
-    let createdHere = false;
-    try {
-      if (!pid) {
-        const r = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            type,
-            ...(type === "keypoints" ? { template } : {}),
-          }),
-          signal: opts.signal,
-        });
-        const p = await r.json().catch(() => ({}));
-        if (r.status === 409) {
-          setErr("taken");
-          setUpMsg("Name already exists.");
-          go("form");
-          return;
-        }
-        if (!r.ok || !p.id) {
-          setUpMsg(upErr(r.status, typeof p.detail === "string" ? p.detail : undefined));
-          return;
-        }
-        pid = p.id as string;
-        createdHere = true;
-        setAgentPid(pid);
-      }
-      const up = await uploadFiles(`/api/projects/${pid}/images`, files, {
-        interval: opts.interval,
-        signal: opts.signal,
-        onProgress: opts.onProgress,
-      });
-      if (!up.ok) {
-        const detail =
-          up.json && typeof up.json === "object" && up.json !== null && "detail" in up.json
-            ? String((up.json as { detail: unknown }).detail)
-            : undefined;
-        if (createdHere) fetch(`/api/projects/${pid}`, { method: "DELETE" });
-        setUpMsg(upErr(up.status, detail));
-        return;
-      }
-      router.push(`/studio/${pid}`);
-    } catch (e) {
-      if ((e as Error)?.name === "AbortError") {
-        if (createdHere && pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
-        setUpMsg("Upload cancelled.");
-        return;
-      }
-      if (createdHere && pid) fetch(`/api/projects/${pid}`, { method: "DELETE" });
-      setUpMsg("Upload failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const sideRef = useRef<HTMLDivElement>(null);
@@ -373,7 +314,6 @@ export default function New() {
     const place = () => {
       const s = sheet.getBoundingClientRect();
       const p = side.getBoundingClientRect();
-      // locked anchors: 100px left of sheet, 20px under Recent/QR only (not sheet) → viewport BR
       const left = s.left - 100;
       const top = p.bottom + 20;
       setGuide((g) => (g && g.left === left && g.top === top ? g : { left, top }));
@@ -391,13 +331,13 @@ export default function New() {
       window.visualViewport?.removeEventListener("resize", place);
       window.visualViewport?.removeEventListener("scroll", place);
     };
-  }, [step, rows.length, qrUrl]);
+  }, [rows.length]);
 
   return (
-    <div className={step === "up" ? "create up" : "create"}>
+    <div className="create">
       {guide && (
         <div
-          className={step === "up" ? "create-guide up" : "create-guide"}
+          className="create-guide"
           aria-hidden="true"
           style={{ left: guide.left, top: guide.top }}
         />
@@ -424,101 +364,83 @@ export default function New() {
         </div>
       </nav>
       <h1>
-        {step === "form" ? (
-          <>let&apos;s detect <span className="ex">{EXAMPLES[ex % EXAMPLES.length]}</span></>
-        ) : (
-          <>
-            <button type="button" className="back" aria-label="Back" onClick={() => go("form")}>
-              <svg viewBox="0 0 256 256" width="1em" height="1em" aria-hidden="true"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z" fill="currentColor" /></svg>
-            </button>
-            upload <span className="ex">{DATA[ex % DATA.length]}</span>
-          </>
-        )}
+        let&apos;s detect <span className="ex">{EXAMPLES[ex % EXAMPLES.length]}</span>
       </h1>
       <div className="body">
-        <div className={step === "up" ? "split up" : "split"}>
-        <div className="sheet" ref={sheetRef}>
-          {step === "form" ? (
-            <>
-          <div className="fields">
-            <p className="k">Project name</p>
-            <input
-              type="text"
-              aria-label="Project name"
-              value={name}
-              placeholder="E.g., 'Dog Breeds'"
-              onChange={(e) => {
-                setName(e.target.value);
-                if (err) setErr(null);
-              }}
-              onKeyDown={(e) => e.key === "Enter" && create()}
-            />
-            <small className="err" aria-live="polite">
-              {err === "empty" ? "Name cannot be empty." : err === "taken" ? "Name already exists." : ""}
-            </small>
-          </div>
-          <div className="types">
-            <div className="type-group">
-              {TYPES.map((t) =>
-                t.id === "keypoints" ? (
-                  <div
-                    key={t.id}
-                    className="type-card"
-                    data-on={type === "keypoints" || undefined}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={type === "keypoints"}
-                    onClick={() => setType("keypoints")}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setType("keypoints");
-                      }
-                    }}
-                  >
-                    <b>{t.name}</b>
-                    <span>{t.blurb}</span>
-                    <div
-                      className="tmpl"
-                      role="group"
-                      aria-label="Keypoint template"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {TEMPLATES.map((tmpl) => (
-                        <button
-                          key={tmpl.id}
-                          type="button"
-                          aria-pressed={type === "keypoints" && template === tmpl.id}
-                          onClick={() => {
-                            setType("keypoints");
-                            setTemplate(tmpl.id);
-                          }}
-                        >
-                          {tmpl.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <button key={t.id} type="button" aria-pressed={type === t.id} onClick={() => setType(t.id)}>
-                    <b>{t.name}</b>
-                    <span>{t.blurb}</span>
-                  </button>
-                ),
-              )}
+        <div className="split">
+          <div className="sheet" ref={sheetRef}>
+            <div className="fields">
+              <p className="k">Project name</p>
+              <input
+                type="text"
+                aria-label="Project name"
+                value={name}
+                placeholder="E.g., 'Dog Breeds'"
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (err) setErr(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && create()}
+              />
+              <small className="err" aria-live="polite">
+                {err === "empty" ? "Name cannot be empty." : err === "taken" ? "Name already exists." : ""}
+              </small>
             </div>
+            <div className="types">
+              <div className="type-group">
+                {TYPES.map((t) =>
+                  t.id === "keypoints" ? (
+                    <div
+                      key={t.id}
+                      className="type-card"
+                      data-on={type === "keypoints" || undefined}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={type === "keypoints"}
+                      onClick={() => setType("keypoints")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setType("keypoints");
+                        }
+                      }}
+                    >
+                      <b>{t.name}</b>
+                      <span>{t.blurb}</span>
+                      <div
+                        className="tmpl"
+                        role="group"
+                        aria-label="Keypoint template"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {TEMPLATES.map((tmpl) => (
+                          <button
+                            key={tmpl.id}
+                            type="button"
+                            aria-pressed={type === "keypoints" && template === tmpl.id}
+                            onClick={() => {
+                              setType("keypoints");
+                              setTemplate(tmpl.id);
+                            }}
+                          >
+                            {tmpl.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <button key={t.id} type="button" aria-pressed={type === t.id} onClick={() => setType(t.id)}>
+                      <b>{t.name}</b>
+                      <span>{t.blurb}</span>
+                    </button>
+                  ),
+                )}
+              </div>
+            </div>
+            <button className="commit" type="button" onClick={create}>
+              Create Project
+            </button>
           </div>
-          <button className="commit" type="button" onClick={create}>
-            Create Project
-          </button>
-            </>
-          ) : (
-            <UploadPanel ref={uploadRef} busy={busy} err={upMsg} onSubmit={send} />
-          )}
-        </div>
-        {step === "up" ? (
-          <QrCard ref={sideRef} url={qrUrl} />
-        ) : (
           <div className="history" ref={sideRef}>
             <h2>Recent</h2>
             {rows.length === 0 ? (
@@ -552,7 +474,6 @@ export default function New() {
               </div>
             )}
           </div>
-        )}
         </div>
       </div>
     </div>

@@ -13,6 +13,8 @@ package-lock.json
 
 # testing
 /coverage
+.evals/
+test-results/
 
 # next.js
 /.next/

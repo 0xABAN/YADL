@@ -28,11 +28,11 @@ export type SubmitOpts = {
 
 export type UploadPanelHandle = {
   /**
-   * Try to open the OS file picker (does not upload).
-   * Browsers often block this without a real user gesture (e.g. WebMCP tool calls) —
-   * then we focus/highlight the visible "Select files" control for computer-use.
+   * Aim Select files for computer-use. May try input.click() (often blocked without a user gesture).
+   * Does not upload.
    */
-  openFilePicker: () => { opened: boolean; needsClick?: boolean };
+  preparePicker: () => { needsClick: true; selector: string; label: string };
+  setFrameInterval: (sec: number) => number;
 };
 
 const UploadPanel = forwardRef<UploadPanelHandle, {
@@ -62,21 +62,29 @@ const UploadPanel = forwardRef<UploadPanelHandle, {
   const pickLabelRef = useRef<HTMLLabelElement>(null);
 
   useImperativeHandle(ref, () => ({
-    openFilePicker: () => {
-      if (busy) return { opened: false, needsClick: true };
+    preparePicker: () => {
       const input = fileInputRef.current;
       const label = pickLabelRef.current;
       label?.scrollIntoView({ block: "center", inline: "nearest" });
       label?.classList.add("pick-aim");
       window.setTimeout(() => label?.classList.remove("pick-aim"), 4000);
-      // May be ignored without a user gesture (WebMCP / automation).
-      try {
-        input?.click();
-      } catch {
-        return { opened: false, needsClick: true };
+      if (!busy) {
+        try {
+          input?.click();
+        } catch {
+          /* gesture blocked */
+        }
       }
-      // Can't reliably detect a blocked picker; tell agents to click Select files if none opens.
-      return { opened: false, needsClick: true };
+      return {
+        needsClick: true as const,
+        selector: '[data-webmcp="select-files"]',
+        label: "Select files",
+      };
+    },
+    setFrameInterval: (sec: number) => {
+      const v = clampInterval(sec);
+      setIntervalSec(v);
+      return v;
     },
   }));
 

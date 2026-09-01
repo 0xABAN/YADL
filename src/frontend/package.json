@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "webmcp:smoke": "webmcp-evals smoke -u http://localhost:3000/create -e webmcp-evals/evals.json -v",
+    "webmcp:smoke:upload": "webmcp-evals smoke -u http://localhost:3000/upload -e webmcp-evals/evals.json -v",
+    "webmcp:local": "webmcp-evals local -t webmcp-evals/schema.json -e webmcp-evals/evals.json",
+    "webmcp:browser": "webmcp-evals browser -u http://localhost:3000/create -e webmcp-evals/evals.json --chrome-channel chrome"
   },
   "dependencies": {
     "next": "latest",
@@ -24,6 +28,7 @@
     "@types/react-dom": "latest",
     "eslint": "latest",
     "eslint-config-next": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "webmcp-evals": "^0.0.4"
   }
 }
