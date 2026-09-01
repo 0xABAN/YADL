@@ -1,0 +1,96 @@
+{
+  "tools": [
+    {
+      "name": "get_studio",
+      "description": "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, unlabeled ids, export_url.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "open_image",
+      "description": "Open one filmstrip image. Pass exactly one of: index (0-based), id, or next_uncommitted=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "description": "0-based filmstrip index" },
+          "id": { "type": "string", "description": "Image id" },
+          "next_uncommitted": {
+            "type": "boolean",
+            "description": "Jump to next uncommitted image after current (wraps)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_label",
+      "description": "Set or clear an object label on the current image. Non-empty labels create the class if missing (same as UI). Geometry unchanged.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": { "type": "string" },
+          "label": {
+            "type": ["string", "null"],
+            "description": "Label text, or null/\"\" to clear"
+          }
+        },
+        "required": ["object_id", "label"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_object",
+      "description": "Remove one annotation object from the current image (geometry deleted).",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "object_id": { "type": "string" } },
+        "required": ["object_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "commit_image",
+      "description": "Commit the current image (Footer rules: at least one named object). First commit advances to next image.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "delete_image",
+      "description": "Soft-delete the current filmstrip image.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "comment",
+      "description": "Add or delete a comment on the current image.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "op": { "type": "string", "enum": ["add", "delete"] },
+          "body": { "type": "string", "description": "Required for add" },
+          "id": { "type": "string", "description": "Comment id; required for delete" }
+        },
+        "required": ["op"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "open_upload",
+      "description": "Open the Studio add-media modal. Does not upload files — use computer use on [data-webmcp=select-files] then Upload.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  ]
+}

@@ -9,8 +9,10 @@
     "lint": "eslint",
     "test:e2e": "playwright test",
     "webmcp:smoke": "webmcp-evals smoke -u http://localhost:3000/create -e webmcp-evals/evals.json -v",
+    "webmcp:smoke:studio": "webmcp-evals smoke -u ${STUDIO_URL:-http://localhost:3000/studio} -e webmcp-evals/studio-evals.json -v",
     "webmcp:local": "webmcp-evals local -t webmcp-evals/schema.json -e webmcp-evals/evals.json",
-    "webmcp:schema-check": "node -e \"const s=require('./webmcp-evals/schema.json'); const n=s.tools.map(t=>t.name).join(','); if(n!=='list_projects,create_project,open_project') process.exit(1); console.log('ok',n)\"",
+    "webmcp:local:studio": "webmcp-evals local -t webmcp-evals/studio-schema.json -e webmcp-evals/studio-evals.json",
+    "webmcp:schema-check": "node -e \"const a=require('./webmcp-evals/schema.json').tools.map(t=>t.name).join(','); const b=require('./webmcp-evals/studio-schema.json').tools.map(t=>t.name).join(','); if(a!=='list_projects,create_project,open_project') process.exit(1); if(b!=='get_studio,open_image,set_label,delete_object,commit_image,delete_image,comment,open_upload') process.exit(1); console.log('ok create',a); console.log('ok studio',b)\"",
     "webmcp:browser": "webmcp-evals browser -u http://localhost:3000/create -e webmcp-evals/evals.json --chrome-channel chrome"
   },
   "dependencies": {

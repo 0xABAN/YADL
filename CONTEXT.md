@@ -76,16 +76,34 @@ Do not rate-limit `set_joint`.
 
 No WebMCP upload tool — media pick/submit is human or computer-use on `/upload`.
 
-Human flow: `/create` → `/upload?name=&type=` (create-on-submit). Agent: `create_project` then CU on `upload_url`. Studio add-images modal unchanged.
+Human flow: `/create` → `/upload?name=&type=` (create-on-submit). Agent: `create_project` then CU on `upload_url`.
+
+### WebMCP Studio (general, type-agnostic)
+
+Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geometry** — label/delete existing objects only. FK/landmarks = later Phase 2.
+
+| Tool | Role |
+|---|---|
+| `get_studio` | project + progress + current (objects without geometry) + `can_commit` / `unlabeled` + `export_url` |
+| `open_image` | exactly one of `index` \| `id` \| `next_uncommitted` |
+| `set_label` | `{object_id, label}` — null/`""` clears; new label creates class |
+| `delete_object` | `{object_id}` on current image |
+| `commit_image` | current only; Footer rules; first commit advances |
+| `delete_image` | current only |
+| `comment` | `add`+`body` or `delete`+`id` on current |
+| `open_upload` | open add-media modal; CU on `[data-webmcp=select-files]` (no bytes tool) |
+
+SSOT: `src/frontend/lib/studioTools.ts`.
 
 Register via `document.modelContext`; no-op if unavailable.
 
 ### WebMCP evals (repo-scoped)
 
 - Package: `webmcp-evals` (devDep under `src/frontend` only)
-- Tool SSOT: `src/frontend/lib/createTools.ts` (`CREATE_TOOL_SCHEMAS` + `createPageTools`)
-- Suite: `src/frontend/webmcp-evals/{schema,evals}.json` — keep schema text matched to `CREATE_TOOL_SCHEMAS`
-- Smoke: `cd src/frontend && npm run webmcp:smoke` (Next `:3000` + backend)
+- Create SSOT: `lib/createTools.ts` → `webmcp-evals/{schema,evals}.json`
+- Studio SSOT: `lib/studioTools.ts` → `webmcp-evals/studio-{schema,evals}.json`
+- Smoke create: `npm run webmcp:smoke` (page `/create`)
+- Smoke studio: `npm run webmcp:smoke:studio` (needs a real `/studio/:id` URL — set `STUDIO_URL`)
 - Reports: `src/frontend/.evals/` (gitignored)
 
 ## Infra (current)

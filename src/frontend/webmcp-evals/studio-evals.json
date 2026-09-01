@@ -1,0 +1,87 @@
+[
+  {
+    "name": "Inspect studio state",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "What's the status of this labeling project and the current image?"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "get_studio",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Next uncommitted image",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Go to the next image that still needs a commit."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "open_image",
+        "arguments": {
+          "next_uncommitted": true
+        }
+      }
+    ]
+  },
+  {
+    "name": "Label an object",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Label object obj_1 as left_hand."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "set_label",
+        "arguments": {
+          "object_id": { "$contains": "obj" },
+          "label": { "$contains": "hand" }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Commit current sample",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Commit this image and move on."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "commit_image",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Open add media",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "I need to add more photos to this project."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "open_upload",
+        "arguments": {}
+      }
+    ]
+  }
+]

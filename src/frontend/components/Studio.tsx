@@ -9,7 +9,9 @@ import Synthetic from "./Synthetic";
 import Footer from "./Footer";
 import UploadPanel from "./UploadPanel";
 import { readComments } from "@/lib/comment";
+import { studioPageTools } from "@/lib/studioTools";
 import { uploadFiles } from "@/lib/upload";
+import { registerWebMcpTools } from "@/lib/webmcp";
 import {
   classColor,
   named,
@@ -94,6 +96,16 @@ export default function Studio({ id }: { id: string }) {
     if (holdMs != null) toastHide.current = setTimeout(() => setToastOut(true), holdMs);
   }, []);
 
+  // live refs for WebMCP (avoid stale closures / re-register thrash)
+  const projectRef = useRef(project);
+  const listRef = useRef(list);
+  const indexRef = useRef(index);
+  const docRef = useRef(doc);
+  projectRef.current = project;
+  listRef.current = list;
+  indexRef.current = index;
+  docRef.current = doc;
+
   // URL sync
   useEffect(() => {
     const q = new URLSearchParams();
@@ -122,7 +134,7 @@ export default function Studio({ id }: { id: string }) {
 
   const apply = useCallback((d: Record<string, unknown>) => {
     const objects = readObjects(d.objects);
-    setDoc({
+    const next: Doc = {
       id: String(d.id),
       image: String(d.image ?? ""),
       url: (d.url as string | null) ?? null,
@@ -135,7 +147,9 @@ export default function Studio({ id }: { id: string }) {
         : [],
       comments: readComments(d.comments),
       objects,
-    });
+    };
+    docRef.current = next;
+    setDoc(next);
     setSelected((cur) => (cur && objects.some((o) => o.id === cur) ? cur : objects[0]?.id ?? null));
   }, []);
 
@@ -214,24 +228,220 @@ export default function Studio({ id }: { id: string }) {
 
   const save = useCallback(
     (objects: AnnObj[]) => {
-      if (!doc) return;
-      const next = { ...doc, objects };
+      const d = docRef.current;
+      if (!d) return;
+      const next = { ...d, objects };
+      docRef.current = next;
       setDoc(next);
-      fetch(`/api/projects/${id}/images/${doc.id}`, {
+      const empty = objects.length === 0;
+      setList((ls) => {
+        const n = ls.map((x) => (x.id === d.id ? { ...x, empty } : x));
+        listRef.current = n;
+        return n;
+      });
+      fetch(`/api/projects/${id}/images/${d.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...next, objects: writeObjects(objects) }),
-      })
-        .then((r) => {
-          if (!r.ok) throw new Error("save");
-          setList((ls) =>
-            ls.map((x) => (x.id === doc.id ? { ...x, empty: objects.length === 0 } : x)),
-          );
-        })
-        .catch(() => {});
+      }).catch(() => {});
     },
-    [doc, id],
+    [id],
   );
+
+  const ensureClass = useCallback(
+    async (label: string) => {
+      const p = projectRef.current;
+      if (!p || p.classes.includes(label)) return;
+      const optimistic = { ...p, classes: [...p.classes, label] };
+      projectRef.current = optimistic;
+      setProject(optimistic);
+      const r = await fetch(`/api/projects/${id}/classes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: label }),
+      });
+      if (r.ok) {
+        const row = (await r.json()) as Project;
+        projectRef.current = row;
+        setProject(row);
+      }
+    },
+    [id],
+  );
+
+  const commitCurrent = useCallback(async () => {
+    const d = docRef.current;
+    const ls = listRef.current;
+    if (!d) return { ok: false as const, error: "no_image" as const };
+    if (!d.objects.some((o) => named(o.label))) {
+      return {
+        ok: false as const,
+        error: "cannot_commit" as const,
+        reason: d.objects.length === 0 ? "Add an object first" : "Name an object first",
+      };
+    }
+    const first = !d.committed;
+    const prev = d.objects;
+    const r = await fetch(`/api/projects/${id}/images/${d.id}/commit`, { method: "POST" });
+    if (!r.ok) return { ok: false as const, error: "cannot_commit" as const, reason: "Commit failed" };
+    const body = await r.json();
+    const nextDoc: Doc = {
+      ...d,
+      committed: true,
+      history: Array.isArray(body.history)
+        ? body.history.map((h: { id: string; objects: unknown; at?: string }) => ({
+            id: h.id,
+            at: h.at,
+            objects: readObjects(h.objects),
+          }))
+        : d.history,
+    };
+    docRef.current = nextDoc;
+    setDoc(nextDoc);
+    setList((cur) => {
+      const n = cur.map((x) => (x.id === d.id ? { ...x, committed: true } : x));
+      listRef.current = n;
+      return n;
+    });
+    if (!first) {
+      if (undoToast.current) clearTimeout(undoToast.current.t);
+      showToast("Updated");
+      undoToast.current = {
+        kind: "objects",
+        objects: prev,
+        t: setTimeout(() => {
+          undoToast.current = null;
+          setToastOut(true);
+        }, 5000),
+      };
+      return { ok: true as const, advanced: false };
+    }
+    showToast("Committed", 1200);
+    const i = indexRef.current;
+    const advancedTo = Math.min(i + 1, Math.max(0, ls.length - 1));
+    if (advancedTo !== i) {
+      indexRef.current = advancedTo;
+      setIndex(advancedTo);
+    }
+    return { ok: true as const, advanced: advancedTo !== i };
+  }, [id, showToast]);
+
+  const deleteCurrent = useCallback(async () => {
+    const d = docRef.current;
+    const ls = listRef.current;
+    if (!d || !ls.length) return { ok: false as const, error: "no_image" as const };
+    const iid = d.id;
+    const at = indexRef.current;
+    const r = await fetch(`/api/projects/${id}/images/${iid}`, { method: "DELETE" });
+    if (!r.ok) return { ok: false as const, error: "delete_failed" as const };
+    const next = ls.filter((x) => x.id !== iid);
+    listRef.current = next;
+    setList(next);
+    setSelected(null);
+    setEdit(null);
+    setHistOpen(false);
+    setCommentsOpen(false);
+    if (next.length === 0) {
+      docRef.current = null;
+      setDoc(null);
+    }
+    const ni = Math.min(at, Math.max(0, next.length - 1));
+    indexRef.current = ni;
+    setIndex(ni);
+    if (undoToast.current) clearTimeout(undoToast.current.t);
+    showToast("Deleted");
+    undoToast.current = {
+      kind: "image",
+      id: iid,
+      index: at,
+      t: setTimeout(() => {
+        undoToast.current = null;
+        setToastOut(true);
+      }, 5000),
+    };
+    return { ok: true as const, deleted_id: iid };
+  }, [id, showToast]);
+
+  const addComment = useCallback(
+    async (body: string) => {
+      const d = docRef.current;
+      if (!d) return { ok: false as const, error: "no_image" };
+      const r = await fetch(`/api/projects/${id}/images/${d.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      if (!r.ok) return { ok: false as const, error: "comment_failed" };
+      apply(await r.json());
+      return { ok: true as const };
+    },
+    [id, apply],
+  );
+
+  const deleteComment = useCallback(
+    async (cid: string) => {
+      const d = docRef.current;
+      if (!d) return { ok: false as const, error: "no_image" };
+      const r = await fetch(`/api/projects/${id}/images/${d.id}/comments/${cid}`, { method: "DELETE" });
+      if (!r.ok) return { ok: false as const, error: "comment_failed" };
+      apply(await r.json());
+      return { ok: true as const };
+    },
+    [id, apply],
+  );
+
+  useEffect(() => {
+    if (loadState !== "ready") return;
+    const ac = new AbortController();
+    void registerWebMcpTools(
+      studioPageTools({
+        get: () => ({
+          projectId: id,
+          project: projectRef.current,
+          list: listRef.current,
+          index: indexRef.current,
+          doc: docRef.current,
+        }),
+        setIndex: (i) => {
+          indexRef.current = i;
+          setIndex(i);
+        },
+        saveObjects: (objects) => {
+          save(objects);
+          setSelected((cur) =>
+            cur && objects.some((o) => o.id === cur) ? cur : objects[0]?.id ?? null,
+          );
+        },
+        ensureClass,
+        commitCurrent,
+        deleteCurrent,
+        addComment,
+        deleteComment,
+        openUpload: () => {
+          setUploadErr(null);
+          setUploadOpen(true);
+        },
+        waitForImage: (imageId, ms = 2500) =>
+          new Promise((resolve) => {
+            const t0 = Date.now();
+            const tick = () => {
+              if (docRef.current?.id === imageId) {
+                resolve(true);
+                return;
+              }
+              if (Date.now() - t0 > ms) {
+                resolve(false);
+                return;
+              }
+              requestAnimationFrame(tick);
+            };
+            tick();
+          }),
+      }),
+      ac.signal,
+    );
+    return () => ac.abort();
+  }, [id, loadState, save, ensureClass, commitCurrent, deleteCurrent, addComment, deleteComment]);
 
   const undoLast = useCallback(async () => {
     const u = undoToast.current;
@@ -301,15 +511,7 @@ export default function Studio({ id }: { id: string }) {
     const label = name.trim();
     if (!label || !project) return;
     const creating = edit === "new";
-    if (!project.classes.includes(label)) {
-      setProject({ ...project, classes: [...project.classes, label] });
-      const r = await fetch(`/api/projects/${id}/classes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: label }),
-      });
-      if (r.ok) setProject(await r.json());
-    }
+    await ensureClass(label);
     // L / Create label = class only. Assign only when editing a specific object.
     if (!creating) {
       const target = editing?.id ?? selected;
@@ -657,72 +859,15 @@ export default function Studio({ id }: { id: string }) {
             }
           }
         }}
-        onDelete={async () => {
-          if (!doc || !list.length) return;
-          const iid = doc.id;
-          const at = index;
-          const r = await fetch(`/api/projects/${id}/images/${iid}`, { method: "DELETE" });
-          if (!r.ok) return;
-          const next = list.filter((x) => x.id !== iid);
-          setList(next);
-          setSelected(null);
-          setEdit(null);
-          setHistOpen(false);
-          setCommentsOpen(false);
-          if (next.length === 0) setDoc(null);
-          setIndex(Math.min(at, Math.max(0, next.length - 1)));
-          if (undoToast.current) clearTimeout(undoToast.current.t);
-          showToast("Deleted");
-          undoToast.current = {
-            kind: "image",
-            id: iid,
-            index: at,
-            t: setTimeout(() => {
-              undoToast.current = null;
-              setToastOut(true);
-            }, 5000),
-          };
-        }}
+        onDelete={() => void deleteCurrent()}
         onAdd={() => {
           setUploadErr(null);
           setUploadOpen(true);
         }}
         onCommit={async () => {
-          if (!doc || !canCommit) return;
-          const first = !doc.committed;
-          const prev = doc.objects;
-          const r = await fetch(`/api/projects/${id}/images/${doc.id}/commit`, { method: "POST" });
-          if (!r.ok) {
+          const res = await commitCurrent();
+          if (!res.ok && res.error === "cannot_commit" && res.reason === "Commit failed") {
             showToast("Commit failed", 1500);
-            return;
-          }
-          const d = await r.json();
-          setDoc({
-            ...doc,
-            committed: true,
-            history: Array.isArray(d.history)
-              ? d.history.map((h: { id: string; objects: unknown; at?: string }) => ({
-                  id: h.id,
-                  at: h.at,
-                  objects: readObjects(h.objects),
-                }))
-              : doc.history,
-          });
-          setList((ls) => ls.map((x) => (x.id === doc.id ? { ...x, committed: true } : x)));
-          if (!first) {
-            if (undoToast.current) clearTimeout(undoToast.current.t);
-            showToast("Updated");
-            undoToast.current = {
-              kind: "objects",
-              objects: prev,
-              t: setTimeout(() => {
-                undoToast.current = null;
-                setToastOut(true);
-              }, 5000),
-            };
-          } else {
-            showToast("Committed", 1200);
-            setIndex((i) => Math.min(i + 1, list.length - 1));
           }
         }}
         onCopy={() => {
@@ -786,20 +931,10 @@ export default function Studio({ id }: { id: string }) {
         selectedId={selected}
         onClose={() => setCommentsOpen(false)}
         onAdd={async (body) => {
-          if (!doc) return;
-          const r = await fetch(`/api/projects/${id}/images/${doc.id}/comments`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ body }),
-          });
-          if (!r.ok) return;
-          apply(await r.json());
+          await addComment(body);
         }}
         onDelete={async (cid) => {
-          if (!doc) return;
-          const r = await fetch(`/api/projects/${id}/images/${doc.id}/comments/${cid}`, { method: "DELETE" });
-          if (!r.ok) return;
-          apply(await r.json());
+          await deleteComment(cid);
         }}
         onSelect={(oid) => {
           setSelected(oid);
