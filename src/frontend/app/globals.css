@@ -846,6 +846,7 @@ main.cross, main.cross:active { cursor: crosshair }
   z-index: 1;
   overflow: hidden;
 }
+.zpp.canvas-waiting { visibility: hidden; }
 /* content hugs the image — pan/zoom moves the whole canvas view */
 .world {
   position: relative;

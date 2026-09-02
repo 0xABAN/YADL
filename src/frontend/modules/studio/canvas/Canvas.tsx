@@ -475,7 +475,7 @@ export default function Canvas({
           onZoomStop={(ref) => clampView(ref)}
         >
           <TransformComponent
-            wrapperClass="zpp"
+            wrapperClass={`zpp${busy ? " canvas-waiting" : ""}`}
             contentClass="world"
             wrapperStyle={{ width: "100%", height: "100%" }}
             contentStyle={{ width: "max-content", height: "max-content" }}

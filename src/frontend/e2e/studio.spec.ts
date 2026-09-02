@@ -21,7 +21,12 @@ const hand = {
 
 const project = { id: PID, name: "demo", type: "keypoints", template: "hand", classes: ["open", "fist", "point"] };
 
-async function mockApi(page: Page, images: unknown[] | null = null) {
+type MockApiOptions = {
+  initialObjects?: unknown[];
+  assistDelayMs?: number;
+};
+
+async function mockApi(page: Page, images: unknown[] | null = null, options: MockApiOptions = {}) {
   const imgs =
     images ?? [{ id: IID, filename: "hand.jpg", committed: false, empty: false }];
 
@@ -46,7 +51,7 @@ async function mockApi(page: Page, images: unknown[] | null = null) {
           image: row?.filename ?? "hand.jpg",
           url: "/default.jpg",
           committed: Boolean(row?.committed),
-          objects: [hand],
+          objects: options.initialObjects ?? [hand],
           history: [],
         },
       });
@@ -73,6 +78,9 @@ async function mockApi(page: Page, images: unknown[] | null = null) {
       });
     }
     if (path.includes("/assist")) {
+      if (options.assistDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.assistDelayMs));
+      }
       return route.fulfill({
         json: {
           id: IID,
@@ -92,12 +100,37 @@ async function mockApi(page: Page, images: unknown[] | null = null) {
   });
 }
 
+test("studio reveals assisted image, annotation, and warning after the loader clears", async ({ page }) => {
+  await mockApi(
+    page,
+    [{ id: IID, filename: "hand.jpg", committed: false, empty: true }],
+    { initialObjects: [], assistDelayMs: 5_000 },
+  );
+
+  await page.goto(`/studio/${PID}`);
+
+  const loader = page.locator(".canvas-loader");
+  const image = page.locator(".world img");
+  await expect(page.getByRole("heading", { name: "Studio — demo" })).toBeAttached();
+  await expect(page.locator("#studio-main")).toBeVisible();
+  await expect(loader).toBeVisible();
+  await expect(image).toHaveClass(/ready/, { timeout: 15_000 });
+  await expect(image).not.toBeVisible();
+  await expect(page.locator(".hand .pt")).toHaveCount(0);
+  await expect(page.locator(".validity")).toHaveCount(0);
+
+  await expect(loader).toHaveCount(0, { timeout: 10_000 });
+  await expect(image).toBeVisible();
+  await expect(page.locator(".hand .pt").first()).toBeVisible();
+  await expect(page.locator(".validity")).toHaveText("Invalid annotation");
+});
+
 test("studio session: label, url state, commit", async ({ page }) => {
   await mockApi(page);
   await page.goto(`/studio/${PID}`);
 
   await expect(page.getByRole("heading", { name: /Studio/i })).toBeAttached();
-  await expect(page.locator(".rail-status")).toHaveText(/./, { timeout: 10_000 });
+  await expect(page.locator(".rail-status")).toHaveCount(0);
   await expect(page.locator(".hand .pt").first()).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "Objects" }).click();
