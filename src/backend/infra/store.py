@@ -483,7 +483,14 @@ def export_jsonl(pid: str, uid: str):
         for row in rows:
             if not row["committed"]:
                 continue
-            for o in row["objects"] or []:
+            objects = row["objects"] or []
+            if not objects:
+                yield json.dumps(
+                    {"image": row["filename"], "label": None, "kind": "empty"},
+                    separators=(",", ":"),
+                ) + "\n"
+                continue
+            for o in objects:
                 line = export_line(row["filename"], o if isinstance(o, dict) else {})
                 if line:
                     yield line + "\n"

@@ -44,6 +44,7 @@ def test_export_jsonl_is_lazy_and_skips_uncommitted_images() -> None:
     def rows():
         consumed.append("started")
         yield {"filename": "skip.jpg", "objects": [], "committed": False}
+        yield {"filename": "negative.jpg", "objects": [], "committed": True}
         yield {
             "filename": "keep.jpg",
             "committed": True,
@@ -69,9 +70,10 @@ def test_export_jsonl_is_lazy_and_skips_uncommitted_images() -> None:
         chunks = list(body)
 
     assert consumed == ["started"]
-    assert len(chunks) == 1
-    assert chunks[0].endswith("\n")
-    assert '"image":"keep.jpg"' in chunks[0]
+    assert len(chunks) == 2
+    assert chunks[0] == '{"image":"negative.jpg","label":null,"kind":"empty"}\n'
+    assert chunks[1].endswith("\n")
+    assert '"image":"keep.jpg"' in chunks[1]
 
 
 def test_commit_accepts_an_empty_reviewed_image() -> None:
