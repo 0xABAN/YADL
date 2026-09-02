@@ -10,13 +10,11 @@
   <em>Yet another data labeler, but in this one, you don't have to click.</em>
 </p>
 
-## Why this exists
+## Why YADL
 
 Computer vision tasks need lots of labeled data. Most data labeling apps make you draw every box by hand. YADL (and WebMCP) lets Codex do it for you while you sleep.
 
-## What YADL does
-
-You create a project. Our studio registers WebMCP tools for that project. Codex (or any WebMCP client) calls them to draw geometry, name classes, and commit frames onto the same canvas you see. You review, provide comments, fix stragglers, export. The output is a labeled dataset.
+First, you create a project. Then, studio registers the WebMCP tools. Codex (or any WebMCP client) calls them to draw geometry, name classes, and commit frames onto the same canvas you see. You review, provide comments, fix stragglers, export. The output is a labeled dataset.
 
 ```mermaid
 flowchart TD
@@ -42,8 +40,6 @@ flowchart TD
   class F done
 ```
 
----
-
 ## WebMCP tools
 
 YADL registers **15 WebMCP tools** on the open page (`document.modelContext`): project setup, studio navigation, labels, commit, comments, plus a 3-tool geometry pack for the active style (boxes, polygons, or keypoints).
@@ -60,17 +56,24 @@ The agent does not free-drag dots. It drives a small FK **rig** (joints in, land
 
 Then the shared tools finish the frame: open image → rig tools → set label → commit. Humans can still free-drag dots and run MediaPipe assist; that path is UI-only.
 
----
-
 ## Stack
 
-Vercel (Next.js UI + tool registration) → Railway (FastAPI) → Postgres + S3. Browser uses same-origin `/api/*`; large files presign to S3.
+| Layer | What | Where |
+| --- | --- | --- |
+| UI + WebMCP | Next.js / TypeScript / React | Vercel (`yadl.vercel.app`) |
+| API | FastAPI / Python (auth, projects, assist, export) | Railway |
+| Data | Postgres (labels, projects, users) | AWS RDS |
+| Media | Image / video bytes | S3 |
+| Assist | MediaPipe still-image seed (CPU) | API container |
 
-```
-src/frontend   UI + WebMCP tools
-src/backend    API, assist, storage
-schema.sql     DB
-```
+The browser only talks to the Vercel origin. `/api/*` is rewritten to Railway. Big files never go through that proxy: the API hands back a short-lived S3 PUT URL, the browser uploads straight to the bucket, then the API registers the key.
+
+| Path | Role |
+| --- | --- |
+| `src/frontend` | Studio UI, WebMCP tool registration |
+| `src/backend` | FastAPI routes, MediaPipe assist, S3/DB |
+| `schema.sql` | Postgres schema |
+| `Dockerfile` | Railway API image |
 
 ---
 
