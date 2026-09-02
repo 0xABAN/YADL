@@ -1,6 +1,5 @@
 import { NAMES, type Landmark } from "../hand";
 import type { JointDef, RigRoot, TemplateCatalog } from "./types";
-import { clamp01 } from "../geom";
 import { jointVal, rot } from "./types";
 
 const JOINTS: JointDef[] = [

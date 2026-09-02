@@ -83,7 +83,7 @@ export async function deleteImage(projectId: string, imageId: string): Promise<b
   });
   if (!r.ok) {
     if (r.status === 401) {
-      location.href = "/auth";
+      location.assign(new URL("/auth", location.origin).href);
       return false;
     }
     return false;

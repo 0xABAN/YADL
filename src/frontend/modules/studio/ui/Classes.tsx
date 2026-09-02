@@ -152,7 +152,7 @@ export default function Classes({
                   No objects. Draw one or run Auto Label.
                 </li>
               ) : (
-                objects.map((o, i) => (
+                objects.map((o) => (
                   <li key={o.id} aria-current={selected === o.id || undefined}>
                     <button type="button" className="row-main" onClick={() => onSelect(o.id)}>
                       <span className="swatch" style={{ background: classColor(o.label, classes) }} aria-hidden="true" />

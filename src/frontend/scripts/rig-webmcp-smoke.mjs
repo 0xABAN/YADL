@@ -5,7 +5,6 @@
  * Env: BASE EMAIL PASSWORD
  */
 import { chromium } from "playwright";
-import { writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 

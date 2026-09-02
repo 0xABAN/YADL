@@ -25,7 +25,9 @@ export async function api<T = unknown>(path: string, init?: ApiOptions): Promise
   const { raw, noAuthRedirect, ...rest } = init ?? {};
   const r = await fetch(`/api${path}`, rest);
   if (r.status === 401) {
-    if (!noAuthRedirect && typeof location !== "undefined") location.href = "/auth";
+    if (!noAuthRedirect && typeof location !== "undefined") {
+      location.assign(new URL("/auth", location.origin).href);
+    }
     throw new ApiError(401, "auth_required");
   }
   if (raw) return r as unknown as T;
@@ -42,7 +44,9 @@ export async function apiResult<T = unknown>(
   const { raw, noAuthRedirect, ...rest } = init ?? {};
   const r = await fetch(`/api${path}`, rest);
   if (r.status === 401) {
-    if (!noAuthRedirect && typeof location !== "undefined") location.href = "/auth";
+    if (!noAuthRedirect && typeof location !== "undefined") {
+      location.assign(new URL("/auth", location.origin).href);
+    }
     return { ok: false, status: 401 };
   }
   const data = raw ? r : await r.json().catch(() => null);
