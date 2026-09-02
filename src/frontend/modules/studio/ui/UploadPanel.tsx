@@ -106,7 +106,8 @@ function UploadPanel({
   };
 
   const cancel = () => {
-    abortRef.current?.abort();
+    if (!abortRef.current) return;
+    abortRef.current.abort();
     abortRef.current = null;
     setProg(null);
     onCancel?.();
@@ -120,7 +121,14 @@ function UploadPanel({
     try {
       await onSubmit(
         rows.map((r) => r.file),
-        { interval: clampInterval(interval), signal: ac.signal, onProgress: setProg },
+        {
+          interval: clampInterval(interval),
+          signal: ac.signal,
+          onProgress: (next) => {
+            if (next.phase === "process") abortRef.current = null;
+            setProg(next);
+          },
+        },
       );
     } finally {
       if (abortRef.current === ac) abortRef.current = null;
@@ -270,6 +278,10 @@ function UploadPanel({
       {!busy ? (
         <button className="commit" type="button" disabled={!canSend} onClick={() => void go()}>
           {submitLabel}
+        </button>
+      ) : prog?.phase === "process" ? (
+        <button className="commit" type="button" disabled>
+          Processing…
         </button>
       ) : (
         <button className="commit abort" type="button" onClick={cancel}>
