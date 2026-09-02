@@ -67,5 +67,124 @@
         "arguments": {}
       }
     ]
+  },
+  {
+    "name": "Create a transform augmentation job",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Create one deterministic horizontal-flip variant of image img_1 with seed 7."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_augmentation_job",
+        "arguments": {
+          "mode": "transform",
+          "source_image_ids": ["img_1"],
+          "variants_per_source": 1,
+          "seed": 7,
+          "pipeline": [{ "op": "flip", "axis": "horizontal" }]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Create augmentation validation error",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Try to create a transform augmentation with no source images so I can see the validation error."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_augmentation_job",
+        "arguments": {
+          "mode": "transform",
+          "source_image_ids": [],
+          "variants_per_source": 1,
+          "seed": 0,
+          "pipeline": [{ "op": "flip", "axis": "horizontal" }]
+        }
+      }
+    ]
+  },
+  {
+    "name": "List augmentation jobs",
+    "messages": [
+      { "role": "user", "type": "message", "content": "List the first 20 augmentation jobs." }
+    ],
+    "expectedCall": [
+      { "functionName": "list_augmentation_jobs", "arguments": { "offset": 0, "limit": 20 } }
+    ]
+  },
+  {
+    "name": "List augmentation jobs invalid page",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Try listing augmentation jobs with a zero page size." }
+    ],
+    "expectedCall": [
+      { "functionName": "list_augmentation_jobs", "arguments": { "limit": 0 } }
+    ]
+  },
+  {
+    "name": "Inspect augmentation job",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Inspect augmentation job job_1 and its first 50 items." }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "get_augmentation_job",
+        "arguments": { "job_id": "job_1", "item_offset": 0, "item_limit": 50 }
+      }
+    ]
+  },
+  {
+    "name": "Inspect missing augmentation job",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Try to inspect unknown augmentation job missing_job." }
+    ],
+    "expectedCall": [
+      { "functionName": "get_augmentation_job", "arguments": { "job_id": "missing_job" } }
+    ]
+  },
+  {
+    "name": "Cancel augmentation job",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Cancel augmentation job job_1." }
+    ],
+    "expectedCall": [
+      { "functionName": "cancel_augmentation_job", "arguments": { "job_id": "job_1" } }
+    ]
+  },
+  {
+    "name": "Cancel missing augmentation job",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Try to cancel unknown augmentation job missing_job." }
+    ],
+    "expectedCall": [
+      { "functionName": "cancel_augmentation_job", "arguments": { "job_id": "missing_job" } }
+    ]
+  },
+  {
+    "name": "Retry augmentation job",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Retry failed items in augmentation job job_1." }
+    ],
+    "expectedCall": [
+      { "functionName": "retry_augmentation_job", "arguments": { "job_id": "job_1" } }
+    ]
+  },
+  {
+    "name": "Retry missing augmentation job",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Try to retry unknown augmentation job missing_job." }
+    ],
+    "expectedCall": [
+      { "functionName": "retry_augmentation_job", "arguments": { "job_id": "missing_job" } }
+    ]
   }
 ]

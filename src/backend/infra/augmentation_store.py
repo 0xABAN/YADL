@@ -140,6 +140,7 @@ def list_jobs(pid: str, uid: str, *, offset: int = 0, limit: int = 50) -> dict |
         "total": int(total["n"]) if total else 0,
         "offset": offset,
         "limit": limit,
+        "status_counts": aggregate_job_status(pid, uid),
     }
 
 

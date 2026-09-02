@@ -10,6 +10,7 @@ export function parseDoc(d: Record<string, unknown>): Doc {
     image: String(d.image ?? ""),
     url: (d.url as string | null) ?? null,
     committed: Boolean(d.committed),
+    generated: Boolean(d.generated),
     history: Array.isArray(d.history)
       ? (d.history as Doc["history"])?.map((h) => ({
           ...h,
@@ -203,4 +204,140 @@ export function exportUrl(projectId: string) {
 
 export function imagesUploadUrl(projectId: string) {
   return `/api/projects/${projectId}/images`;
+}
+
+export type AugmentationMode = "transform" | "text_to_image" | "image_edit";
+export type AugmentationStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "partially_succeeded"
+  | "failed"
+  | "cancelled";
+
+export type TransformOperation =
+  | { op: "flip"; axis: "horizontal" | "vertical"; probability?: number }
+  | {
+      op: "affine";
+      rotate_degrees?: number;
+      translate_x?: number;
+      translate_y?: number;
+      scale?: number;
+      shear_degrees?: number;
+      probability?: number;
+    }
+  | { op: "crop_resize"; x?: number; y?: number; width?: number; height?: number; probability?: number }
+  | { op: "brightness_contrast"; brightness?: number; contrast?: number; probability?: number }
+  | { op: "hue_saturation"; hue_degrees?: number; saturation?: number; probability?: number }
+  | { op: "blur"; radius?: number; probability?: number }
+  | { op: "noise"; sigma?: number; probability?: number }
+  | { op: "compression"; quality?: number; probability?: number };
+
+export type WaveOptions = {
+  prompt: string;
+  aspect_ratio?: "1:1" | "3:2" | "2:3" | "16:9" | "9:16";
+  resolution?: "1k" | "2k" | "4k";
+  quality?: "low" | "medium" | "high";
+  output_format?: "png" | "jpeg" | "webp";
+};
+
+export type AugmentationRequest =
+  | {
+      mode: "transform";
+      source_image_ids: string[];
+      variants_per_source: number;
+      seed: number;
+      pipeline: TransformOperation[];
+    }
+  | ({ mode: "text_to_image"; count: number } & WaveOptions)
+  | ({ mode: "image_edit"; source_image_ids: string[]; variants_per_source: number } & WaveOptions);
+
+export type AugmentationProgress = {
+  queued: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+  submission_unknown: number;
+};
+
+export type AugmentationItem = {
+  id: string;
+  ordinal: number;
+  source_image_id: string | null;
+  status: string;
+  attempts: number;
+  error: string | null;
+  provider_prediction_id: string | null;
+  output_image_id: string | null;
+};
+
+export type AugmentationJob = {
+  id: string;
+  project_id: string;
+  mode: AugmentationMode;
+  config: Record<string, unknown>;
+  status: AugmentationStatus;
+  requested_count: number;
+  progress: AugmentationProgress;
+  cancel_requested: boolean;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  items?: AugmentationItem[];
+  item_offset?: number;
+  item_limit?: number;
+  warning?: string;
+};
+
+export type AugmentationJobCounts = {
+  active: number;
+  succeeded: number;
+  partially_succeeded: number;
+  failed: number;
+};
+
+export type AugmentationJobPage = {
+  items: AugmentationJob[];
+  total: number;
+  offset: number;
+  limit: number;
+  status_counts: AugmentationJobCounts;
+};
+
+export async function createAugmentationJob(projectId: string, body: AugmentationRequest) {
+  return api<AugmentationJob>(`/projects/${projectId}/augmentation-jobs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchAugmentationJobs(projectId: string, offset = 0, limit = 50) {
+  return api<AugmentationJobPage>(
+    `/projects/${projectId}/augmentation-jobs?offset=${offset}&limit=${limit}`,
+  );
+}
+
+export async function fetchAugmentationJob(
+  projectId: string,
+  jobId: string,
+  itemOffset = 0,
+  itemLimit = 100,
+) {
+  return api<AugmentationJob>(
+    `/projects/${projectId}/augmentation-jobs/${jobId}?item_offset=${itemOffset}&item_limit=${itemLimit}`,
+  );
+}
+
+export async function cancelAugmentationJob(projectId: string, jobId: string) {
+  return api<AugmentationJob>(`/projects/${projectId}/augmentation-jobs/${jobId}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function retryAugmentationJob(projectId: string, jobId: string) {
+  return api<AugmentationJob>(`/projects/${projectId}/augmentation-jobs/${jobId}/retry`, {
+    method: "POST",
+  });
 }

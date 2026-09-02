@@ -20,6 +20,7 @@ const snap: StudioSnapshot = {
   emptyCount: 0,
   index: 0,
   doc: null,
+  autoLabelStatus: null,
 };
 const out = studioGuidePayload(snap);
 assert(out.guide.length === STUDIO_GUIDE.length, "guide copy");

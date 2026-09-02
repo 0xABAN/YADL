@@ -29,6 +29,8 @@ function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
     loadState: "loading",
     assistOn: true,
     assistBusy: false,
+    autoLabelStatus: null,
+    autoLabelResults: new Map(),
     assistedIds: new Set(),
     uploadOpen: false,
     uploadBusy: false,
@@ -79,6 +81,7 @@ export class StudioSession {
       emptyCount: s.emptyCount,
       index: s.index,
       doc: s.doc,
+      autoLabelStatus: s.autoLabelStatus,
     };
   };
 
@@ -125,6 +128,8 @@ export class StudioSession {
         index: page.total ? Math.min(index, page.total - 1) : 0,
         assistOn: p.type === "keypoints",
         assistedIds: new Set(),
+        autoLabelStatus: null,
+        autoLabelResults: new Map(),
         loadState: "ready",
       });
       await this.loadCurrentImage();
@@ -178,7 +183,12 @@ export class StudioSession {
       this.state.selected && doc.objects.some((o) => o.id === this.state.selected)
         ? this.state.selected
         : (doc.objects[0]?.id ?? null);
-    this.patch({ doc, selected, urlSelected: selected });
+    this.patch({
+      doc,
+      selected,
+      urlSelected: selected,
+      autoLabelStatus: this.state.autoLabelResults.get(doc.id) ?? null,
+    });
   }
 
   async loadCurrentImage() {
@@ -191,14 +201,14 @@ export class StudioSession {
     try {
       row = await this.ensurePage(index);
     } catch {
-      if (!ac.signal.aborted) this.patch({ doc: null });
+      if (!ac.signal.aborted) this.patch({ doc: null, autoLabelStatus: null });
       return;
     }
     if (ac.signal.aborted) return;
     const { project, projectId, assistOn, assistedIds } = this.state;
     const iid = row?.id;
     if (!iid) {
-      this.patch({ doc: null });
+      this.patch({ doc: null, autoLabelStatus: null });
       return;
     }
 
@@ -214,7 +224,10 @@ export class StudioSession {
       if (ac.signal.aborted) return;
 
       const willAssist =
-        assistOn && project?.type === "keypoints" && !doc.objects.length && !assistedIds.has(iid);
+        project?.type === "keypoints" &&
+        (assistOn || doc.generated) &&
+        !doc.objects.length &&
+        !assistedIds.has(iid);
 
       if (!willAssist) {
         this.applyDoc(doc);
@@ -228,23 +241,38 @@ export class StudioSession {
         this.state.selected && doc.objects.some((o) => o.id === this.state.selected)
           ? this.state.selected
           : (doc.objects[0]?.id ?? null);
-      this.patch({ doc, selected, urlSelected: selected, assistedIds: nextAssisted, assistBusy: true });
+      this.patch({
+        doc,
+        selected,
+        urlSelected: selected,
+        assistedIds: nextAssisted,
+        assistBusy: true,
+        autoLabelStatus: null,
+      });
       try {
         const d2 = await studioApi.postAssist(projectId, iid, false, ac.signal);
         if (ac.signal.aborted) return;
+        const status = d2.objects.length ? "completed" : "no_detection";
+        const results = new Map(this.state.autoLabelResults);
+        results.set(iid, status);
+        this.patch({ autoLabelResults: results, autoLabelStatus: status });
         this.applyDoc(d2);
       } catch (e) {
         if ((e as Error)?.name === "AbortError") {
           const roll = new Set(this.state.assistedIds);
           roll.delete(iid);
           this.patch({ assistedIds: roll });
+        } else {
+          const results = new Map(this.state.autoLabelResults);
+          results.set(iid, "failed");
+          this.patch({ autoLabelResults: results, autoLabelStatus: "failed" });
         }
       } finally {
         if (!ac.signal.aborted) this.patch({ assistBusy: false });
       }
     } catch (e) {
       if ((e as Error)?.name === "AbortError") return;
-      this.patch({ doc: null });
+      this.patch({ doc: null, autoLabelStatus: null });
     }
   }
 
@@ -261,7 +289,13 @@ export class StudioSession {
       return null;
     }
     if (next !== this.state.index || this.state.doc?.id !== row?.id) {
-      this.patch({ index: next, doc: null, selected: null, urlSelected: null });
+      this.patch({
+        index: next,
+        doc: null,
+        selected: null,
+        urlSelected: null,
+        autoLabelStatus: null,
+      });
       void this.loadCurrentImage();
     }
     return row?.id ?? null;
@@ -298,7 +332,8 @@ export class StudioSession {
   }
 
   async waitForImage(imageId: string, ms = 2500): Promise<boolean> {
-    if (this.state.doc?.id === imageId) return true;
+    const ready = () => this.state.doc?.id === imageId && !this.state.assistBusy;
+    if (ready()) return true;
     return new Promise((resolve) => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | null = null;
@@ -310,10 +345,10 @@ export class StudioSession {
         resolve(ready);
       };
       const unsubscribe = this.subscribe(() => {
-        if (this.state.doc?.id === imageId) finish(true);
+        if (ready()) finish(true);
       });
       timer = setTimeout(() => finish(false), ms);
-      if (this.state.doc?.id === imageId) finish(true);
+      if (ready()) finish(true);
     });
   }
 
@@ -464,6 +499,7 @@ export class StudioSession {
       histOpen: false,
       commentsOpen: false,
       doc: null,
+      autoLabelStatus: null,
     });
     await this.refreshCatalog(at);
     if (this.state.total) void this.loadCurrentImage();
@@ -534,9 +570,15 @@ export class StudioSession {
     this.patch({ assistedIds: next, assistBusy: true });
     try {
       const d2 = await studioApi.postAssist(projectId, doc.id, true);
+      const status = d2.objects.length ? "completed" : "no_detection";
+      const results = new Map(this.state.autoLabelResults);
+      results.set(doc.id, status);
+      this.patch({ autoLabelResults: results, autoLabelStatus: status });
       this.applyDoc(d2);
     } catch {
-      /* silent */
+      const results = new Map(this.state.autoLabelResults);
+      results.set(doc.id, "failed");
+      this.patch({ autoLabelResults: results, autoLabelStatus: "failed" });
     } finally {
       this.patch({ assistBusy: false });
     }

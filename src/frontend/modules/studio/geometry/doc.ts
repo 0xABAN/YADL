@@ -62,6 +62,8 @@ export type Doc = {
   objects: AnnObj[];
   url?: string | null;
   committed?: boolean;
+  /** True when this image was produced by an augmentation job. */
+  generated?: boolean;
   history?: { id: string; objects: AnnObj[]; at?: string | null }[];
   comments?: Comment[];
 };

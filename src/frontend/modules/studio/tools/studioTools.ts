@@ -1,5 +1,11 @@
 import type { Comment } from "../geometry/comment";
+import type {
+  AugmentationJob,
+  AugmentationJobPage,
+  AugmentationRequest,
+} from "../api";
 import { commitStatus, named, type AnnObj, type Doc, type Project } from "../geometry/doc";
+import type { AutoLabelStatus } from "../session/types";
 import type { WebMcpTool } from "@/shared/webmcp";
 
 export type StudioImgRow = {
@@ -21,6 +27,7 @@ export type StudioCurrent = {
   objects: { id: string; kind: string; label: string | null }[];
   comments: { id: string; body: string; at?: string | null }[];
   loading: boolean;
+  auto_label_status: AutoLabelStatus | null;
 };
 
 export type StudioSnapshot = {
@@ -33,6 +40,7 @@ export type StudioSnapshot = {
   emptyCount: number;
   index: number;
   doc: Doc | null;
+  autoLabelStatus: AutoLabelStatus | null;
 };
 
 /** Type-agnostic studio orientation (same text for boxes | polygons | keypoints). */
@@ -46,6 +54,115 @@ export const STUDIO_GUIDE = [
   "Computer use is for perception/verification (screenshots), not for dragging shapes when geometry tools exist. Media upload is outside WebMCP — humans add files in the UI.",
   "Use comment for notes to humans when unsure; do not silently invent quality.",
   "If verification fails: fix via set_* / delete_object, or delete_image, then commit only when it looks right.",
+  "Use augmentation tools to create durable transform or AI-generation jobs. Poll get_augmentation_job, inspect item errors, and open an output explicitly when ready.",
+] as const;
+
+const sourceIds = {
+  type: "array",
+  minItems: 1,
+  items: { type: "string" },
+  description: "Project image ids used as sources",
+} as const;
+
+const waveProperties = {
+  prompt: { type: "string", minLength: 1, maxLength: 32000, description: "Generation or edit instruction" },
+  aspect_ratio: { type: "string", enum: ["1:1", "3:2", "2:3", "16:9", "9:16"] },
+  resolution: { type: "string", enum: ["1k", "2k", "4k"] },
+  quality: { type: "string", enum: ["low", "medium", "high"] },
+  output_format: { type: "string", enum: ["png", "jpeg", "webp"] },
+} as const;
+
+const probability = { type: "number", minimum: 0, maximum: 1 } as const;
+const transformOperations = [
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "flip" },
+      axis: { type: "string", enum: ["horizontal", "vertical"] },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "affine" },
+      rotate_degrees: { type: "number", minimum: -360, maximum: 360 },
+      translate_x: { type: "number", minimum: -1, maximum: 1 },
+      translate_y: { type: "number", minimum: -1, maximum: 1 },
+      scale: { type: "number", exclusiveMinimum: 0, maximum: 10 },
+      shear_degrees: { type: "number", minimum: -89, maximum: 89 },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "crop_resize" },
+      x: { type: "number", minimum: 0, maximum: 1 },
+      y: { type: "number", minimum: 0, maximum: 1 },
+      width: { type: "number", exclusiveMinimum: 0, maximum: 1 },
+      height: { type: "number", exclusiveMinimum: 0, maximum: 1 },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "brightness_contrast" },
+      brightness: { type: "number", minimum: 0, maximum: 4 },
+      contrast: { type: "number", minimum: 0, maximum: 4 },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "hue_saturation" },
+      hue_degrees: { type: "number", minimum: -180, maximum: 180 },
+      saturation: { type: "number", minimum: 0, maximum: 4 },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "blur" },
+      radius: { type: "number", minimum: 0, maximum: 100 },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "noise" },
+      sigma: { type: "number", minimum: 0, maximum: 255 },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
+  {
+    type: "object",
+    properties: {
+      op: { type: "string", const: "compression" },
+      quality: { type: "integer", minimum: 1, maximum: 100 },
+      probability,
+    },
+    required: ["op"],
+    additionalProperties: false,
+  },
 ] as const;
 
 export function geometryToolNames(type?: string | null): string[] {
@@ -172,6 +289,94 @@ export const STUDIO_TOOL_SCHEMAS = {
         additionalProperties: false,
       },
     },
+    {
+      name: "create_augmentation_job",
+      description:
+        "Create a durable transform, text-to-image, or image-edit job. Outputs are empty, uncommitted project images and never inherit source annotations.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          mode: { type: "string", enum: ["transform", "text_to_image", "image_edit"] },
+          source_image_ids: sourceIds,
+          variants_per_source: { type: "integer", minimum: 1 },
+          seed: { type: "integer" },
+          pipeline: {
+            type: "array",
+            minItems: 1,
+            description:
+              "Ordered transform operations: flip, affine, crop_resize, brightness_contrast, hue_saturation, blur, noise, or compression",
+            items: { oneOf: transformOperations },
+          },
+          count: { type: "integer", minimum: 1 },
+          ...waveProperties,
+        },
+        required: ["mode"],
+        oneOf: [
+          {
+            properties: { mode: { const: "transform" } },
+            required: ["mode", "source_image_ids", "variants_per_source", "seed", "pipeline"],
+          },
+          {
+            properties: { mode: { const: "text_to_image" } },
+            required: ["mode", "prompt", "count"],
+          },
+          {
+            properties: { mode: { const: "image_edit" } },
+            required: ["mode", "prompt", "source_image_ids", "variants_per_source"],
+          },
+        ],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "list_augmentation_jobs",
+      description:
+        "List augmentation jobs newest first, with aggregate status counts and per-job progress.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          offset: { type: "integer", minimum: 0 },
+          limit: { type: "integer", minimum: 1, maximum: 100 },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "get_augmentation_job",
+      description:
+        "Inspect one augmentation job and a page of its items, including output image ids and actionable errors.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          job_id: { type: "string" },
+          item_offset: { type: "integer", minimum: 0 },
+          item_limit: { type: "integer", minimum: 1, maximum: 200 },
+        },
+        required: ["job_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "cancel_augmentation_job",
+      description: "Cancel queued work and request provider cancellation for a job.",
+      inputSchema: {
+        type: "object",
+        properties: { job_id: { type: "string" } },
+        required: ["job_id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "retry_augmentation_job",
+      description:
+        "Explicitly retry failed, cancelled, or ambiguous items in an augmentation job.",
+      inputSchema: {
+        type: "object",
+        properties: { job_id: { type: "string" } },
+        required: ["job_id"],
+        additionalProperties: false,
+      },
+    },
   ],
 } as const;
 
@@ -208,6 +413,15 @@ export type StudioToolsDeps = {
   >;
   /** Wait until doc matches target image id (post open_image). */
   waitForImage?: (imageId: string, ms?: number) => Promise<boolean>;
+  createAugmentationJob: (body: AugmentationRequest) => Promise<AugmentationJob>;
+  listAugmentationJobs: (offset?: number, limit?: number) => Promise<AugmentationJobPage>;
+  getAugmentationJob: (
+    jobId: string,
+    itemOffset?: number,
+    itemLimit?: number,
+  ) => Promise<AugmentationJob>;
+  cancelAugmentationJob: (jobId: string) => Promise<AugmentationJob>;
+  retryAugmentationJob: (jobId: string) => Promise<AugmentationJob>;
 };
 
 function slimObjects(objects: AnnObj[]) {
@@ -244,10 +458,11 @@ export function currentSummary(snap: StudioSnapshot): StudioCurrent | null {
     objects: slimObjects(objects),
     comments: docReady ? slimComments(doc.comments) : [],
     loading: !docReady,
+    auto_label_status: docReady ? snap.autoLabelStatus : null,
   };
 }
 
-function studioPayload(snap: StudioSnapshot) {
+function studioPayload(snap: StudioSnapshot, augmentationJobs: AugmentationJobPage["status_counts"] | null) {
   const p = snap.project;
   return {
     project: p
@@ -265,8 +480,28 @@ function studioPayload(snap: StudioSnapshot) {
       empty: snap.emptyCount,
     },
     current: currentSummary(snap),
+    augmentation_jobs: augmentationJobs,
     export_url: `/api/projects/${snap.projectId}/export`,
   };
+}
+
+function boundedInt(value: unknown, fallback: number, minimum: number, maximum: number) {
+  if (value === undefined || value === null) return fallback;
+  return typeof value === "number" && Number.isInteger(value) && value >= minimum && value <= maximum
+    ? value
+    : null;
+}
+
+function jobId(args: Record<string, unknown>) {
+  return String(args.job_id ?? "").trim();
+}
+
+async function safeJobCall<T>(action: () => Promise<T>, error: string) {
+  try {
+    return await action();
+  } catch {
+    return { error };
+  }
 }
 
 function pickOneSelector(args: Record<string, unknown>): {
@@ -296,7 +531,15 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
     },
     {
       ...schemas[1],
-      execute: async () => studioPayload(deps.get()),
+      execute: async () => {
+        let counts: AugmentationJobPage["status_counts"] | null = null;
+        try {
+          counts = (await deps.listAugmentationJobs(0, 1)).status_counts;
+        } catch {
+          // The labeling snapshot remains useful during a transient jobs API failure.
+        }
+        return studioPayload(deps.get(), counts);
+      },
     },
     {
       ...schemas[2],
@@ -450,6 +693,56 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
           return { comments: currentSummary(deps.get())?.comments ?? [] };
         }
         return { error: "bad_op" };
+      },
+    },
+    {
+      ...schemas[9],
+      execute: async (args) =>
+        safeJobCall(
+          () => deps.createAugmentationJob(args as unknown as AugmentationRequest),
+          "augmentation_create_failed",
+        ),
+    },
+    {
+      ...schemas[10],
+      execute: async (args) => {
+        const offset = boundedInt(args.offset, 0, 0, Number.MAX_SAFE_INTEGER);
+        const limit = boundedInt(args.limit, 50, 1, 100);
+        if (offset === null || limit === null) return { error: "bad_pagination" };
+        return safeJobCall(
+          () => deps.listAugmentationJobs(offset, limit),
+          "augmentation_list_failed",
+        );
+      },
+    },
+    {
+      ...schemas[11],
+      execute: async (args) => {
+        const id = jobId(args);
+        if (!id) return { error: "bad_job_id" };
+        const offset = boundedInt(args.item_offset, 0, 0, Number.MAX_SAFE_INTEGER);
+        const limit = boundedInt(args.item_limit, 100, 1, 200);
+        if (offset === null || limit === null) return { error: "bad_pagination" };
+        return safeJobCall(
+          () => deps.getAugmentationJob(id, offset, limit),
+          "augmentation_get_failed",
+        );
+      },
+    },
+    {
+      ...schemas[12],
+      execute: async (args) => {
+        const id = jobId(args);
+        if (!id) return { error: "bad_job_id" };
+        return safeJobCall(() => deps.cancelAugmentationJob(id), "augmentation_cancel_failed");
+      },
+    },
+    {
+      ...schemas[13],
+      execute: async (args) => {
+        const id = jobId(args);
+        if (!id) return { error: "bad_job_id" };
+        return safeJobCall(() => deps.retryAugmentationJob(id), "augmentation_retry_failed");
       },
     },
   ];

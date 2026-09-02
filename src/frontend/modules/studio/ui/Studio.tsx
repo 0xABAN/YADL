@@ -4,7 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Canvas from "../canvas/Canvas";
 import { commitStatus, named, writeObjects, type AnnObj } from "../geometry/doc";
-import { exportUrl, fetchProjectComments } from "../api";
+import {
+  cancelAugmentationJob,
+  createAugmentationJob,
+  exportUrl,
+  fetchAugmentationJob,
+  fetchAugmentationJobs,
+  fetchProjectComments,
+  retryAugmentationJob,
+} from "../api";
 import { StudioProvider, useStudioSession, useStudioState } from "../session";
 import { studioPageTools } from "../tools/studioTools";
 import { rigPageTools } from "../tools/rigTools";
@@ -134,6 +142,21 @@ function StudioBody() {
           }
         },
         waitForImage: (imageId, ms) => session.waitForImage(imageId, ms),
+        createAugmentationJob: (body) =>
+          createAugmentationJob(session.getState().projectId, body),
+        listAugmentationJobs: (offset, limit) =>
+          fetchAugmentationJobs(session.getState().projectId, offset, limit),
+        getAugmentationJob: (jobId, itemOffset, itemLimit) =>
+          fetchAugmentationJob(
+            session.getState().projectId,
+            jobId,
+            itemOffset,
+            itemLimit,
+          ),
+        cancelAugmentationJob: (jobId) =>
+          cancelAugmentationJob(session.getState().projectId, jobId),
+        retryAugmentationJob: (jobId) =>
+          retryAugmentationJob(session.getState().projectId, jobId),
       }),
       ...(ptype === "keypoints"
         ? rigPageTools({
@@ -196,6 +219,11 @@ function StudioBody() {
     (loadState === "ready" && total > 0 && (!doc?.url || assistBusy));
 
   const save = useCallback((objs: AnnObj[]) => void session.saveObjects(objs), [session]);
+  const refreshCatalog = useCallback(() => session.refreshCatalog(), [session]);
+  const openAugmentationOutput = useCallback(
+    (imageId: string) => session.openImageById(imageId),
+    [session],
+  );
 
   return (
     <div className={railOn ? "shell" : "shell rail-off"}>
@@ -324,7 +352,13 @@ function StudioBody() {
         commentCount={doc?.comments?.length ?? 0}
       />
       {synthOpen && synthPos && (
-        <Synthetic open pos={synthPos} onClose={() => session.closeSynthetic()} />
+        <Synthetic
+          open
+          pos={synthPos}
+          onClose={() => session.closeSynthetic()}
+          onCatalogChange={refreshCatalog}
+          onOpenImage={openAugmentationOutput}
+        />
       )}
       {commentsOpen && commentsPos && (
         <Comments

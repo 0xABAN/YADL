@@ -82,6 +82,7 @@ def as_doc(row: dict) -> dict:
         "objects": row["objects"] or [],
         "url": presign_get(row["s3_key"]),
         "committed": bool(row.get("committed")),
+        "generated": bool(row.get("generated")),
         "history": _versions(row.get("history") or []),
         "comments": _comments(row.get("comments") or []),
     }
@@ -350,7 +351,9 @@ def next_uncommitted_image(pid: str, uid: str, after_index: int) -> dict | None:
 def image_row(pid: str, iid: str, uid: str, *, gone: bool = False) -> dict | None:
     gone_sql = "i.deleted_at is not null" if gone else "i.deleted_at is null"
     return fetchone(
-        f"""select i.* from images i
+        f"""select i.*,
+                  exists(select 1 from augmentation_items ai where ai.output_image_id=i.id) as generated
+             from images i
            join projects p on p.id=i.project_id
            where i.id=%s and p.id=%s and p.owner_id=%s and {gone_sql}""",
         (iid, pid, uid),

@@ -13,6 +13,7 @@ export type ImagePage = {
 };
 
 export type LoadState = "loading" | "ready" | "error";
+export type AutoLabelStatus = "completed" | "no_detection" | "failed";
 
 export type ToastUndo =
   | { kind: "objects"; objects: AnnObj[] }
@@ -37,6 +38,8 @@ export type StudioState = {
   loadState: LoadState;
   assistOn: boolean;
   assistBusy: boolean;
+  autoLabelStatus: AutoLabelStatus | null;
+  autoLabelResults: ReadonlyMap<string, AutoLabelStatus>;
   /** image ids already auto-assisted this session */
   assistedIds: ReadonlySet<string>;
   uploadOpen: boolean;
@@ -70,6 +73,7 @@ export type StudioSnapshot = {
   emptyCount: number;
   index: number;
   doc: Doc | null;
+  autoLabelStatus: AutoLabelStatus | null;
 };
 
 export type CommitResult =

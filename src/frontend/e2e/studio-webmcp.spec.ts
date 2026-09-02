@@ -33,6 +33,31 @@ async function mockStudio(
   let objects = initialObjects;
   let failNextSave = options.failNextSave ?? false;
   let comments: { id: string; body: string; at: string }[] = [];
+  let augmentationBody: Record<string, unknown> | null = null;
+  let augmentationStatus = "queued";
+  const augmentationJob = () => ({
+    id: "job-1",
+    project_id: PID,
+    mode: augmentationBody?.mode ?? "transform",
+    config: augmentationBody ?? {},
+    status: augmentationStatus,
+    requested_count: 1,
+    progress: {
+      queued: augmentationStatus === "queued" ? 1 : 0,
+      running: 0,
+      succeeded: 0,
+      failed: 0,
+      cancelled: augmentationStatus === "cancelled" ? 1 : 0,
+      submission_unknown: 0,
+    },
+    cancel_requested: augmentationStatus === "cancelled",
+    created_at: "2026-09-02T12:00:00Z",
+    started_at: null,
+    finished_at: null,
+    items: [],
+    item_offset: 0,
+    item_limit: 100,
+  });
   const imageDoc = () => ({
     id: IID,
     image: "hand.jpg",
@@ -79,6 +104,38 @@ async function mockStudio(
           images: [{ id: IID, filename: "hand.jpg", index: 0, comments }],
         },
       });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs` && method === "POST") {
+      augmentationBody = request.postDataJSON() as Record<string, unknown>;
+      augmentationStatus = "queued";
+      return route.fulfill({ status: 201, json: augmentationJob() });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs` && method === "GET") {
+      return route.fulfill({
+        json: {
+          items: augmentationBody ? [augmentationJob()] : [],
+          total: augmentationBody ? 1 : 0,
+          offset: 0,
+          limit: 50,
+          status_counts: {
+            active: augmentationStatus === "queued" ? 1 : 0,
+            succeeded: 0,
+            partially_succeeded: 0,
+            failed: 0,
+          },
+        },
+      });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs/job-1` && method === "GET") {
+      return route.fulfill({ json: augmentationJob() });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs/job-1/cancel` && method === "POST") {
+      augmentationStatus = "cancelled";
+      return route.fulfill({ json: augmentationJob() });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs/job-1/retry` && method === "POST") {
+      augmentationStatus = "queued";
+      return route.fulfill({ json: augmentationJob() });
     }
     if (path === `/projects/${PID}/images/${IID}/comments` && method === "POST") {
       const body = String((request.postDataJSON() as { body?: unknown }).body ?? "");
@@ -159,6 +216,92 @@ async function openTwoImageStudio(page: Page, secondDelayMs: number) {
   await page.goto(`/studio/${PID}`);
   await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
   await waitForTool(page, "open_image");
+}
+
+async function openGeneratedStudio(
+  page: Page,
+  outcome: "completed" | "no_detection" | "failed",
+) {
+  await installWebMcpHost(page);
+  await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api/, "");
+    const method = request.method();
+    if (path === `/projects/${PID}` && method === "GET") {
+      return route.fulfill({
+        json: {
+          id: PID,
+          name: "Generated keypoints",
+          type: "keypoints",
+          template: "hand",
+          classes: [],
+        },
+      });
+    }
+    if (path === `/projects/${PID}/images` && method === "GET") {
+      return route.fulfill({
+        json: [
+          { id: "original", filename: "original.jpg", committed: false, empty: false },
+          { id: "generated", filename: "generated.png", committed: false, empty: true },
+        ],
+      });
+    }
+    if (path === `/projects/${PID}/images/original` && method === "GET") {
+      return route.fulfill({
+        json: {
+          id: "original",
+          image: "original.jpg",
+          url: "/default.jpg",
+          committed: false,
+          objects: [hand(REST_RIG)],
+        },
+      });
+    }
+    if (path === `/projects/${PID}/images/generated` && method === "GET") {
+      return route.fulfill({
+        json: {
+          id: "generated",
+          image: "generated.png",
+          url: "/default.jpg",
+          generated: true,
+          committed: false,
+          objects: [],
+        },
+      });
+    }
+    if (path === `/projects/${PID}/images/generated/assist` && method === "POST") {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      if (outcome === "failed") {
+        return route.fulfill({ status: 500, json: { detail: "detector failed" } });
+      }
+      return route.fulfill({
+        json: {
+          id: "generated",
+          image: "generated.png",
+          url: "/default.jpg",
+          generated: true,
+          committed: false,
+          objects: outcome === "completed" ? [hand(REST_RIG, "generated-hand")] : [],
+        },
+      });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs` && method === "GET") {
+      return route.fulfill({
+        json: {
+          items: [],
+          total: 0,
+          offset: 0,
+          limit: 1,
+          status_counts: { active: 0, succeeded: 0, partially_succeeded: 0, failed: 0 },
+        },
+      });
+    }
+    return route.fulfill({ status: 404, body: `unmocked ${method} ${path}` });
+  });
+  await page.goto(`/studio/${PID}`);
+  await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
+  await waitForTool(page, "open_image");
+  await page.getByRole("button", { name: "Auto Label" }).click();
 }
 
 test("add_instance clamps an invalid root and reports every correction", async ({ page }) => {
@@ -388,3 +531,73 @@ test("delete_image waits for and returns the successor image", async ({ page }) 
     },
   });
 });
+
+test("all augmentation WebMCP tools share the durable job contract", async ({ page }) => {
+  await openStudio(page, [hand(REST_RIG)]);
+
+  const created = await callTool(page, "create_augmentation_job", {
+    mode: "transform",
+    source_image_ids: [IID],
+    variants_per_source: 1,
+    seed: 42,
+    pipeline: [{ op: "flip", axis: "horizontal" }],
+  });
+  expect(created).toMatchObject({ id: "job-1", mode: "transform", status: "queued" });
+
+  expect(await callTool(page, "list_augmentation_jobs", { limit: 20 })).toMatchObject({
+    total: 1,
+    status_counts: { active: 1 },
+    items: [{ id: "job-1" }],
+  });
+  expect(await callTool(page, "get_augmentation_job", { job_id: "job-1" })).toMatchObject({
+    id: "job-1",
+    items: [],
+  });
+  expect(await callTool(page, "cancel_augmentation_job", { job_id: "job-1" })).toMatchObject({
+    id: "job-1",
+    status: "cancelled",
+  });
+  expect(await callTool(page, "retry_augmentation_job", { job_id: "job-1" })).toMatchObject({
+    id: "job-1",
+    status: "queued",
+  });
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    augmentation_jobs: { active: 1 },
+  });
+});
+
+test("augmentation tools return explicit errors for missing ids and API failures", async ({ page }) => {
+  await openStudio(page, [hand(REST_RIG)]);
+
+  expect(await callTool(page, "get_augmentation_job", { job_id: "   " })).toEqual({
+    error: "bad_job_id",
+  });
+  expect(await callTool(page, "list_augmentation_jobs", { limit: 0 })).toEqual({
+    error: "bad_pagination",
+  });
+  expect(
+    await callTool(page, "get_augmentation_job", { job_id: "job-1", item_limit: 201 }),
+  ).toEqual({ error: "bad_pagination" });
+  expect(await callTool(page, "cancel_augmentation_job", { job_id: "missing" })).toEqual({
+    error: "augmentation_cancel_failed",
+  });
+  expect(await callTool(page, "retry_augmentation_job", { job_id: "missing" })).toEqual({
+    error: "augmentation_retry_failed",
+  });
+});
+
+for (const outcome of ["completed", "no_detection", "failed"] as const) {
+  test(`open_image waits for generated-image Auto Label: ${outcome}`, async ({ page }) => {
+    await openGeneratedStudio(page, outcome);
+
+    const result = await callTool(page, "open_image", { index: 1 });
+
+    expect(result).toMatchObject({
+      current: {
+        id: "generated",
+        loading: false,
+        auto_label_status: outcome,
+      },
+    });
+  });
+}
