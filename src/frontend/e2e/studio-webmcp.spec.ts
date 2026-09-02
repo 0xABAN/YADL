@@ -389,7 +389,7 @@ test("comment schema encodes the operation-specific required field", async ({ pa
 test("studio_guide states the real recovery boundary for deleted images", async ({ page }) => {
   await openStudio(page, [hand(undefined)]);
 
-  const result = await callTool(page, "studio_guide");
+  const result = (await callTool(page, "studio_guide")) as { guide: string[] };
 
   expect(result.guide).toContain(
     "Bad or ambiguous frames: delete_image soft-deletes the frame. Recovery is only available from the five-second human UI undo; WebMCP has no restore tool.",
@@ -415,7 +415,9 @@ test("open_image reports a timeout without exposing the previous image document"
   const result = await callTool(page, "open_image", { index: 1 });
   expect(result).toEqual({ error: "image_load_timeout", image_id: "image-2" });
 
-  const studio = await callTool(page, "get_studio");
+  const studio = (await callTool(page, "get_studio")) as {
+    current: { id: string; committed: boolean; loading: boolean; objects: unknown[] };
+  };
   expect(studio.current).toMatchObject({
     id: "image-2",
     committed: false,
