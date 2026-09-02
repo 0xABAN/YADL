@@ -33,6 +33,28 @@ const FALLBACK_MAX = 8;
 const zoomPct = (scale: number, fit: number) =>
   Math.round((scale / Math.max(fit, 1e-6)) * 100);
 
+/** Keep ≥ fraction of the scaled image inside the wrapper (soft pan lock). */
+const VIS = 0.2;
+function softClamp(
+  x: number,
+  y: number,
+  scale: number,
+  img: { w: number; h: number },
+  wrap: { w: number; h: number },
+) {
+  const w = img.w * scale;
+  const h = img.h * scale;
+  const mx = Math.min(w, h) * VIS;
+  const minX = mx - w;
+  const maxX = wrap.w - mx;
+  const minY = mx - h;
+  const maxY = wrap.h - mx;
+  return {
+    x: Math.min(maxX, Math.max(minX, x)),
+    y: Math.min(maxY, Math.max(minY, y)),
+  };
+}
+
 function toolKey(type: Project["type"]) {
   return `yadl.tool.${type}`;
 }
@@ -364,6 +386,23 @@ export default function Canvas({
   // Draw tools own empty-image drag; pan is empty chrome / non-draw tools (excluded hit targets).
   const drawing = tool === "box" || tool === "polygon";
 
+  const clampView = (ref: { setTransform: ReactZoomPanPinchContentRef["setTransform"]; state: { scale: number; positionX: number; positionY: number } }) => {
+    const { scale, positionX, positionY } = ref.state;
+    const main = mainRef.current;
+    const size = imgSize;
+    if (!main || !size?.w || !size?.h) return;
+    const wr = main.getBoundingClientRect();
+    const c = softClamp(positionX, positionY, scale, size, { w: wr.width, h: wr.height });
+    if (Math.abs(c.x - positionX) <= 0.5 && Math.abs(c.y - positionY) <= 0.5) return;
+    fitting.current = true;
+    ref.setTransform(c.x, c.y, scale, 0);
+    setDotsPos(c.x, c.y);
+    requestAnimationFrame(() => {
+      fitting.current = false;
+    });
+  };
+
+
   const hands = objects.filter(isKeypoint);
   const boxes = objects.filter((o): o is BoxObj => o.kind === "box");
   const polys = objects.filter((o): o is PolyObj => o.kind === "polygon");
@@ -395,28 +434,17 @@ export default function Canvas({
           minScale={scaleLim.min}
           maxScale={scaleLim.max}
           initialScale={1}
-          limitToBounds
-          centerZoomedOut
+          limitToBounds={false}
           disablePadding
           smooth={false}
           doubleClick={{ disabled: true }}
           zoomAnimation={{ disabled: true }}
           panning={{
             velocityDisabled: true,
-            // Annotation hit targets + draw layers win over pan (window-level mousedown).
-            excluded: [
-              "boxes",
-              "box",
-              "h",
-              "box-tab",
-              "polys",
-              "poly",
-              "edge",
-              "pv",
-              "hand",
-              "pt",
-              "chip",
-            ],
+            // Draw layers own empty drag when box/poly active; otherwise only chrome/handles.
+            excluded: drawing
+              ? ["boxes", "box", "h", "box-tab", "polys", "poly", "edge", "pv", "pt", "chip"]
+              : ["box", "h", "box-tab", "poly", "edge", "pv", "pt", "chip"],
           }}
           wheel={{ step: scaleLim.wheel, excluded: ["panel", "tools", "zoom"] }}
           pinch={{ step: 5 }}
@@ -427,9 +455,10 @@ export default function Canvas({
             const fit = fitScale.current ?? s.scale;
             setZoom(zoomPct(s.scale, fit));
             if (fitting.current || fitScale.current == null) return;
-            // Any user pan/zoom locks the view against resize auto-fit.
             viewDirty.current = true;
           }}
+          onPanningStop={(ref) => clampView(ref)}
+          onZoomStop={(ref) => clampView(ref)}
         >
           <TransformComponent
             wrapperClass="zpp"
@@ -531,7 +560,6 @@ export default function Canvas({
             .filter((t): t is (typeof TOOLS)[number] => !!t)
             .map((t) => (
             <Fragment key={t.id}>
-              {t.id === "seed" && <hr />}
               <button
                 type="button"
                 className={t.id === "assist" || t.id === "seed" || t.id === "synthetic" ? "assist" : undefined}

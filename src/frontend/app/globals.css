@@ -815,7 +815,8 @@ main.cross, main.cross:active { cursor: crosshair }
   max-width: none;
   max-height: none;
   user-select: none;
-  pointer-events: none;
+  /* receive drag so empty-image pan works (overlays still capture edits/draw) */
+  pointer-events: auto;
   outline: 2px solid #fff;
   box-shadow: var(--shadow);
   opacity: 0;
