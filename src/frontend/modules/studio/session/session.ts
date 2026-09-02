@@ -1,4 +1,4 @@
-import { named, type AnnObj, type Doc } from "../geometry/doc";
+import { commitStatus, type AnnObj, type Doc } from "../geometry/doc";
 import * as studioApi from "../api";
 import type {
   CommitResult,
@@ -289,11 +289,12 @@ export class StudioSession {
     const d = this.state.doc;
     const ls = this.state.list;
     if (!d) return { ok: false, error: "no_image" };
-    if (!d.objects.some((o) => named(o.label))) {
+    const status = commitStatus(d.objects);
+    if (!status.can_commit) {
       return {
         ok: false,
         error: "cannot_commit",
-        reason: d.objects.length === 0 ? "Add an object first" : "Name an object first",
+        reason: status.reasons.join(", ") || "blocked",
       };
     }
     const first = !d.committed;

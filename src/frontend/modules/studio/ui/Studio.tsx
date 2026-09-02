@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Canvas from "../canvas/Canvas";
-import { named, writeObjects, type AnnObj } from "../geometry/doc";
+import { commitStatus, named, writeObjects, type AnnObj } from "../geometry/doc";
 import { exportUrl, fetchProjectComments } from "../api";
 import { StudioProvider, useStudioSession, useStudioState } from "../session";
 import { studioPageTools } from "../tools/studioTools";
@@ -141,8 +141,11 @@ function StudioBody() {
   const objects = useMemo(() => doc?.objects ?? [], [doc?.objects]);
   const editing = edit && edit !== "new" ? objects.find((o) => o.id === edit) : undefined;
   const classes = (project?.classes ?? []).filter((c) => named(c));
-  const canCommit = objects.some((o) => named(o.label));
-  const commitReason = objects.length === 0 ? "Add an object first" : "Name an object first";
+  const { can_commit: canCommit, reasons: commitReasons } = commitStatus(objects);
+  const commitReason = commitReasons[0] ?? "";
+  const validityLabel = canCommit
+    ? "Valid annotation"
+    : `Invalid annotation: ${commitReasons.join(", ") || "blocked"}`;
   const nCommitted = list.filter((x) => x.committed).length;
   const idx = list.length ? Math.min(index, list.length - 1) : 0;
   const canNextOpen = list.some((x, i) => !x.committed && i !== idx);
@@ -200,7 +203,7 @@ function StudioBody() {
       <h1 className="sr-only">Studio{project ? ` — ${project.name}` : ""}</h1>
       {loadState === "ready" && list.length > 0 && doc && !assistBusy && (
         <div className={`validity ${canCommit ? "ok" : "bad"}`} aria-live="polite">
-          {canCommit ? "Valid" : "Invalid"} annotation
+          {validityLabel}
         </div>
       )}
       <Classes

@@ -1,5 +1,5 @@
 import type { Comment } from "../geometry/comment";
-import { named, type AnnObj, type Doc, type Project } from "../geometry/doc";
+import { commitStatus, named, type AnnObj, type Doc, type Project } from "../geometry/doc";
 import type { WebMcpTool } from "@/shared/webmcp";
 
 export type StudioImgRow = {
@@ -16,6 +16,7 @@ export type StudioCurrent = {
   committed: boolean;
   empty: boolean;
   can_commit: boolean;
+  invalid_reasons: string[];
   unlabeled: string[];
   objects: { id: string; kind: string; label: string | null }[];
   comments: { id: string; body: string; at?: string | null }[];
@@ -34,7 +35,7 @@ export const STUDIO_GUIDE = [
   "Prefer registered WebMCP tools for navigation, geometry, labels, and commit. Canvas clicks are human UX; use tools when they exist.",
   "After writes, take screenshots often and verify annotations visually — do not assume success from a tool OK alone.",
   "Bad or ambiguous frames: delete_image (soft-delete, recoverable anytime). Do not force labels on junk; uploads are not guaranteed clean.",
-  "Work one image at a time via open_image. get_studio shows progress, can_commit, and unlabeled ids — its objects list has no geometry.",
+  "Work one image at a time via open_image. get_studio shows progress, can_commit, invalid_reasons, and unlabeled ids — its objects list has no geometry.",
   "commit_image only when can_commit (≥1 named label). First successful commit advances the filmstrip.",
   "Geometry is on type-specific tools listed in geometry_tools — read those tool schemas for args; this guide does not teach them.",
   "Computer use is for perception/verification (screenshots), not for dragging shapes when geometry tools exist. Media upload is outside WebMCP — humans add files in the UI.",
@@ -70,7 +71,7 @@ export const STUDIO_TOOL_SCHEMAS = {
     {
       name: "get_studio",
       description:
-        "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, unlabeled ids, export_url.",
+        "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, invalid_reasons, unlabeled ids, export_url.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
     {
@@ -208,13 +209,15 @@ export function currentSummary(snap: StudioSnapshot): StudioCurrent | null {
   const row = list[i];
   const objects = doc?.id === row.id ? doc.objects : [];
   const unlabeled = objects.filter((o) => !named(o.label)).map((o) => o.id);
+  const status = commitStatus(objects);
   return {
     id: row.id,
     index: i,
     filename: row.filename,
     committed: Boolean(row.committed || doc?.committed),
     empty: row.empty ?? objects.length === 0,
-    can_commit: objects.some((o) => named(o.label)),
+    can_commit: status.can_commit,
+    invalid_reasons: status.reasons,
     unlabeled,
     objects: slimObjects(objects),
     comments: doc?.id === row.id ? slimComments(doc.comments) : [],

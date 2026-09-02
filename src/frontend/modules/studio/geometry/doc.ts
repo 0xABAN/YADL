@@ -97,6 +97,19 @@ export function named(label: string | null | undefined) {
   return label && label !== "untitled" ? label : null;
 }
 
+/** Commit gate (≥1 named label). Shared by badge, footer, get_studio, commit_image. */
+export type CommitStatus = { can_commit: boolean; reasons: string[] };
+
+export function commitStatus(
+  objects: { label?: string | null }[],
+): CommitStatus {
+  if (!objects.length) return { can_commit: false, reasons: ["no objects"] };
+  if (!objects.some((o) => named(o.label))) {
+    return { can_commit: false, reasons: ["unnamed labels"] };
+  }
+  return { can_commit: true, reasons: [] };
+}
+
 export function classColor(label: string | null | undefined, classes: string[]) {
   const name = named(label);
   if (!name) return "#737373";

@@ -11,7 +11,7 @@
     },
     {
       "name": "get_studio",
-      "description": "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, unlabeled ids, export_url.",
+      "description": "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, invalid_reasons, unlabeled ids, export_url.",
       "inputSchema": {
         "type": "object",
         "properties": {},
