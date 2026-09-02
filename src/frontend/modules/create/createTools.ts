@@ -1,7 +1,7 @@
 import type { Project } from "@/modules/studio/geometry/doc";
 import type { WebMcpTool } from "@/shared/webmcp";
 import { createProject, fetchProjects, parseProjectType, parseTemplate } from "./projectsApi";
-import { studioPath, uploadPath } from "./projectRoutes";
+import { studioPath } from "./projectRoutes";
 
 /** Schema-only export for webmcp-evals (keep in sync with tools below). */
 export const CREATE_TOOL_SCHEMAS = {
@@ -14,7 +14,7 @@ export const CREATE_TOOL_SCHEMAS = {
     {
       name: "create_project",
       description:
-        "Create a labeling project. type is boxes, polygons, or keypoints. For keypoints, pass template hand|pose|face (default hand). Does not upload — returns upload_url for computer use (Select files → Upload).",
+        "Create a labeling project. type is boxes, polygons, or keypoints. For keypoints, pass template hand|pose|face (default hand). Does not upload media — returns studio_url; a human adds files in the product UI.",
       inputSchema: {
         type: "object",
         properties: {
@@ -84,7 +84,6 @@ export function createPageTools(deps: CreateToolsDeps): WebMcpTool[] {
         const id = res.project.id;
         return {
           project: res.project,
-          upload_url: uploadPath({ id }),
           studio_url: studioPath(id),
         };
       },

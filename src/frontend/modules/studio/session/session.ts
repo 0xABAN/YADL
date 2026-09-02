@@ -30,6 +30,8 @@ function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
     toast: null,
     toastOut: false,
     toastUndo: null,
+    agentToast: null,
+    agentToastOut: false,
     edit: null,
     draft: "",
     histOpen: false,
@@ -49,6 +51,7 @@ export class StudioSession {
   private listeners = new Set<() => void>();
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private undoTimer: ReturnType<typeof setTimeout> | null = null;
+  private agentToastTimer: ReturnType<typeof setTimeout> | null = null;
   private imageAbort: AbortController | null = null;
   private destroyed = false;
 
@@ -79,6 +82,7 @@ export class StudioSession {
     this.imageAbort?.abort();
     if (this.toastTimer) clearTimeout(this.toastTimer);
     if (this.undoTimer) clearTimeout(this.undoTimer);
+    if (this.agentToastTimer) clearTimeout(this.agentToastTimer);
     this.listeners.clear();
   }
 
@@ -577,6 +581,20 @@ export class StudioSession {
 
   clearToast() {
     this.patch({ toast: null, toastOut: false });
+  }
+
+  /** Agent WebMCP tool invoke — separate from human toasts so they don't clobber each other. */
+  showAgentTool(name: string, holdMs = 1600) {
+    if (this.agentToastTimer) clearTimeout(this.agentToastTimer);
+    this.patch({
+      agentToastOut: false,
+      agentToast: `Agent used \`${name}\``,
+    });
+    this.agentToastTimer = setTimeout(() => this.patch({ agentToastOut: true }), holdMs);
+  }
+
+  clearAgentToast() {
+    this.patch({ agentToast: null, agentToastOut: false });
   }
 
   clampIndexToList() {

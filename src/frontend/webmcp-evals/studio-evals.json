@@ -67,21 +67,5 @@
         "arguments": {}
       }
     ]
-  },
-  {
-    "name": "Open add media",
-    "messages": [
-      {
-        "role": "user",
-        "type": "message",
-        "content": "I need to add more photos to this project."
-      }
-    ],
-    "expectedCall": [
-      {
-        "functionName": "open_upload",
-        "arguments": {}
-      }
-    ]
   }
 ]

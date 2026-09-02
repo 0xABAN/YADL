@@ -155,10 +155,7 @@ function UploadPanel({
       >
         <p className="lead">Drag and drop to upload, or:</p>
         <div className="picks">
-          <label
-            className={busy ? "pick off" : "pick"}
-            data-webmcp="select-files"
-          >
+          <label className={busy ? "pick off" : "pick"}>
             Select files
             <input
               type="file"

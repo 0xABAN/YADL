@@ -51,6 +51,8 @@ function StudioBody() {
     toast,
     toastOut,
     toastUndo,
+    agentToast,
+    agentToastOut,
     edit,
     draft,
     histOpen,
@@ -111,7 +113,6 @@ function StudioBody() {
             return { ok: false as const, error: "list_failed" };
           }
         },
-        openUpload: () => session.openUpload(),
         waitForImage: (imageId, ms) => session.waitForImage(imageId, ms),
       }),
       ...(ptype === "keypoints"
@@ -127,7 +128,7 @@ function StudioBody() {
             : []),
     ];
     void registerWebMcpTools(tools, ac.signal, {
-      onInvoke: (name) => session.showToast(`Agent used \`${name}\``, { holdMs: 1600 }),
+      onInvoke: (name) => session.showAgentTool(name),
     });
     return () => ac.abort();
   }, [session, loadState, project?.type]);
@@ -344,6 +345,18 @@ function StudioBody() {
         </span>
       )}
       <StudioUpload />
+      {agentToast && (
+        <div
+          className={`live agent-live${agentToastOut ? " out" : ""}${toast ? " stacked" : ""}`}
+          aria-live="polite"
+          onAnimationEnd={(e) => {
+            if (e.animationName !== "live-out") return;
+            session.clearAgentToast();
+          }}
+        >
+          {agentToast}
+        </div>
+      )}
       {toast && (
         <div
           className={`live${toastOut ? " out" : ""}`}

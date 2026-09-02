@@ -140,15 +140,6 @@
         ],
         "additionalProperties": false
       }
-    },
-    {
-      "name": "open_upload",
-      "description": "Open the Studio add-media modal. Does not upload files — use computer use on [data-webmcp=select-files] then Upload.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "additionalProperties": false
-      }
     }
   ]
 }

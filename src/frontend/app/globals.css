@@ -140,6 +140,10 @@ button.studio-back {
   animation: live-in 0.22s ease both;
 }
 .live.out { animation: live-out 0.18s ease both; }
+.live.agent-live.stacked {
+  bottom: calc(var(--foot-h) + var(--rail-pad) / 2 + 8px + 40px);
+}
+
 @keyframes live-in {
   from { opacity: 0; transform: translateX(-50%) translateY(6px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }

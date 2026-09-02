@@ -79,12 +79,12 @@ Agent loops:
 | Tool | Role |
 |---|---|
 | `list_projects` | recent projects |
-| `create_project` | `{name, type, template?}` — returns `upload_url` / `studio_url`; does not upload |
+| `create_project` | `{name, type, template?}` — returns `studio_url`; does not upload (media is human UI) |
 | `open_project` | by id or name → studio |
 
 No WebMCP upload tool — media pick/submit is human or computer-use on `/upload`.
 
-Human flow: `/create` → `/upload?name=&type=` (create-on-submit). Agent: `create_project` then CU on `upload_url`.
+Human flow: `/create` → `/upload?name=&type=` (create-on-submit). Agent: `create_project` → `open_project` / `studio_url`; media upload is human UI (no WebMCP upload tools).
 
 ### WebMCP Studio (general, type-agnostic)
 
@@ -101,8 +101,6 @@ Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geom
 | `delete_image` | current only |
 | `get_comments` | all images' comments (optional `image_id`); current also on `get_studio` |
 | `comment` | `add`+`body` or `delete`+`id` on current |
-| `open_upload` | open add-media modal; CU on `[data-webmcp=select-files]` (no bytes tool) |
-
 SSOT: `src/frontend/lib/studioTools.ts`.
 
 Register via `document.modelContext`; no-op if unavailable.

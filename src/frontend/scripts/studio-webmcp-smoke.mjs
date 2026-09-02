@@ -211,14 +211,15 @@ async function main() {
   const names = await page.evaluate(() => window.__webmcpNames());
   console.log("tools:", names.join(", "));
   const expected = [
+    "studio_guide",
     "get_studio",
     "open_image",
     "set_label",
     "delete_object",
     "commit_image",
     "delete_image",
+    "get_comments",
     "comment",
-    "open_upload",
   ];
   for (const n of expected) assert(names.includes(n), `missing tool ${n}`);
 
@@ -250,12 +251,10 @@ async function main() {
   assert(comments.comments?.some((c) => c.body === "smoke note"), "comment body");
   const cid = comments.comments.find((c) => c.body === "smoke note").id;
 
-  // 5 open_upload
-  const up = await call("open_upload");
-  assert(up.opened === true, "upload opened");
-  const modal = await page.locator(".studio-upload").isVisible();
-  assert(modal, "upload modal visible");
-  await page.keyboard.press("Escape");
+  // 5 studio_guide
+  const guide = await call("studio_guide");
+  assert(Array.isArray(guide.guide) && guide.guide.length > 0, "guide tips");
+  assert(!guide.geometry_tools?.includes?.("open_upload"), "no upload tool");
 
   // 6 commit_image
   const committed = await call("commit_image");

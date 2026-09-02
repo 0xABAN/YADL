@@ -29,6 +29,8 @@ export type StudioState = {
   toast: string | null;
   toastOut: boolean;
   toastUndo: ToastUndo | null;
+  agentToast: string | null;
+  agentToastOut: boolean;
   edit: string | null;
   draft: string;
   histOpen: boolean;

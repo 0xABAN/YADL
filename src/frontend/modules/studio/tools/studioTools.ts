@@ -37,7 +37,7 @@ export const STUDIO_GUIDE = [
   "Work one image at a time via open_image. get_studio shows progress, can_commit, and unlabeled ids — its objects list has no geometry.",
   "commit_image only when can_commit (≥1 named label). First successful commit advances the filmstrip.",
   "Geometry is on type-specific tools listed in geometry_tools — read those tool schemas for args; this guide does not teach them.",
-  "Computer use is for perception and rare UI (e.g. file picker after open_upload), not for dragging shapes when geometry tools exist.",
+  "Computer use is for perception/verification (screenshots), not for dragging shapes when geometry tools exist. Media upload is outside WebMCP — humans add files in the UI.",
   "Use comment for notes to humans when unsure; do not silently invent quality.",
   "If verification fails: fix via set_* / delete_object, or delete_image, then commit only when it looks right.",
 ] as const;
@@ -154,12 +154,6 @@ export const STUDIO_TOOL_SCHEMAS = {
         additionalProperties: false,
       },
     },
-    {
-      name: "open_upload",
-      description:
-        "Open the Studio add-media modal. Does not upload files — use computer use on [data-webmcp=select-files] then Upload.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    },
   ],
 } as const;
 
@@ -191,7 +185,6 @@ export type StudioToolsDeps = {
       }
     | { ok: false; error: string }
   >;
-  openUpload: () => void;
   /** Wait until doc matches target image id (post open_image). */
   waitForImage?: (imageId: string, ms?: number) => Promise<boolean>;
 };
@@ -405,13 +398,6 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
           return { comments: currentSummary(deps.get())?.comments ?? [] };
         }
         return { error: "bad_op" };
-      },
-    },
-    {
-      ...schemas[9],
-      execute: async () => {
-        deps.openUpload();
-        return { opened: true, cu: "[data-webmcp=select-files]" };
       },
     },
   ];
