@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useState, type RefObject } from "react";
 
-/** Place create-guide: 100px left of sheet, 20px under side (Recent/QR). */
+/** Place create-guide up to 100px left of sheet, 20px under side (Recent/QR). */
 export function useSheetGuide(
   sheetRef: RefObject<HTMLElement | null>,
   sideRef: RefObject<HTMLElement | null>,
@@ -16,7 +16,7 @@ export function useSheetGuide(
     const place = () => {
       const s = sheet.getBoundingClientRect();
       const p = side.getBoundingClientRect();
-      const left = s.left - 100;
+      const left = Math.max(0, s.left - 100);
       const top = p.bottom + 20;
       setGuide((g) => (g && g.left === left && g.top === top ? g : { left, top }));
     };

@@ -1429,7 +1429,7 @@ main.cross, main.cross:active { cursor: crosshair }
     linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)),
     var(--canvas) url("/create.png") center / cover no-repeat;
 }
-/* layout guide — left = sheet−100; top = Recent/QR bottom+20 (never sheet) → page BR */
+/* layout guide — up to sheet−100; top = Recent/QR bottom+20 (never sheet) → page BR */
 .create-guide {
   --cell-w: 520px;
   --cell-h: 280px;
@@ -2374,6 +2374,25 @@ main.cross, main.cross:active { cursor: crosshair }
     justify-self: stretch;
     padding: 16px 24px 0;
   }
+}
+@media (max-width: 600px) {
+  .create .split {
+    grid-template-columns: minmax(0, var(--create-sheet-w));
+    justify-content: center;
+    row-gap: 12px;
+  }
+  .create .sheet {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .create .history,
+  .create .qr-side {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .create:not(.upload) h1 { font-size: 30px; }
+  .create h1 .ex { font-size: 38px; }
 }
 
 /* in-app confirm — centered, no browser chrome */
