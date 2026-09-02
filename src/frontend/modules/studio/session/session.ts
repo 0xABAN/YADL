@@ -207,20 +207,22 @@ export class StudioSession {
   }
 
   async waitForImage(imageId: string, ms = 2500): Promise<boolean> {
-    const t0 = Date.now();
+    if (this.state.doc?.id === imageId) return true;
     return new Promise((resolve) => {
-      const tick = () => {
-        if (this.state.doc?.id === imageId) {
-          resolve(true);
-          return;
-        }
-        if (Date.now() - t0 > ms) {
-          resolve(false);
-          return;
-        }
-        setTimeout(tick, 16);
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const finish = (ready: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        unsubscribe();
+        resolve(ready);
       };
-      tick();
+      const unsubscribe = this.subscribe(() => {
+        if (this.state.doc?.id === imageId) finish(true);
+      });
+      timer = setTimeout(() => finish(false), ms);
+      if (this.state.doc?.id === imageId) finish(true);
     });
   }
 
@@ -625,23 +627,22 @@ export class StudioSession {
     this.patch({ toast: null, toastOut: false });
   }
 
-  /** Agent WebMCP tool invoke — separate from human toasts so they don't clobber each other. */
-  showAgentTool(name: string, holdMs = 1600) {
+  private showAgentNotice(message: string, holdMs: number) {
     if (this.agentToastTimer) clearTimeout(this.agentToastTimer);
     this.patch({
       agentToastOut: false,
-      agentToast: `Agent used \`${name}\``,
+      agentToast: message,
     });
     this.agentToastTimer = setTimeout(() => this.patch({ agentToastOut: true }), holdMs);
   }
 
+  /** Agent WebMCP tool invoke — separate from human toasts so they don't clobber each other. */
+  showAgentTool(name: string, holdMs = 1600) {
+    this.showAgentNotice(`Agent used \`${name}\``, holdMs);
+  }
+
   showAgentRegistrationError(name: string, holdMs = 5000) {
-    if (this.agentToastTimer) clearTimeout(this.agentToastTimer);
-    this.patch({
-      agentToastOut: false,
-      agentToast: `Could not register \`${name}\``,
-    });
-    this.agentToastTimer = setTimeout(() => this.patch({ agentToastOut: true }), holdMs);
+    this.showAgentNotice(`Could not register \`${name}\``, holdMs);
   }
 
   clearAgentToast() {

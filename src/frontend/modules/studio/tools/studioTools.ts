@@ -175,7 +175,7 @@ export type StudioToolsDeps = {
   get: () => StudioSnapshot;
   setIndex: (i: number) => void;
   /** Persist objects on current doc (optimistic local, awaited network). */
-  saveObjects: (objects: AnnObj[]) => void | Promise<void>;
+  saveObjects: (objects: AnnObj[]) => Promise<boolean>;
   ensureClass: (name: string) => Promise<boolean>;
   commitCurrent: () => Promise<
     | { ok: true; advanced: boolean }
@@ -202,15 +202,6 @@ export type StudioToolsDeps = {
   /** Wait until doc matches target image id (post open_image). */
   waitForImage?: (imageId: string, ms?: number) => Promise<boolean>;
 };
-
-async function persistObjects(deps: StudioToolsDeps, objects: AnnObj[]): Promise<boolean> {
-  try {
-    await deps.saveObjects(objects);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function slimObjects(objects: AnnObj[]) {
   return objects.map((o) => ({
@@ -353,8 +344,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         }
         if (label && !(await deps.ensureClass(label))) return { error: "class_create_failed" };
         if (
-          !(await persistObjects(
-            deps,
+          !(await deps.saveObjects(
             snap.doc.objects.map((o) => (o.id === oid ? { ...o, label } : o)),
           ))
         ) {
@@ -371,7 +361,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         const oid = String(args.object_id ?? "").trim();
         if (!oid) return { error: "bad_object_id" };
         if (!snap.doc.objects.some((o) => o.id === oid)) return { error: "not_found" };
-        if (!(await persistObjects(deps, snap.doc.objects.filter((o) => o.id !== oid)))) {
+        if (!(await deps.saveObjects(snap.doc.objects.filter((o) => o.id !== oid)))) {
           return { error: "save_failed" };
         }
         return { current: currentSummary(deps.get()) };
@@ -415,11 +405,11 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
     {
       ...schemas[7],
       execute: async (args) => {
-        const res = await deps.listComments();
-        if (!res.ok) return { error: res.error };
         const hasImageId = args.image_id !== undefined && args.image_id !== null;
         const iid = typeof args.image_id === "string" ? args.image_id.trim() : "";
         if (hasImageId && !iid) return { error: "bad_image_id" };
+        const res = await deps.listComments();
+        if (!res.ok) return { error: res.error };
         const images = iid ? res.images.filter((x) => x.id === iid) : res.images;
         if (iid && !images.length) return { error: "not_found" };
         const n_comments = images.reduce((n, x) => n + x.comments.length, 0);
@@ -453,9 +443,9 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         if (op === "delete") {
           const cid = String(args.id ?? "").trim();
           if (!cid) return { error: "need_id" };
-          const current = currentSummary(deps.get());
-          if (!current) return { error: "no_image" };
-          if (!current.comments.some((comment) => comment.id === cid)) {
+          const doc = deps.get().doc;
+          if (!doc) return { error: "no_image" };
+          if (!(doc.comments ?? []).some((comment) => comment.id === cid)) {
             return { error: "not_found" };
           }
           const res = await deps.deleteComment(cid);

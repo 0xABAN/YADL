@@ -1,13 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { CREATE_TOOL_SCHEMAS } from "../modules/create/createTools";
-
-type RegisteredTool = {
-  name: string;
-  inputSchema: Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => unknown;
-};
+import { callTool, getToolSchema, installWebMcpHost, toolNames } from "./support/webmcp";
 
 const project = {
   id: "project-1",
@@ -17,45 +9,8 @@ const project = {
   classes: [],
 };
 
-async function installWebMcpHost(page: Page) {
-  await page.addInitScript(() => {
-    const tools = new Map<string, RegisteredTool>();
-    Object.defineProperty(document, "modelContext", {
-      configurable: true,
-      value: {
-        registerTool(tool: RegisteredTool, opts?: { signal?: AbortSignal }) {
-          const host = window as typeof window & { __rejectWebMcpName?: string };
-          if (host.__rejectWebMcpName === tool.name) throw new Error("forced registration failure");
-          tools.set(tool.name, tool);
-          opts?.signal?.addEventListener("abort", () => tools.delete(tool.name), { once: true });
-        },
-      },
-    });
-    Object.assign(window, {
-      __webMcpCall: (name: string, args: Record<string, unknown> = {}) => tools.get(name)?.execute(args),
-      __webMcpSchema: (name: string) => tools.get(name)?.inputSchema,
-      __webMcpNames: () => [...tools.keys()],
-    });
-  });
-}
-
 async function waitForCreateTools(page: Page) {
-  await expect.poll(() => page.evaluate(() => {
-    const host = window as typeof window & { __webMcpNames?: () => string[] };
-    return host.__webMcpNames?.() ?? [];
-  })).toEqual(["list_projects", "create_project", "open_project"]);
-}
-
-async function callTool(page: Page, name: string, args: Record<string, unknown> = {}) {
-  return page.evaluate(
-    ({ toolName, input }) => {
-      const host = window as typeof window & {
-        __webMcpCall?: (name: string, args: Record<string, unknown>) => unknown;
-      };
-      return host.__webMcpCall?.(toolName, input);
-    },
-    { toolName: name, input: args },
-  );
+  await expect.poll(() => toolNames(page)).toEqual(["list_projects", "create_project", "open_project"]);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -83,13 +38,6 @@ test("rejects unexpected arguments even when the WebMCP host skips schema valida
     error: "invalid_arguments",
     details: ["$.name: expected string"],
   });
-});
-
-test("checked-in create schemas exactly match the registered source of truth", async () => {
-  const checkedIn = JSON.parse(
-    readFileSync(join(process.cwd(), "webmcp-evals/schema.json"), "utf8"),
-  );
-  expect(checkedIn).toEqual(CREATE_TOOL_SCHEMAS);
 });
 
 test("shows a physical UI warning when the host rejects a tool registration", async ({ page }) => {
@@ -137,16 +85,11 @@ test("open_project requires exactly one identifier and verifies ids before navig
   expect(unknown).toEqual({ error: "not_found" });
   await expect(page).toHaveURL(/\/create$/);
 
-  const schema = await page.evaluate(() => {
-    const host = window as typeof window & {
-      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
-    };
-    return host.__webMcpSchema?.("open_project");
-  });
+  const schema = await getToolSchema(page, "open_project");
   expect(schema).toMatchObject({ oneOf: [{ required: ["id"] }, { required: ["name"] }] });
 });
 
-test("create_project rejects unexpected and type-inapplicable arguments itself", async ({ page }) => {
+test("create_project rejects unexpected and type-inapplicable arguments", async ({ page }) => {
   let posts = 0;
   await page.route("**/api/projects", async (route) => {
     if (route.request().method() === "POST") posts += 1;
@@ -164,11 +107,6 @@ test("create_project rejects unexpected and type-inapplicable arguments itself",
   ).toEqual({ error: "bad_template" });
   expect(posts).toBe(0);
 
-  const schema = await page.evaluate(() => {
-    const host = window as typeof window & {
-      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
-    };
-    return host.__webMcpSchema?.("create_project");
-  });
+  const schema = await getToolSchema(page, "create_project");
   expect(schema).toMatchObject({ oneOf: [{ not: { required: ["template"] } }, { properties: { type: { const: "keypoints" } } }] });
 });

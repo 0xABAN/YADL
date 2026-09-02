@@ -129,16 +129,10 @@ export default function New() {
     );
   };
 
-  const showAgentTool = useCallback((toolName: string) => {
+  const showAgentNotice = useCallback((message: string, holdMs: number) => {
     if (agentToolTimer.current) clearTimeout(agentToolTimer.current);
-    setAgentNotice(`Agent used \`${toolName}\``);
-    agentToolTimer.current = setTimeout(() => setAgentNotice(null), 1600);
-  }, []);
-
-  const showRegistrationError = useCallback((toolName: string) => {
-    if (agentToolTimer.current) clearTimeout(agentToolTimer.current);
-    setAgentNotice(`Could not register \`${toolName}\``);
-    agentToolTimer.current = setTimeout(() => setAgentNotice(null), 5000);
+    setAgentNotice(message);
+    agentToolTimer.current = setTimeout(() => setAgentNotice(null), holdMs);
   }, []);
 
   useEffect(() => () => {
@@ -154,10 +148,13 @@ export default function New() {
         onCreated: (p) => setRows((rs) => [p, ...rs.filter((x) => x.id !== p.id)]),
       }),
       ac.signal,
-      { onInvoke: showAgentTool, onRegistrationError: showRegistrationError },
+      {
+        onInvoke: (name) => showAgentNotice(`Agent used \`${name}\``, 1600),
+        onRegistrationError: (name) => showAgentNotice(`Could not register \`${name}\``, 5000),
+      },
     );
     return () => ac.abort();
-  }, [router, showAgentTool, showRegistrationError]);
+  }, [router, showAgentNotice]);
 
   return (
     <div className="create">

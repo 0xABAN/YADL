@@ -85,18 +85,8 @@ export const RIG_TOOL_SCHEMAS = {
 
 export type RigToolsDeps = {
   get: () => StudioSnapshot;
-  saveObjects: (objects: AnnObj[]) => void | Promise<void>;
-  setSelected?: (id: string | null) => void;
+  saveObjects: (objects: AnnObj[]) => Promise<boolean>;
 };
-
-async function persistObjects(deps: RigToolsDeps, objects: AnnObj[]): Promise<boolean> {
-  try {
-    await deps.saveObjects(objects);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function templateOf(p: Project | null): KeypointTemplate {
   return p?.template === "pose" || p?.template === "face" ? p.template : "hand";
@@ -287,8 +277,7 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
           },
         };
         if (
-          !(await persistObjects(
-            deps,
+          !(await deps.saveObjects(
             pick.others.map((o) => (o.id === obj.id ? nextObj : o)),
           ))
         ) {
@@ -333,7 +322,7 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
             rig,
           },
         };
-        if (!(await persistObjects(deps, [...snap.doc.objects, obj]))) {
+        if (!(await deps.saveObjects([...snap.doc.objects, obj]))) {
           return { error: "save_failed" };
         }
         return { ...rigPayload(snap, obj), clamped_keys: rootResult.clamped_keys };

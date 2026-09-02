@@ -83,10 +83,6 @@ export function createPageTools(deps: CreateToolsDeps): WebMcpTool[] {
     {
       ...schemas[1],
       execute: async (args) => {
-        const unexpected = Object.keys(args).filter(
-          (key) => key !== "name" && key !== "type" && key !== "template",
-        );
-        if (unexpected.length) return { error: "unexpected_arguments", keys: unexpected.sort() };
         const n = String(args.name ?? "").trim();
         const t = parseProjectType(args.type);
         if (!n) return { error: "empty_name" };

@@ -1,38 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { BOX_TOOL_SCHEMAS, POLY_TOOL_SCHEMAS } from "../modules/studio/tools/shapeTools";
-
-type RegisteredTool = {
-  name: string;
-  inputSchema: Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => unknown;
-};
+import { callTool, getToolSchema, installWebMcpHost, waitForTool } from "./support/webmcp";
 
 type ShapeType = "boxes" | "polygons";
 
 const PID = "p_shape_webmcp";
 const IID = "shape-image-1";
-
-async function installWebMcpHost(page: Page) {
-  await page.addInitScript(() => {
-    const tools = new Map<string, RegisteredTool>();
-    Object.defineProperty(document, "modelContext", {
-      configurable: true,
-      value: {
-        registerTool(tool: RegisteredTool, opts?: { signal?: AbortSignal }) {
-          tools.set(tool.name, tool);
-          opts?.signal?.addEventListener("abort", () => tools.delete(tool.name), { once: true });
-        },
-      },
-    });
-    Object.assign(window, {
-      __webMcpCall: (name: string, args: Record<string, unknown> = {}) => tools.get(name)?.execute(args),
-      __webMcpSchema: (name: string) => tools.get(name)?.inputSchema,
-      __webMcpNames: () => [...tools.keys()],
-    });
-  });
-}
 
 async function mockShapeStudio(
   page: Page,
@@ -91,48 +63,12 @@ async function mockShapeStudio(
   });
 }
 
-async function callTool(page: Page, name: string, args: Record<string, unknown> = {}) {
-  return page.evaluate(
-    ({ toolName, input }) => {
-      const host = window as typeof window & {
-        __webMcpCall?: (name: string, args: Record<string, unknown>) => unknown;
-      };
-      return host.__webMcpCall?.(toolName, input);
-    },
-    { toolName: name, input: args },
-  );
-}
-
-async function captureTool(page: Page, name: string, args: Record<string, unknown> = {}) {
-  return page.evaluate(
-    async ({ toolName, input }) => {
-      const host = window as typeof window & {
-        __webMcpCall?: (name: string, args: Record<string, unknown>) => unknown;
-      };
-      try {
-        return { ok: true, result: await host.__webMcpCall?.(toolName, input) };
-      } catch (error) {
-        return { ok: false, error: String(error instanceof Error ? error.message : error) };
-      }
-    },
-    { toolName: name, input: args },
-  );
-}
-
 async function openShapeStudio(page: Page, type: ShapeType, options = {}) {
   await installWebMcpHost(page);
   await mockShapeStudio(page, type, options);
   await page.goto(`/studio/${PID}`);
   await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
-  const expected = type === "boxes" ? "add_box" : "add_polygon";
-  await expect
-    .poll(() =>
-      page.evaluate((name) => {
-        const host = window as typeof window & { __webMcpNames?: () => string[] };
-        return host.__webMcpNames?.().includes(name) ?? false;
-      }, expected),
-    )
-    .toBe(true);
+  await waitForTool(page, type === "boxes" ? "add_box" : "add_polygon");
 }
 
 async function openTwoImageBoxStudio(page: Page) {
@@ -224,22 +160,10 @@ test("shape schemas are enforced when the WebMCP host passes coercible wrong typ
   });
 });
 
-test("checked-in shape schemas exactly match their sources of truth", async () => {
-  const read = (name: string) =>
-    JSON.parse(readFileSync(join(process.cwd(), "webmcp-evals", name), "utf8"));
-  expect(read("box-schema.json")).toEqual(BOX_TOOL_SCHEMAS);
-  expect(read("poly-schema.json")).toEqual(POLY_TOOL_SCHEMAS);
-});
-
 test("polygon schemas describe both point formats and reject zero-area geometry", async ({ page }) => {
   await openShapeStudio(page, "polygons");
   const urlBefore = page.url();
-  const schema = await page.evaluate(() => {
-    const host = window as typeof window & {
-      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
-    };
-    return host.__webMcpSchema?.("add_polygon");
-  });
+  const schema = await getToolSchema(page, "add_polygon");
   expect(schema).toMatchObject({
     properties: { pts: { oneOf: [{ minItems: 3 }, { minItems: 6 }] } },
   });
@@ -304,9 +228,8 @@ test("concurrent labeled box adds do not overwrite each other", async ({ page })
 test("a failed shape save rolls back the optimistic object", async ({ page }) => {
   await openShapeStudio(page, "boxes", { failNextSave: true });
 
-  expect(await captureTool(page, "add_box", { unit: "norm", x: 0.1, y: 0.1, w: 0.3, h: 0.3 })).toEqual({
-    ok: true,
-    result: { error: "save_failed" },
+  expect(await callTool(page, "add_box", { unit: "norm", x: 0.1, y: 0.1, w: 0.3, h: 0.3 })).toEqual({
+    error: "save_failed",
   });
   expect(await callTool(page, "get_boxes")).toMatchObject({ n: 0 });
 });

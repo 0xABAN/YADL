@@ -2,6 +2,7 @@ import {
   newId,
   type AnnObj,
   type BoxObj,
+  type Doc,
   type PolyObj,
   type Pt,
   type Project,
@@ -131,9 +132,8 @@ export const POLY_TOOL_SCHEMAS = {
 
 export type ShapeToolsDeps = {
   get: () => StudioSnapshot;
-  saveObjects: (objects: AnnObj[]) => void | Promise<void>;
+  saveObjects: (objects: AnnObj[]) => Promise<boolean>;
   ensureClass: (name: string) => Promise<boolean>;
-  setSelected?: (id: string | null) => void;
   /** Natural image pixel size from decode; null until ready. */
   getImageSize: () => { w: number; h: number } | null;
 };
@@ -265,13 +265,9 @@ function selfIntersects(pts: Pt[]): boolean {
   return false;
 }
 
-function currentDoc(
-  deps: ShapeToolsDeps,
-  imageId: string,
-): { ok: true; snap: StudioSnapshot & { doc: NonNullable<StudioSnapshot["doc"]> } } | { ok: false; error: string } {
-  const snap = deps.get();
-  if (!snap.doc || snap.doc.id !== imageId) return { ok: false, error: "image_changed" };
-  return { ok: true, snap: snap as StudioSnapshot & { doc: NonNullable<StudioSnapshot["doc"]> } };
+function currentDoc(deps: ShapeToolsDeps, imageId: string): Doc | null {
+  const doc = deps.get().doc;
+  return doc?.id === imageId ? doc : null;
 }
 
 /** Parse pts from [{x,y}] or flat [x0,y0,...]. */
@@ -410,15 +406,6 @@ function gateType(p: Project | null, want: "boxes" | "polygons"): string | null 
   return null;
 }
 
-async function persistObjects(deps: ShapeToolsDeps, objects: AnnObj[]): Promise<boolean> {
-  try {
-    await deps.saveObjects(objects);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
   const schemas = BOX_TOOL_SCHEMAS.tools;
   return [
@@ -457,8 +444,8 @@ export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
           geom: { t: "box", ...box },
         };
         const latest = currentDoc(deps, snap.doc.id);
-        if (!latest.ok) return { error: latest.error };
-        if (!(await persistObjects(deps, [...latest.snap.doc.objects, obj]))) {
+        if (!latest) return { error: "image_changed" };
+        if (!(await deps.saveObjects([...latest.objects, obj]))) {
           return { error: "save_failed" };
         }
         return { ...boxPayload(obj), ...dims(deps), clamped_keys };
@@ -491,8 +478,7 @@ export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         if (tooSmallBox(box, size)) return { error: "too_small", ...dims(deps), got: box };
         const updated: BoxObj = { ...pick.obj, edited: true, geom: { t: "box", ...box } };
         if (
-          !(await persistObjects(
-            deps,
+          !(await deps.saveObjects(
             snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)),
           ))
         ) {
@@ -546,8 +532,8 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
           geom: { t: "polygon", pts },
         };
         const latest = currentDoc(deps, snap.doc.id);
-        if (!latest.ok) return { error: latest.error };
-        if (!(await persistObjects(deps, [...latest.snap.doc.objects, obj]))) {
+        if (!latest) return { error: "image_changed" };
+        if (!(await deps.saveObjects([...latest.objects, obj]))) {
           return { error: "save_failed" };
         }
         return { ...polyPayload(obj), ...dims(deps), clamped_keys };
@@ -572,8 +558,7 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         if (selfIntersects(pts)) return { error: "self_intersection", ...dims(deps) };
         const updated: PolyObj = { ...pick.obj, edited: true, geom: { t: "polygon", pts } };
         if (
-          !(await persistObjects(
-            deps,
+          !(await deps.saveObjects(
             snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)),
           ))
         ) {

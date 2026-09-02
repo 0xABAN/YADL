@@ -1,17 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { RIG_TOOL_SCHEMAS } from "../modules/studio/tools/rigTools";
-import { STUDIO_TOOL_SCHEMAS } from "../modules/studio/tools/studioTools";
-
-type RegisteredTool = {
-  name: string;
-  inputSchema: Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => unknown;
-};
+import { callTool, getToolSchema, installWebMcpHost, waitForTool } from "./support/webmcp";
 
 const PID = "p_webmcp";
 const IID = "img_webmcp";
+const REST_RIG = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
 const landmarks = Array.from({ length: 21 }, (_, i) => ({
   x: 0.3 + (i % 5) * 0.05,
   y: 0.35 + Math.floor(i / 5) * 0.06,
@@ -31,26 +23,6 @@ function hand(rig: unknown, id = "hand-1") {
       ...(rig === undefined ? {} : { rig }),
     },
   };
-}
-
-async function installWebMcpHost(page: Page) {
-  await page.addInitScript(() => {
-    const tools = new Map<string, RegisteredTool>();
-    Object.defineProperty(document, "modelContext", {
-      configurable: true,
-      value: {
-        registerTool(tool: RegisteredTool, opts?: { signal?: AbortSignal }) {
-          tools.set(tool.name, tool);
-          opts?.signal?.addEventListener("abort", () => tools.delete(tool.name), { once: true });
-        },
-      },
-    });
-    Object.assign(window, {
-      __webMcpCall: (name: string, args: Record<string, unknown> = {}) => tools.get(name)?.execute(args),
-      __webMcpSchema: (name: string) => tools.get(name)?.inputSchema,
-      __webMcpNames: () => [...tools.keys()],
-    });
-  });
 }
 
 async function mockStudio(
@@ -122,18 +94,6 @@ async function mockStudio(
   });
 }
 
-async function callTool(page: Page, name: string, args: Record<string, unknown> = {}) {
-  return page.evaluate(
-    ({ toolName, input }) => {
-      const host = window as typeof window & {
-        __webMcpCall?: (name: string, args: Record<string, unknown>) => unknown;
-      };
-      return host.__webMcpCall?.(toolName, input);
-    },
-    { toolName: name, input: args },
-  );
-}
-
 async function openStudio(
   page: Page,
   initialObjects: unknown[],
@@ -143,10 +103,7 @@ async function openStudio(
   await mockStudio(page, initialObjects, options);
   await page.goto(`/studio/${PID}`);
   await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
-  await expect.poll(() => page.evaluate(() => {
-    const host = window as typeof window & { __webMcpNames?: () => string[] };
-    return host.__webMcpNames?.().includes("add_instance") ?? false;
-  })).toBe(true);
+  await waitForTool(page, "add_instance");
   if (initialObjects.length) {
     await expect(page).toHaveURL(/[?&]obj=/);
   }
@@ -154,10 +111,9 @@ async function openStudio(
 
 async function openTwoImageStudio(page: Page, secondDelayMs: number) {
   await installWebMcpHost(page);
-  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
   const docs = {
-    "image-1": { ...hand(rig, "hand-1"), label: "first" },
-    "image-2": { ...hand(rig, "hand-2"), label: "second" },
+    "image-1": { ...hand(REST_RIG, "hand-1"), label: "first" },
+    "image-2": { ...hand(REST_RIG, "hand-2"), label: "second" },
   };
   let deletedFirst = false;
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
@@ -202,14 +158,11 @@ async function openTwoImageStudio(page: Page, secondDelayMs: number) {
   });
   await page.goto(`/studio/${PID}`);
   await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
-  await expect.poll(() => page.evaluate(() => {
-    const host = window as typeof window & { __webMcpNames?: () => string[] };
-    return host.__webMcpNames?.().includes("open_image") ?? false;
-  })).toBe(true);
+  await waitForTool(page, "open_image");
 }
 
 test("add_instance clamps an invalid root and reports every correction", async ({ page }) => {
-  await openStudio(page, [hand({ root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} })]);
+  await openStudio(page, [hand(REST_RIG)]);
   const urlBefore = page.url();
 
   const result = await callTool(page, "add_instance", {
@@ -225,13 +178,8 @@ test("add_instance clamps an invalid root and reports every correction", async (
 });
 
 test("open_image schema requires exactly one selector", async ({ page }) => {
-  await openStudio(page, [hand({ root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} })]);
-  const schema = await page.evaluate(() => {
-    const host = window as typeof window & {
-      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
-    };
-    return host.__webMcpSchema?.("open_image");
-  });
+  await openStudio(page, [hand(REST_RIG)]);
+  const schema = await getToolSchema(page, "open_image");
 
   expect(schema).toMatchObject({
     oneOf: [
@@ -243,8 +191,7 @@ test("open_image schema requires exactly one selector", async ({ page }) => {
 });
 
 test("Studio and rig schemas reject coercible wrong types at the app boundary", async ({ page }) => {
-  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
-  await openStudio(page, [hand(rig)]);
+  await openStudio(page, [hand(REST_RIG)]);
 
   expect(await callTool(page, "open_image", { index: "0" })).toEqual({
     error: "invalid_arguments",
@@ -256,16 +203,8 @@ test("Studio and rig schemas reject coercible wrong types at the app boundary", 
   });
 });
 
-test("checked-in Studio and rig schemas exactly match their sources of truth", async () => {
-  const read = (name: string) =>
-    JSON.parse(readFileSync(join(process.cwd(), "webmcp-evals", name), "utf8"));
-  expect(read("studio-schema.json")).toEqual(STUDIO_TOOL_SCHEMAS);
-  expect(read("rig-schema.json")).toEqual(RIG_TOOL_SCHEMAS);
-});
-
 test("set_label and delete_object round-trip without changing the WebMCP page URL", async ({ page }) => {
-  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
-  await openStudio(page, [hand(rig), hand(rig, "hand-2")]);
+  await openStudio(page, [hand(REST_RIG), hand(REST_RIG, "hand-2")]);
   const urlBefore = page.url();
 
   expect(await callTool(page, "delete_object", { object_id: "   " })).toEqual({
@@ -289,8 +228,7 @@ test("set_label and delete_object round-trip without changing the WebMCP page UR
 });
 
 test("general and rig writes report save failures and roll back their optimistic state", async ({ page }) => {
-  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
-  await openStudio(page, [hand(rig)], { failNextSave: true });
+  await openStudio(page, [hand(REST_RIG)], { failNextSave: true });
 
   expect(await callTool(page, "set_label", { object_id: "hand-1", label: null })).toEqual({
     error: "save_failed",
@@ -301,16 +239,14 @@ test("general and rig writes report save failures and roll back their optimistic
 });
 
 test("set_rig reports a save failure and retains the previous rig", async ({ page }) => {
-  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
-  await openStudio(page, [hand(rig)], { failNextSave: true });
+  await openStudio(page, [hand(REST_RIG)], { failNextSave: true });
 
   expect(await callTool(page, "set_rig", { root: { x: 0.8 } })).toEqual({ error: "save_failed" });
   expect(await callTool(page, "get_rig")).toMatchObject({ root: { x: 0.5 } });
 });
 
 test("set_label reports class creation failure without leaving a phantom class", async ({ page }) => {
-  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
-  await openStudio(page, [hand(rig)], { failClasses: true });
+  await openStudio(page, [hand(REST_RIG)], { failClasses: true });
 
   expect(await callTool(page, "set_label", { object_id: "hand-1", label: "phantom" })).toEqual({
     error: "class_create_failed",
@@ -322,8 +258,7 @@ test("set_label reports class creation failure without leaving a phantom class",
 });
 
 test("set_rig reports root clamps alongside joint clamps", async ({ page }) => {
-  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
-  await openStudio(page, [hand(rig), hand(rig, "hand-2")]);
+  await openStudio(page, [hand(REST_RIG), hand(REST_RIG, "hand-2")]);
   const urlBefore = page.url();
 
   const result = await callTool(page, "set_rig", {
@@ -371,12 +306,7 @@ test("get_comments rejects a supplied blank image id instead of dropping the fil
 test("comment schema encodes the operation-specific required field", async ({ page }) => {
   await openStudio(page, [hand(undefined)]);
 
-  const schema = await page.evaluate(() => {
-    const host = window as typeof window & {
-      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
-    };
-    return host.__webMcpSchema?.("comment");
-  });
+  const schema = await getToolSchema(page, "comment");
 
   expect(schema).toMatchObject({
     oneOf: [

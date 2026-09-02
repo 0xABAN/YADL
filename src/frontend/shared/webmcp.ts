@@ -56,9 +56,13 @@ function typeErrors(value: unknown, schema: Record<string, unknown>, path = "$")
         Boolean(branch) && typeof branch === "object" && "type" in branch,
     );
     if (typedBranches.length) {
-      const attempts = typedBranches.map((branch) => typeErrors(value, branch, path));
-      if (attempts.some((errors) => errors.length === 0)) return [];
-      return attempts.sort((a, b) => a.length - b.length)[0];
+      let shortest: string[] | null = null;
+      for (const branch of typedBranches) {
+        const errors = typeErrors(value, branch, path);
+        if (!errors.length) return [];
+        if (!shortest || errors.length < shortest.length) shortest = errors;
+      }
+      return shortest ?? [];
     }
   }
 

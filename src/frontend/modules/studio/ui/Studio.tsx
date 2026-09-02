@@ -91,11 +91,18 @@ function StudioBody() {
   useEffect(() => {
     if (loadState !== "ready") return;
     const ac = new AbortController();
+    const saveObjects = async (objects: AnnObj[]) => {
+      try {
+        await session.saveObjects(objects, { selectFallback: false });
+        return true;
+      } catch {
+        return false;
+      }
+    };
     const shapeDeps = {
       get: () => session.snapshot(),
-      saveObjects: (objects: AnnObj[]) => session.saveObjects(objects, { selectFallback: false }),
+      saveObjects,
       ensureClass: (name: string) => session.ensureClass(name),
-      setSelected: (oid: string | null) => session.setSelected(oid),
       getImageSize: () => {
         const current = imageSizeRef.current;
         return current.imageId === session.getState().doc?.id ? current.size : null;
@@ -106,7 +113,7 @@ function StudioBody() {
       ...studioPageTools({
         get: () => session.snapshot(),
         setIndex: (i) => session.setIndex(i),
-        saveObjects: (objects) => session.saveObjects(objects, { selectFallback: false }),
+        saveObjects,
         ensureClass: (name) => session.ensureClass(name),
         commitCurrent: () => session.commitCurrent(),
         deleteCurrent: () => session.deleteCurrent(),
@@ -125,8 +132,7 @@ function StudioBody() {
       ...(ptype === "keypoints"
         ? rigPageTools({
             get: () => session.snapshot(),
-            saveObjects: (objects) => session.saveObjects(objects, { selectFallback: false }),
-            setSelected: (oid) => session.setSelected(oid),
+            saveObjects,
           })
         : ptype === "boxes"
           ? boxPageTools(shapeDeps)
