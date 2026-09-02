@@ -174,7 +174,6 @@ button.studio-back {
   display: grid;
   place-items: center;
   pointer-events: none;
-  background: color-mix(in oklab, var(--canvas) 72%, transparent);
 }
 /* Board + copy; chrome (cut + outline) from shared .panel language below */
 .tetris-card {
