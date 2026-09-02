@@ -23,9 +23,9 @@ import type { WebMcpTool } from "@/shared/webmcp";
 const ROOT_PROPS = {
   type: "object",
   properties: {
-    x: { type: "number" },
-    y: { type: "number" },
-    scale: { type: "number" },
+    x: { type: "number", minimum: 0, maximum: 1 },
+    y: { type: "number", minimum: 0, maximum: 1 },
+    scale: { type: "number", minimum: 0.02, maximum: 1.5 },
     roll: { type: "number" },
   },
   additionalProperties: false,
@@ -37,7 +37,7 @@ export const RIG_TOOL_SCHEMAS = {
     {
       name: "get_rig",
       description:
-        "Read FK rig for one keypoint instance (kind/template = hand|pose|face). object_id required when more than one instance. Optional include_landmarks / include_defs (face landmarks are large).",
+        "Read FK rig for one keypoint instance (kind/template = hand|pose|face). object_id required when more than one instance. When rig_live=false, root/joints are replacement defaults, not a reconstruction of current landmarks. Optional include_landmarks / include_defs (face landmarks are large).",
       inputSchema: {
         type: "object",
         properties: {
@@ -112,19 +112,30 @@ function pickObject(
   return { ok: true, obj, others: snap.doc.objects };
 }
 
-function clampRoot(partial: Partial<RigRoot>, base: RigRoot): RigRoot {
-  const n = (v: unknown, d: number, lo?: number, hi?: number) => {
+function clampRoot(
+  partial: Partial<RigRoot>,
+  base: RigRoot,
+): { root: RigRoot; clamped_keys: string[] } {
+  const clamped_keys: string[] = [];
+  const n = (key: keyof RigRoot, v: unknown, d: number, lo?: number, hi?: number) => {
     if (v === undefined || v === null) return d;
     const x = Number(v);
     if (!Number.isFinite(x)) return d;
-    if (lo !== undefined && hi !== undefined) return Math.min(hi, Math.max(lo, x));
+    if (lo !== undefined && hi !== undefined) {
+      const clamped = Math.min(hi, Math.max(lo, x));
+      if (clamped !== x) clamped_keys.push(`root.${key}`);
+      return clamped;
+    }
     return x;
   };
   return {
-    x: n(partial.x, base.x, 0, 1),
-    y: n(partial.y, base.y, 0, 1),
-    scale: n(partial.scale, base.scale, 0.02, 1.5),
-    roll: n(partial.roll, base.roll),
+    root: {
+      x: n("x", partial.x, base.x, 0, 1),
+      y: n("y", partial.y, base.y, 0, 1),
+      scale: n("scale", partial.scale, base.scale, 0.02, 1.5),
+      roll: n("roll", partial.roll, base.roll),
+    },
+    clamped_keys,
   };
 }
 
@@ -173,6 +184,10 @@ function rigPayload(
     landmark_count: obj.geom.landmarks.length || cat.landmarkCount,
     label: obj.label,
   };
+  out.rig_source = live ? "live" : "replacement_defaults";
+  if (!live) {
+    out.rig_note = "Root and joints are replacement defaults; they do not describe the current landmarks.";
+  }
   if (template === "hand") out.handedness = obj.geom.handedness ?? null;
   if (opts.include_defs) out.joint_defs = cat.joints;
   if (opts.include_landmarks) {
@@ -235,7 +250,10 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
 
         const baseRoot = live?.root ?? DEFAULT_ROOT;
         const baseJoints = resolveJoints(cat, live?.joints ?? null);
-        const root = hasRoot ? clampRoot(args.root as Partial<RigRoot>, baseRoot) : baseRoot;
+        const rootResult = hasRoot
+          ? clampRoot(args.root as Partial<RigRoot>, baseRoot)
+          : { root: baseRoot, clamped_keys: [] };
+        const root = rootResult.root;
         const sparse = hasJoints ? (args.joints as Record<string, number>) : undefined;
         const { joints, clamped_keys, unknown_keys } = applySparseJoints(cat, baseJoints, sparse);
         if (hasJoints && unknown_keys.length) {
@@ -261,7 +279,11 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         };
         await deps.saveObjects(pick.others.map((o) => (o.id === obj.id ? nextObj : o)));
         deps.setSelected?.(nextObj.id);
-        return { ...rigPayload(snap, nextObj), clamped_keys, unknown_keys };
+        return {
+          ...rigPayload(snap, nextObj),
+          clamped_keys: [...rootResult.clamped_keys, ...clamped_keys],
+          unknown_keys,
+        };
       },
     },
     {
@@ -274,7 +296,8 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         const cat = catalogFor(template);
         const rootPartial =
           args.root && typeof args.root === "object" ? (args.root as Partial<RigRoot>) : {};
-        const rig = restRig(cat, rootPartial);
+        const rootResult = clampRoot(rootPartial, DEFAULT_ROOT);
+        const rig = restRig(cat, rootResult.root);
         let handedness: "Left" | "Right" | null = null;
         const handIn = parseHandedness(args.handedness);
         if (handIn !== undefined) {
@@ -297,7 +320,7 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
         };
         await deps.saveObjects([...snap.doc.objects, obj]);
         deps.setSelected?.(obj.id);
-        return rigPayload(snap, obj);
+        return { ...rigPayload(snap, obj), clamped_keys: rootResult.clamped_keys };
       },
     },
   ];

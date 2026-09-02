@@ -209,13 +209,18 @@ function parseRig(raw: unknown): RigState | null {
   }
   return {
     root: {
-      x: Number(rootIn.x) || DEFAULT_ROOT.x,
-      y: Number(rootIn.y) || DEFAULT_ROOT.y,
-      scale: Number(rootIn.scale) || DEFAULT_ROOT.scale,
-      roll: Number(rootIn.roll) || DEFAULT_ROOT.roll,
+      x: finiteOr(rootIn.x, DEFAULT_ROOT.x),
+      y: finiteOr(rootIn.y, DEFAULT_ROOT.y),
+      scale: finiteOr(rootIn.scale, DEFAULT_ROOT.scale),
+      roll: finiteOr(rootIn.roll, DEFAULT_ROOT.roll),
     },
     joints,
   };
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 /** Wire format for PUT — poly pts as [x,y] for backend tuples; drop null rig. */

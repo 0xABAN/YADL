@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "get_rig",
-      "description": "Read FK rig for one keypoint instance. object_id required when more than one instance. Optional include_landmarks / include_defs.",
+      "description": "Read FK rig for one keypoint instance (kind/template = hand|pose|face). object_id required when more than one instance. When rig_live=false, root/joints are replacement defaults, not a reconstruction of current landmarks. Optional include_landmarks / include_defs (face landmarks are large).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -15,7 +15,7 @@
     },
     {
       "name": "set_rig",
-      "description": "Batch update root and/or joints (and optional handedness). FK overwrites landmarks. If rig was cleared by human/assist, send full root+joints or get rig_invalidated.",
+      "description": "Batch update root and/or joints (handedness only when template=hand). Joint ids are template-specific — unknown_joint returns valid_joint_ids. If rig was cleared by human/assist, send full root+joints or get rig_invalidated.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -23,9 +23,9 @@
           "root": {
             "type": "object",
             "properties": {
-              "x": { "type": "number" },
-              "y": { "type": "number" },
-              "scale": { "type": "number" },
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 },
+              "scale": { "type": "number", "minimum": 0.02, "maximum": 1.5 },
               "roll": { "type": "number" }
             },
             "additionalProperties": false
@@ -42,16 +42,16 @@
     },
     {
       "name": "add_instance",
-      "description": "Add a rest-pose keypoint instance for the project template (FK landmarks + live rig). Optional root and handedness (hand only).",
+      "description": "Add a rest-pose keypoint instance for the project template (kind/t = hand|pose|face; FK landmarks + live rig). Optional root; handedness only when template=hand.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "root": {
             "type": "object",
             "properties": {
-              "x": { "type": "number" },
-              "y": { "type": "number" },
-              "scale": { "type": "number" },
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 },
+              "scale": { "type": "number", "minimum": 0.02, "maximum": 1.5 },
               "roll": { "type": "number" }
             },
             "additionalProperties": false
