@@ -19,7 +19,7 @@ import {
 import Hands from "./editors/Hands";
 import Boxes from "./editors/Boxes";
 import Polys from "./editors/Polys";
-import { TetrisLoader } from "@/components/ui/loader-tetris";
+import { TetrisLoaderCard } from "@/components/ui/loader-tetris-card";
 
 /** Fit = 100%. Zoom range and steps are relative to fit. */
 const FIT_PAD = 0.88;
@@ -439,7 +439,7 @@ export default function Canvas({
         <div className="dots" aria-hidden="true" />
         {busy && (
           <div className="canvas-loader">
-            <TetrisLoader cellSize={4} gap={1.5} speed={36} label="Loading" />
+            <TetrisLoaderCard />
           </div>
         )}
         <TransformWrapper
