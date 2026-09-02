@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+import json
+import os
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.deps import uid
-from backend.infra.augmentation_store import cancel_job, create_job, get_job, list_jobs, retry_job
+from backend.infra.augmentation_store import (
+    cancel_job,
+    create_job,
+    get_job,
+    list_jobs,
+    note_cancel_failure,
+    provider_predictions,
+    record_provider_result,
+    retry_job,
+)
+from backend.infra.wavespeed import WaveSpeedClient, WaveSpeedError, verify_webhook
 
 router = APIRouter(tags=["augmentations"])
 
@@ -156,6 +168,14 @@ def cancel_augmentation_job(pid: str, job_id: str, user: str = Depends(uid)):
     row = cancel_job(pid, job_id, user)
     if row is None:
         raise HTTPException(404)
+    prediction_ids = provider_predictions(job_id)
+    if prediction_ids:
+        try:
+            WaveSpeedClient().delete(prediction_ids)
+        except WaveSpeedError as exc:
+            warning = f"provider cancellation failed: {exc}"
+            note_cancel_failure(job_id, warning)
+            row["warning"] = warning
     return row
 
 
@@ -165,3 +185,22 @@ def retry_augmentation_job(pid: str, job_id: str, user: str = Depends(uid)):
     if row is None:
         raise HTTPException(404)
     return row
+
+
+@router.post("/augmentation-callbacks/{item_id}", status_code=202)
+async def wavespeed_callback(item_id: str, request: Request):
+    body = await request.body()
+    secret = os.environ.get("WAVESPEED_WEBHOOK_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "webhook secret is not configured")
+    if not verify_webhook(body, request.headers, secret):
+        raise HTTPException(401, "invalid webhook signature")
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(400, "invalid webhook payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "invalid webhook payload")
+    if not record_provider_result(item_id, payload):
+        raise HTTPException(404)
+    return Response(status_code=202)

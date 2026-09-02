@@ -51,7 +51,7 @@ def _counts(job_id: str) -> dict:
     return fetchone(
         """select
              count(*) filter (where status='queued')::int as queued,
-             count(*) filter (where status in ('running','provider_pending','output_ready'))::int as running,
+             count(*) filter (where status in ('running','submitting','provider_pending','output_ready','ingesting'))::int as running,
              count(*) filter (where status='succeeded')::int as succeeded,
              count(*) filter (where status='failed')::int as failed,
              count(*) filter (where status='cancelled')::int as cancelled,
@@ -192,7 +192,7 @@ def cancel_job(pid: str, job_id: str, uid: str) -> dict | None:
         return None
     execute(
         """update augmentation_items set status='cancelled', finished_at=now(), updated_at=now()
-           where job_id=%s and status='queued'""",
+           where job_id=%s and status in ('queued','running','submitting','provider_pending','output_ready','ingesting')""",
         (job_id,),
     )
     refresh_job_status(job_id)
@@ -224,6 +224,26 @@ def heartbeat(worker_id: str, metadata: dict[str, Any] | None = None) -> None:
            values (%s,%s,now()) on conflict (worker_id) do update
            set metadata=excluded.metadata, updated_at=excluded.updated_at""",
         (worker_id, Json(metadata or {})),
+    )
+
+
+def provider_predictions(job_id: str) -> list[str]:
+    return [
+        str(row["provider_prediction_id"])
+        for row in fetch(
+            """select provider_prediction_id from augmentation_items
+               where job_id=%s and provider_prediction_id is not null
+               and status not in ('succeeded','failed')""",
+            (job_id,),
+        )
+    ]
+
+
+def note_cancel_failure(job_id: str, message: str) -> None:
+    execute(
+        """update augmentation_items set error=%s, updated_at=now()
+           where job_id=%s and status='cancelled' and provider_prediction_id is not null""",
+        (message[:2000], job_id),
     )
 
 
@@ -261,6 +281,94 @@ def item_cancelled(item_id: str) -> bool:
         (item_id,),
     )
     return bool(row and row["cancel_requested"])
+
+
+def mark_submitting(item_id: str) -> None:
+    execute(
+        "update augmentation_items set status='submitting', updated_at=now() where id=%s and status='running'",
+        (item_id,),
+    )
+
+
+def mark_provider_pending(item_id: str, prediction_id: str, payload: dict | None = None) -> None:
+    execute(
+        """update augmentation_items set status='provider_pending',
+             provider_prediction_id=coalesce(provider_prediction_id, %s),
+             provider_payload=coalesce(%s, provider_payload), updated_at=now()
+           where id=%s and status in ('running','submitting')""",
+        (prediction_id, Json(payload) if payload is not None else None, item_id),
+    )
+
+
+def record_provider_result(item_id: str, payload: dict) -> bool:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    status = str(data.get("status") or "").lower()
+    prediction_id = str(data.get("id") or "") or None
+    outputs = data.get("outputs") or data.get("output") or []
+    if isinstance(outputs, str):
+        outputs = [outputs]
+    error = data.get("error") or data.get("message")
+    row = fetchone(
+        "select job_id, status, provider_prediction_id from augmentation_items where id=%s",
+        (item_id,),
+    )
+    if not row:
+        return False
+    if row.get("provider_prediction_id") and prediction_id != str(row["provider_prediction_id"]):
+        return False
+    if row["status"] in {"succeeded", "cancelled"}:
+        return True
+    if status in {"completed", "succeeded", "success"}:
+        if not outputs or not isinstance(outputs[0], str):
+            fail_item(item_id, str(row["job_id"]), "WaveSpeed completed without an output URL")
+            return True
+        execute(
+            """update augmentation_items set status='output_ready',
+                 provider_prediction_id=coalesce(provider_prediction_id, %s),
+                 provider_payload=%s, error=null, updated_at=now() where id=%s""",
+            (prediction_id, Json(payload), item_id),
+        )
+    elif status in {"failed", "error", "cancelled", "canceled"}:
+        fail_item(item_id, str(row["job_id"]), str(error or f"WaveSpeed {status}"))
+    else:
+        execute(
+            """update augmentation_items set status='provider_pending',
+                 provider_prediction_id=coalesce(provider_prediction_id, %s),
+                 provider_payload=%s, updated_at=now() where id=%s""",
+            (prediction_id, Json(payload), item_id),
+        )
+    return True
+
+
+def pending_predictions(limit: int = 25) -> list[dict]:
+    return fetch(
+        """select i.*, j.mode, j.config, j.project_id, j.owner_id
+           from augmentation_items i join augmentation_jobs j on j.id=i.job_id
+           where i.status='provider_pending' and i.provider_prediction_id is not null
+             and i.updated_at < now() - interval '10 seconds' and not j.cancel_requested
+           order by i.updated_at limit %s""",
+        (limit,),
+    )
+
+
+def claim_output_item() -> dict | None:
+    with pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """select i.*, j.mode, j.config, j.project_id, j.owner_id
+                   from augmentation_items i join augmentation_jobs j on j.id=i.job_id
+                   where i.status='output_ready' and not j.cancel_requested
+                   order by i.updated_at for update of i skip locked limit 1"""
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute(
+                "update augmentation_items set status='ingesting', updated_at=now() where id=%s",
+                (str(row["id"]),),
+            )
+            row["status"] = "ingesting"
+            return row
 
 
 def finalize_item(item: dict, body: bytes, content_type: str) -> None:
@@ -316,7 +424,17 @@ def recover_stale_items(minutes: int = 10) -> int:
     )
     for job_id in {str(row["job_id"]) for row in rows}:
         refresh_job_status(job_id)
-    return len(rows)
+    uncertain = fetch(
+        """update augmentation_items set status='submission_unknown',
+             error='worker interrupted during provider submission; explicit retry required',
+             finished_at=now(), updated_at=now()
+           where status='submitting' and updated_at < now() - (%s * interval '1 minute')
+           returning job_id""",
+        (minutes,),
+    )
+    for job_id in {str(row["job_id"]) for row in uncertain}:
+        refresh_job_status(job_id)
+    return len(rows) + len(uncertain)
 
 
 def refresh_job_status(job_id: str) -> str:

@@ -187,3 +187,18 @@ def apply_pipeline(body: bytes, pipeline: list[dict[str, Any]], *, seed: int) ->
         else:
             raise ValueError(f"unsupported transform: {kind}")
     return AugmentedImage(_encode(image, "PNG"), "image/png", "png")
+
+
+def normalize_generated_image(body: bytes, output_format: str) -> AugmentedImage:
+    image = _open(body)
+    formats = {
+        "png": ("PNG", "image/png", "png"),
+        "jpeg": ("JPEG", "image/jpeg", "jpg"),
+        "jpg": ("JPEG", "image/jpeg", "jpg"),
+        "webp": ("WEBP", "image/webp", "webp"),
+    }
+    try:
+        fmt, content_type, extension = formats[output_format]
+    except KeyError as exc:
+        raise ValueError("unsupported output format") from exc
+    return AugmentedImage(_encode(image, fmt), content_type, extension)
