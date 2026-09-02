@@ -126,7 +126,9 @@ function StudioBody() {
             ? polyPageTools(shapeDeps)
             : []),
     ];
-    void registerWebMcpTools(tools, ac.signal);
+    void registerWebMcpTools(tools, ac.signal, {
+      onInvoke: (name) => session.showToast(`Agent used \`${name}\``, { holdMs: 1600 }),
+    });
     return () => ac.abort();
   }, [session, loadState, project?.type]);
 

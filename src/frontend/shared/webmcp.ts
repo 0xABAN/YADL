@@ -16,14 +16,25 @@ function ctx(): ModelContext | null {
 }
 
 /** Register tools in parallel; no-op when WebMCP is unavailable. */
-export async function registerWebMcpTools(tools: WebMcpTool[], signal: AbortSignal): Promise<void> {
+export async function registerWebMcpTools(
+  tools: WebMcpTool[],
+  signal: AbortSignal,
+  opts?: { onInvoke?: (name: string) => void },
+): Promise<void> {
   const mc = ctx();
   if (!mc || signal.aborted) return;
   await Promise.all(
     tools.map(async (tool) => {
       if (signal.aborted) return;
+      const wrapped: WebMcpTool = {
+        ...tool,
+        execute: (args) => {
+          opts?.onInvoke?.(tool.name);
+          return tool.execute(args);
+        },
+      };
       try {
-        await mc.registerTool(tool, { signal });
+        await mc.registerTool(wrapped, { signal });
       } catch {
         /* host may reject */
       }
