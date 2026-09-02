@@ -117,14 +117,10 @@ def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
     return [(Path(name).name or "image.jpg", body, ct)] if ct else []
 
 
-def frames_from_video(
-    name: str, body: bytes, interval: float, room: int | None = None
-) -> list[tuple[str, bytes, str]]:
-    """Extract fixed-interval JPEGs; ``room`` remains for bounded callers/tests."""
+def frames_from_video(name: str, body: bytes, interval: float) -> list[tuple[str, bytes, str]]:
+    """Extract fixed-interval JPEGs."""
     if not 0.1 <= interval <= 5:
         raise HTTPException(400, "interval")
-    if room is not None and room <= 0:
-        raise HTTPException(400, "files")
     ext = Path(name).suffix.lower() or ".mp4"
     stem = Path(name).stem or "video"
     with tempfile.TemporaryDirectory() as td:
@@ -158,8 +154,6 @@ def frames_from_video(
             raise HTTPException(400, "video") from e
         out: list[tuple[str, bytes, str]] = []
         for i, p in enumerate(sorted(root.glob("f_*.jpg"))):
-            if room is not None and i >= room:
-                break
             t = i * interval
             fn = f"{stem}_t{t:g}.jpg"
             out.append((fn, p.read_bytes(), "image/jpeg"))
@@ -260,7 +254,7 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
                 s3.download(key, path)
                 raw = path.read_bytes()
                 if kind == "video":
-                    blobs.extend(frames_from_video(name, raw, body.interval, None))
+                    blobs.extend(frames_from_video(name, raw, body.interval))
                 else:
                     blobs.extend(flatten(name, raw))
             s3.delete(key)
@@ -306,7 +300,7 @@ async def upload(
         name = f.filename or ""
         ext = Path(name).suffix.lower()
         if ext in VIDEO:
-            blobs.extend(frames_from_video(name, body, interval, None))
+            blobs.extend(frames_from_video(name, body, interval))
         else:
             blobs.extend(flatten(name, body))
     if not blobs:

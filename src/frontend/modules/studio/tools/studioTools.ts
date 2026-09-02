@@ -382,7 +382,6 @@ export const STUDIO_TOOL_SCHEMAS = {
 
 export type StudioToolsDeps = {
   get: () => StudioSnapshot;
-  setIndex: (i: number) => void;
   openImageAt: (i: number) => Promise<string | null>;
   openImageById: (id: string) => Promise<string | null>;
   openNextUncommitted: () => Promise<string | null>;
@@ -526,6 +525,7 @@ function pickOneSelector(args: Record<string, unknown>): {
 }
 
 export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
+  const refreshedTerminalJobs = new Set<string>();
   const schemas = STUDIO_TOOL_SCHEMAS.tools;
   return [
     {
@@ -728,8 +728,13 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         if (offset === null || limit === null) return { error: "bad_pagination" };
         return safeJobCall(async () => {
           const job = await deps.getAugmentationJob(id, offset, limit);
-          if (job.progress.succeeded > 0 && !ACTIVE_JOB_STATUSES.has(job.status)) {
+          if (
+            job.progress.succeeded > 0 &&
+            !ACTIVE_JOB_STATUSES.has(job.status) &&
+            !refreshedTerminalJobs.has(job.id)
+          ) {
             await deps.refreshCatalog();
+            refreshedTerminalJobs.add(job.id);
           }
           return job;
         }, "augmentation_get_failed");

@@ -123,7 +123,6 @@ function StudioBody() {
     const tools = [
       ...studioPageTools({
         get: () => session.snapshot(),
-        setIndex: (i) => session.setIndex(i),
         openImageAt: (i) => session.openImageAt(i),
         openImageById: (id) => session.openImageById(id),
         openNextUncommitted: () => session.nextOpen(),

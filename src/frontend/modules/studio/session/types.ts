@@ -24,7 +24,6 @@ export type StudioState = {
   project: Project | null;
   list: ImgRow[];
   pageOffset: number;
-  pageLimit: number;
   total: number;
   committedCount: number;
   emptyCount: number;
@@ -38,7 +37,6 @@ export type StudioState = {
   loadState: LoadState;
   assistOn: boolean;
   assistBusy: boolean;
-  autoLabelStatus: AutoLabelStatus | null;
   autoLabelResults: ReadonlyMap<string, AutoLabelStatus>;
   /** image ids already auto-assisted this session */
   assistedIds: ReadonlySet<string>;

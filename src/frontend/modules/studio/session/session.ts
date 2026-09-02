@@ -1,8 +1,10 @@
 import { commitStatus, type AnnObj, type Doc } from "../geometry/doc";
 import * as studioApi from "../api";
 import type {
+  AutoLabelStatus,
   CommitResult,
   DeleteImageResult,
+  ImagePage,
   ImgRow,
   OkErr,
   StudioSnapshot,
@@ -10,13 +12,24 @@ import type {
   ToastUndo,
 } from "./types";
 
+const PAGE_LIMIT = 100;
+
+function catalogState(page: ImagePage) {
+  return {
+    list: page.items,
+    pageOffset: page.offset,
+    total: page.total,
+    committedCount: page.committed,
+    emptyCount: page.empty,
+  };
+}
+
 function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
   return {
     projectId,
     project: null,
     list: [],
     pageOffset: 0,
-    pageLimit: 100,
     total: 0,
     committedCount: 0,
     emptyCount: 0,
@@ -29,7 +42,6 @@ function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
     loadState: "loading",
     assistOn: true,
     assistBusy: false,
-    autoLabelStatus: null,
     autoLabelResults: new Map(),
     assistedIds: new Set(),
     uploadOpen: false,
@@ -81,7 +93,7 @@ export class StudioSession {
       emptyCount: s.emptyCount,
       index: s.index,
       doc: s.doc,
-      autoLabelStatus: s.autoLabelStatus,
+      autoLabelStatus: s.doc ? (s.autoLabelResults.get(s.doc.id) ?? null) : null,
     };
   };
 
@@ -111,24 +123,19 @@ export class StudioSession {
   async load() {
     this.patch({ loadState: "loading" });
     try {
-      const { index, pageLimit } = this.state;
-      const offset = Math.floor(index / pageLimit) * pageLimit;
+      const { index } = this.state;
+      const offset = Math.floor(index / PAGE_LIMIT) * PAGE_LIMIT;
       const [p, page] = await Promise.all([
         studioApi.fetchProject(this.state.projectId),
-        studioApi.fetchImages(this.state.projectId, offset, pageLimit),
+        studioApi.fetchImages(this.state.projectId, offset, PAGE_LIMIT),
       ]);
       if (!p || typeof p !== "object" || !("id" in p)) throw new Error("project");
       this.patch({
         project: p,
-        list: page.items,
-        pageOffset: page.offset,
-        total: page.total,
-        committedCount: page.committed,
-        emptyCount: page.empty,
+        ...catalogState(page),
         index: page.total ? Math.min(index, page.total - 1) : 0,
         assistOn: p.type === "keypoints",
         assistedIds: new Set(),
-        autoLabelStatus: null,
         autoLabelResults: new Map(),
         loadState: "ready",
       });
@@ -146,34 +153,24 @@ export class StudioSession {
   private async ensurePage(index: number) {
     const row = this.rowAt(index);
     if (row) return row;
-    const { pageLimit, projectId } = this.state;
-    const offset = Math.floor(index / pageLimit) * pageLimit;
-    const page = await studioApi.fetchImages(projectId, offset, pageLimit);
-    this.patch({
-      list: page.items,
-      pageOffset: page.offset,
-      total: page.total,
-      committedCount: page.committed,
-      emptyCount: page.empty,
-    });
+    const { projectId } = this.state;
+    const offset = Math.floor(index / PAGE_LIMIT) * PAGE_LIMIT;
+    const page = await studioApi.fetchImages(projectId, offset, PAGE_LIMIT);
+    this.patch(catalogState(page));
     return page.items[index - page.offset];
   }
 
   async refreshCatalog(keepIndex = this.state.index) {
-    const { pageLimit, projectId } = this.state;
-    const offset = Math.floor(Math.max(0, keepIndex) / pageLimit) * pageLimit;
-    let page = await studioApi.fetchImages(projectId, offset, pageLimit);
+    const { projectId } = this.state;
+    const offset = Math.floor(Math.max(0, keepIndex) / PAGE_LIMIT) * PAGE_LIMIT;
+    let page = await studioApi.fetchImages(projectId, offset, PAGE_LIMIT);
     if (!page.items.length && page.total && offset > 0) {
-      const last = Math.floor((page.total - 1) / pageLimit) * pageLimit;
-      page = await studioApi.fetchImages(projectId, last, pageLimit);
+      const last = Math.floor((page.total - 1) / PAGE_LIMIT) * PAGE_LIMIT;
+      page = await studioApi.fetchImages(projectId, last, PAGE_LIMIT);
     }
     const index = page.total ? Math.min(keepIndex, page.total - 1) : 0;
     this.patch({
-      list: page.items,
-      pageOffset: page.offset,
-      total: page.total,
-      committedCount: page.committed,
-      emptyCount: page.empty,
+      ...catalogState(page),
       index,
     });
   }
@@ -187,8 +184,13 @@ export class StudioSession {
       doc,
       selected,
       urlSelected: selected,
-      autoLabelStatus: this.state.autoLabelResults.get(doc.id) ?? null,
     });
+  }
+
+  private recordAutoLabel(imageId: string, status: AutoLabelStatus) {
+    const results = new Map(this.state.autoLabelResults);
+    results.set(imageId, status);
+    this.patch({ autoLabelResults: results });
   }
 
   async loadCurrentImage() {
@@ -201,14 +203,14 @@ export class StudioSession {
     try {
       row = await this.ensurePage(index);
     } catch {
-      if (!ac.signal.aborted) this.patch({ doc: null, autoLabelStatus: null });
+      if (!ac.signal.aborted) this.patch({ doc: null });
       return;
     }
     if (ac.signal.aborted) return;
     const { project, projectId, assistOn, assistedIds } = this.state;
     const iid = row?.id;
     if (!iid) {
-      this.patch({ doc: null, autoLabelStatus: null });
+      this.patch({ doc: null });
       return;
     }
 
@@ -247,15 +249,12 @@ export class StudioSession {
         urlSelected: selected,
         assistedIds: nextAssisted,
         assistBusy: true,
-        autoLabelStatus: null,
       });
       try {
         const d2 = await studioApi.postAssist(projectId, iid, false, ac.signal);
         if (ac.signal.aborted) return;
         const status = d2.objects.length ? "completed" : "no_detection";
-        const results = new Map(this.state.autoLabelResults);
-        results.set(iid, status);
-        this.patch({ autoLabelResults: results, autoLabelStatus: status });
+        this.recordAutoLabel(iid, status);
         this.applyDoc(d2);
       } catch (e) {
         if ((e as Error)?.name === "AbortError") {
@@ -263,16 +262,14 @@ export class StudioSession {
           roll.delete(iid);
           this.patch({ assistedIds: roll });
         } else {
-          const results = new Map(this.state.autoLabelResults);
-          results.set(iid, "failed");
-          this.patch({ autoLabelResults: results, autoLabelStatus: "failed" });
+          this.recordAutoLabel(iid, "failed");
         }
       } finally {
         if (!ac.signal.aborted) this.patch({ assistBusy: false });
       }
     } catch (e) {
       if ((e as Error)?.name === "AbortError") return;
-      this.patch({ doc: null, autoLabelStatus: null });
+      this.patch({ doc: null });
     }
   }
 
@@ -294,7 +291,6 @@ export class StudioSession {
         doc: null,
         selected: null,
         urlSelected: null,
-        autoLabelStatus: null,
       });
       void this.loadCurrentImage();
     }
@@ -499,7 +495,6 @@ export class StudioSession {
       histOpen: false,
       commentsOpen: false,
       doc: null,
-      autoLabelStatus: null,
     });
     await this.refreshCatalog(at);
     if (this.state.total) void this.loadCurrentImage();
@@ -571,14 +566,10 @@ export class StudioSession {
     try {
       const d2 = await studioApi.postAssist(projectId, doc.id, true);
       const status = d2.objects.length ? "completed" : "no_detection";
-      const results = new Map(this.state.autoLabelResults);
-      results.set(doc.id, status);
-      this.patch({ autoLabelResults: results, autoLabelStatus: status });
+      this.recordAutoLabel(doc.id, status);
       this.applyDoc(d2);
     } catch {
-      const results = new Map(this.state.autoLabelResults);
-      results.set(doc.id, "failed");
-      this.patch({ autoLabelResults: results, autoLabelStatus: "failed" });
+      this.recordAutoLabel(doc.id, "failed");
     } finally {
       this.patch({ assistBusy: false });
     }

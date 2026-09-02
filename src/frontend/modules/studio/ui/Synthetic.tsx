@@ -127,6 +127,7 @@ export default function Synthetic({
   const [quality, setQuality] = useState<"low" | "medium" | "high">("medium");
   const [format, setFormat] = useState<"png" | "jpeg" | "webp">("png");
   const [jobs, setJobs] = useState<AugmentationJob[]>([]);
+  const [polling, setPolling] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const seenTerminal = useRef(new Set<string>());
@@ -142,7 +143,7 @@ export default function Synthetic({
 
   const loadJobs = useCallback(async () => {
     try {
-      const page = await fetchAugmentationJobs(projectId, 0, 20);
+      const page = await fetchAugmentationJobs(projectId, 0, 3);
       const detailed = await Promise.all(
         page.items.map(async (job) => {
           if (!job.progress.succeeded && !job.progress.failed && !job.progress.submission_unknown) {
@@ -156,6 +157,7 @@ export default function Synthetic({
         }),
       );
       setJobs(detailed);
+      setPolling(page.status_counts.active > 0);
       const newlyTerminal = detailed.filter(
         (job) => !ACTIVE.has(job.status) && !seenTerminal.current.has(job.id),
       );
@@ -171,12 +173,14 @@ export default function Synthetic({
   useEffect(() => {
     if (!open) return;
     const kickoff = window.setTimeout(() => void loadJobs(), 0);
-    const id = window.setInterval(() => void loadJobs(), 2_000);
-    return () => {
-      window.clearTimeout(kickoff);
-      window.clearInterval(id);
-    };
+    return () => window.clearTimeout(kickoff);
   }, [open, loadJobs]);
+
+  useEffect(() => {
+    if (!open || !polling) return;
+    const id = window.setInterval(() => void loadJobs(), 2_000);
+    return () => window.clearInterval(id);
+  }, [open, loadJobs, polling]);
 
   useEffect(() => {
     if (mode !== "transform") promptRef.current?.focus();
@@ -220,7 +224,8 @@ export default function Synthetic({
     setNote(null);
     try {
       const job = await createAugmentationJob(projectId, body);
-      setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)]);
+      setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 3));
+      setPolling(true);
       setNote(`Queued ${job.requested_count} output${job.requested_count === 1 ? "" : "s"}.`);
     } catch {
       setNote("Couldn’t create the generation job. Check the options and try again.");
@@ -501,7 +506,7 @@ export default function Synthetic({
         {jobs.length > 0 && (
           <section className="synth-jobs" aria-label="Generation jobs">
             <h3>Recent jobs</h3>
-            {jobs.slice(0, 3).map((job) => {
+            {jobs.map((job) => {
             const complete =
               job.progress.succeeded +
               job.progress.failed +

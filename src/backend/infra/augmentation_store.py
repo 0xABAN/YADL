@@ -99,25 +99,26 @@ def create_job(pid: str, uid: str, mode: str, config: dict[str, Any]) -> dict | 
                    values (%s,%s,%s,%s,%s,%s)""",
                 (job_id, pid, uid, mode, Json(config), len(planned)),
             )
-            for item in planned:
-                source = sources.get(item.source_image_id or "")
-                cur.execute(
-                    """insert into augmentation_items
-                         (id, job_id, ordinal, source_image_id, source_s3_key,
-                          source_filename, output_image_id, output_s3_key, output_filename)
-                       values (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            cur.executemany(
+                """insert into augmentation_items
+                     (id, job_id, ordinal, source_image_id, source_s3_key,
+                      source_filename, output_image_id, output_s3_key, output_filename)
+                   values (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (
                     (
                         item.id,
                         job_id,
                         item.ordinal,
                         item.source_image_id,
-                        source["s3_key"] if source else None,
-                        source["filename"] if source else None,
+                        sources.get(item.source_image_id or "", {}).get("s3_key"),
+                        sources.get(item.source_image_id or "", {}).get("filename"),
                         item.output_image_id,
                         item.output_key,
                         item.filename,
-                    ),
-                )
+                    )
+                    for item in planned
+                ),
+            )
     result = get_job(pid, job_id, uid)
     assert result is not None
     return result
@@ -127,8 +128,18 @@ def list_jobs(pid: str, uid: str, *, offset: int = 0, limit: int = 50) -> dict |
     if not get_project(pid, uid):
         return None
     rows = fetch(
-        """select * from augmentation_jobs where project_id=%s and owner_id=%s
-           order by created_at desc limit %s offset %s""",
+        """select j.*,
+                  count(*) filter (where i.status='queued')::int as queued,
+                  count(*) filter (where i.status in
+                    ('running','submitting','provider_pending','output_ready','ingesting'))::int as running,
+                  count(*) filter (where i.status='succeeded')::int as succeeded,
+                  count(*) filter (where i.status='failed')::int as failed,
+                  count(*) filter (where i.status='cancelled')::int as cancelled,
+                  count(*) filter (where i.status='submission_unknown')::int as submission_unknown
+           from augmentation_jobs j
+           left join augmentation_items i on i.job_id=j.id
+           where j.project_id=%s and j.owner_id=%s
+           group by j.id order by j.created_at desc limit %s offset %s""",
         (pid, uid, limit, offset),
     )
     total = fetchone(
@@ -136,7 +147,7 @@ def list_jobs(pid: str, uid: str, *, offset: int = 0, limit: int = 50) -> dict |
         (pid, uid),
     )
     return {
-        "items": [_job(row, _counts(str(row["id"]))) for row in rows],
+        "items": [_job(row, row) for row in rows],
         "total": int(total["n"]) if total else 0,
         "offset": offset,
         "limit": limit,
