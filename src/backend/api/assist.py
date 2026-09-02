@@ -29,7 +29,11 @@ def seed_row(row: dict, ptype: str, template: str | None = None, *, force: bool 
     with tempfile.NamedTemporaryFile(suffix=ext) as tmp:
         path = Path(tmp.name)
         download(row["s3_key"], path)
-        objs = [o.model_dump() for o in seed(path, tmpl)]
+        try:
+            objs = [o.model_dump() for o in seed(path, tmpl)]
+        except OSError as e:
+            # missing native lib (e.g. libGLESv2) — surface as 500 with clear detail
+            raise RuntimeError(f"mediapipe:{e}") from e
     save_objects(str(row["id"]), objs)
     row["objects"] = objs
     return row

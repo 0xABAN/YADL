@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import assist, auth, images, projects
+from backend.api.deps import require_session_secret
 from backend.infra.db import apply_schema, fetchone
 from backend.infra.store import ensure_user, seed_demo
 
@@ -16,6 +17,7 @@ app.include_router(assist.router)
 
 @app.on_event("startup")
 def boot() -> None:
+    require_session_secret()
     apply_schema()
     ensure_user("dev")
     seed_demo()

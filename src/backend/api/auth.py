@@ -11,7 +11,7 @@ from fastapi import APIRouter, Cookie, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from backend.api.deps import gh_callback, origin, set_session
+from backend.api.deps import gh_callback, origin, set_oauth_state, set_session
 from backend.infra.store import create_user, github_user, login_user
 
 router = APIRouter(tags=["auth"])
@@ -73,7 +73,7 @@ def github_start():
         }
     )
     r = RedirectResponse(url)
-    r.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=600, path="/")
+    set_oauth_state(r, state)
     return r
 
 
