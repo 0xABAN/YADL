@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { RIG_TOOL_SCHEMAS } from "../modules/studio/tools/rigTools";
+import { STUDIO_TOOL_SCHEMAS } from "../modules/studio/tools/studioTools";
 
 type RegisteredTool = {
   name: string;
@@ -219,6 +223,34 @@ test("open_image schema requires exactly one selector", async ({ page }) => {
       { required: ["id"] },
       { required: ["next_uncommitted"] },
     ],
+  });
+});
+
+test("checked-in Studio and rig schemas exactly match their sources of truth", async () => {
+  const read = (name: string) =>
+    JSON.parse(readFileSync(join(process.cwd(), "webmcp-evals", name), "utf8"));
+  expect(read("studio-schema.json")).toEqual(STUDIO_TOOL_SCHEMAS);
+  expect(read("rig-schema.json")).toEqual(RIG_TOOL_SCHEMAS);
+});
+
+test("set_label and delete_object round-trip without changing the WebMCP page URL", async ({ page }) => {
+  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
+  await openStudio(page, [hand(rig), hand(rig, "hand-2")]);
+  const urlBefore = page.url();
+
+  expect(await callTool(page, "set_label", { object_id: "hand-2", label: "thumbs_down" })).toMatchObject({
+    current: { objects: [{ id: "hand-1", label: null }, { id: "hand-2", label: "thumbs_down" }] },
+  });
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    current: { objects: [{ id: "hand-1", label: null }, { id: "hand-2", label: "thumbs_down" }] },
+  });
+  expect(await callTool(page, "delete_object", { object_id: "hand-1" })).toMatchObject({
+    current: { objects: [{ id: "hand-2", label: "thumbs_down" }] },
+  });
+  await page.waitForTimeout(250);
+  await expect(page).toHaveURL(urlBefore);
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    current: { objects: [{ id: "hand-2", label: "thumbs_down" }] },
   });
 });
 

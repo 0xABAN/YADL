@@ -18,6 +18,7 @@ function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
     index: 0,
     doc: null,
     selected: null,
+    urlSelected: null,
     tab: "labels",
     tool: undefined,
     loadState: "loading",
@@ -121,7 +122,7 @@ export class StudioSession {
       this.state.selected && doc.objects.some((o) => o.id === this.state.selected)
         ? this.state.selected
         : (doc.objects[0]?.id ?? null);
-    this.patch({ doc, selected });
+    this.patch({ doc, selected, urlSelected: selected });
   }
 
   async loadCurrentImage() {
@@ -162,7 +163,7 @@ export class StudioSession {
         this.state.selected && doc.objects.some((o) => o.id === this.state.selected)
           ? this.state.selected
           : (doc.objects[0]?.id ?? null);
-      this.patch({ doc, selected, assistedIds: nextAssisted, assistBusy: true });
+      this.patch({ doc, selected, urlSelected: selected, assistedIds: nextAssisted, assistBusy: true });
       try {
         const d2 = await studioApi.postAssist(projectId, iid, false, ac.signal);
         if (ac.signal.aborted) return;
@@ -188,7 +189,7 @@ export class StudioSession {
     const n = this.state.list.length;
     const next = n ? Math.min(Math.max(0, i), n - 1) : 0;
     if (next === this.state.index) return;
-    this.patch({ index: next, doc: null, selected: null });
+    this.patch({ index: next, doc: null, selected: null, urlSelected: null });
     void this.loadCurrentImage();
   }
 
@@ -230,6 +231,7 @@ export class StudioSession {
     if (!d) return;
     const previousList = this.state.list;
     const previousSelected = this.state.selected;
+    const previousUrlSelected = this.state.urlSelected;
     const next: Doc = { ...d, objects };
     const empty = objects.length === 0;
     const list = this.state.list.map((x) => (x.id === d.id ? { ...x, empty } : x));
@@ -239,19 +241,29 @@ export class StudioSession {
         : options?.selectFallback === false
           ? null
           : (objects[0]?.id ?? null);
-    this.patch({ doc: next, list, selected });
+    this.patch({
+      doc: next,
+      list,
+      selected,
+      urlSelected: options?.selectFallback === false ? this.state.urlSelected : selected,
+    });
     try {
       await studioApi.putImage(this.state.projectId, next, objects);
     } catch (error) {
       if (this.state.doc === next) {
-        this.patch({ doc: d, list: previousList, selected: previousSelected });
+        this.patch({
+          doc: d,
+          list: previousList,
+          selected: previousSelected,
+          urlSelected: previousUrlSelected,
+        });
       }
       throw error;
     }
   }
 
   setSelected(id: string | null) {
-    this.patch({ selected: id });
+    this.patch({ selected: id, urlSelected: id });
   }
 
   // ── classes ───────────────────────────────────────────
@@ -346,6 +358,7 @@ export class StudioSession {
     this.patch({
       list: next,
       selected: null,
+      urlSelected: null,
       edit: null,
       histOpen: false,
       commentsOpen: false,
@@ -501,6 +514,7 @@ export class StudioSession {
   selectObject(id: string) {
     this.patch({
       selected: id,
+      urlSelected: id,
       commentsOpen: false,
       histOpen: false,
       edit: id,
@@ -518,6 +532,7 @@ export class StudioSession {
       histOpen: false,
       edit: oid,
       selected: oid,
+      urlSelected: oid,
       draft: "",
     });
   }

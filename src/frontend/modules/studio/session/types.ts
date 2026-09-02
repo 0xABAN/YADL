@@ -16,6 +16,8 @@ export type StudioState = {
   index: number;
   doc: Doc | null;
   selected: string | null;
+  /** Selection mirrored into the URL; agent-only writes leave this stable. */
+  urlSelected: string | null;
   tab: "labels" | "objects";
   tool: ToolId | undefined;
   loadState: LoadState;

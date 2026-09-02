@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { CREATE_TOOL_SCHEMAS } from "../modules/create/createTools";
 
 type RegisteredTool = {
   name: string;
@@ -67,6 +70,20 @@ test("shows visible feedback when a create-page WebMCP tool runs", async ({ page
   await callTool(page, "list_projects");
 
   await expect(page.getByText("Agent used `list_projects`", { exact: true })).toBeVisible();
+});
+
+test("rejects unexpected arguments even when the WebMCP host skips schema validation", async ({ page }) => {
+  expect(await callTool(page, "list_projects", { ignored: true })).toEqual({
+    error: "unexpected_arguments",
+    keys: ["ignored"],
+  });
+});
+
+test("checked-in create schemas exactly match the registered source of truth", async () => {
+  const checkedIn = JSON.parse(
+    readFileSync(join(process.cwd(), "webmcp-evals/schema.json"), "utf8"),
+  );
+  expect(checkedIn).toEqual(CREATE_TOOL_SCHEMAS);
 });
 
 test("open_project requires exactly one identifier and verifies ids before navigation", async ({ page }) => {

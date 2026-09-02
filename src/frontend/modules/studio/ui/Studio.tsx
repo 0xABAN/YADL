@@ -43,6 +43,7 @@ function StudioBody() {
     index,
     doc,
     selected,
+    urlSelected,
     tab,
     tool,
     loadState,
@@ -69,11 +70,11 @@ function StudioBody() {
     const q = new URLSearchParams();
     if (index > 0) q.set("i", String(index));
     if (tab !== "labels") q.set("tab", tab);
-    if (selected) q.set("obj", selected);
+    if (urlSelected) q.set("obj", urlSelected);
     if (tool && tool !== "landmarks" && tool !== "box" && tool !== "polygon") q.set("tool", tool);
     const qs = q.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [index, tab, selected, tool, pathname, router]);
+  }, [index, tab, urlSelected, tool, pathname, router]);
 
   useEffect(() => {
     session.clampIndexToList();
@@ -389,6 +390,7 @@ export default function Studio({ id }: { id: string }) {
     () => ({
       index: Math.max(0, Number(sp.get("i")) || 0),
       selected: sp.get("obj"),
+      urlSelected: sp.get("obj"),
       tab: (sp.get("tab") === "objects" ? "objects" : "labels") as "labels" | "objects",
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once from initial URL

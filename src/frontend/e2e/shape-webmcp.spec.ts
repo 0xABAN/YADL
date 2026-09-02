@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { BOX_TOOL_SCHEMAS, POLY_TOOL_SCHEMAS } from "../modules/studio/tools/shapeTools";
 
 type RegisteredTool = {
   name: string;
@@ -204,6 +207,13 @@ test("box tools preserve geometry, ambiguity rules, and the page URL", async ({ 
   expect(await callTool(page, "get_boxes")).toMatchObject({ n: 2 });
   await page.waitForTimeout(250);
   await expect(page).toHaveURL(urlBefore);
+});
+
+test("checked-in shape schemas exactly match their sources of truth", async () => {
+  const read = (name: string) =>
+    JSON.parse(readFileSync(join(process.cwd(), "webmcp-evals", name), "utf8"));
+  expect(read("box-schema.json")).toEqual(BOX_TOOL_SCHEMAS);
+  expect(read("poly-schema.json")).toEqual(POLY_TOOL_SCHEMAS);
 });
 
 test("polygon schemas describe both point formats and reject zero-area geometry", async ({ page }) => {

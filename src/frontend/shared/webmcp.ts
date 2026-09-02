@@ -68,7 +68,17 @@ function wrapTool(tool: WebMcpTool, onInvoke?: InvokeFn): WebMcpTool {
     execute: (args, extra) => {
       emitInvoke(tool.name);
       onInvoke?.(tool.name);
-      return tool.execute(args, extra);
+      const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
+      const schema = tool.inputSchema;
+      const properties =
+        schema.properties && typeof schema.properties === "object"
+          ? (schema.properties as Record<string, unknown>)
+          : {};
+      if (schema.additionalProperties === false) {
+        const unexpected = Object.keys(input).filter((key) => !(key in properties)).sort();
+        if (unexpected.length) return { error: "unexpected_arguments", keys: unexpected };
+      }
+      return tool.execute(input, extra);
     },
   };
 }
