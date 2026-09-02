@@ -75,7 +75,7 @@ export default function New() {
   const [err, setErr] = useState<"empty" | "taken" | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
   const [pendingDel, setPendingDel] = useState<Project | null>(null);
-  const [agentTool, setAgentTool] = useState<string | null>(null);
+  const [agentNotice, setAgentNotice] = useState<string | null>(null);
   const agentToolTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ex = useRotatingIndex(EXAMPLES.length);
   const rowsRef = useRef(rows);
@@ -131,8 +131,14 @@ export default function New() {
 
   const showAgentTool = useCallback((toolName: string) => {
     if (agentToolTimer.current) clearTimeout(agentToolTimer.current);
-    setAgentTool(toolName);
-    agentToolTimer.current = setTimeout(() => setAgentTool(null), 1600);
+    setAgentNotice(`Agent used \`${toolName}\``);
+    agentToolTimer.current = setTimeout(() => setAgentNotice(null), 1600);
+  }, []);
+
+  const showRegistrationError = useCallback((toolName: string) => {
+    if (agentToolTimer.current) clearTimeout(agentToolTimer.current);
+    setAgentNotice(`Could not register \`${toolName}\``);
+    agentToolTimer.current = setTimeout(() => setAgentNotice(null), 5000);
   }, []);
 
   useEffect(() => () => {
@@ -148,10 +154,10 @@ export default function New() {
         onCreated: (p) => setRows((rs) => [p, ...rs.filter((x) => x.id !== p.id)]),
       }),
       ac.signal,
-      { onInvoke: showAgentTool },
+      { onInvoke: showAgentTool, onRegistrationError: showRegistrationError },
     );
     return () => ac.abort();
-  }, [router, showAgentTool]);
+  }, [router, showAgentTool, showRegistrationError]);
 
   return (
     <div className="create">
@@ -286,9 +292,9 @@ export default function New() {
           });
         }}
       />
-      {agentTool && (
+      {agentNotice && (
         <div className="live create-agent-live" aria-live="polite">
-          Agent used `{agentTool}`
+          {agentNotice}
         </div>
       )}
     </div>

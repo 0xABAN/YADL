@@ -30,6 +30,72 @@ function emitInvoke(name: string) {
   }
 }
 
+function matchesType(value: unknown, type: string): boolean {
+  if (type === "null") return value === null;
+  if (type === "array") return Array.isArray(value);
+  if (type === "object") return value !== null && typeof value === "object" && !Array.isArray(value);
+  if (type === "integer") return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value);
+  if (type === "number") return typeof value === "number" && Number.isFinite(value);
+  return typeof value === type;
+}
+
+/** Enforce supplied JSON types because some WebMCP hosts currently expose schemas without validating calls. */
+function typeErrors(value: unknown, schema: Record<string, unknown>, path = "$"): string[] {
+  const declared = Array.isArray(schema.type)
+    ? schema.type.filter((type): type is string => typeof type === "string")
+    : typeof schema.type === "string"
+      ? [schema.type]
+      : [];
+  if (declared.length && !declared.some((type) => matchesType(value, type))) {
+    return [`${path}: expected ${declared.join(" or ")}`];
+  }
+
+  if (!declared.length && Array.isArray(schema.oneOf)) {
+    const typedBranches = schema.oneOf.filter(
+      (branch): branch is Record<string, unknown> =>
+        Boolean(branch) && typeof branch === "object" && "type" in branch,
+    );
+    if (typedBranches.length) {
+      const attempts = typedBranches.map((branch) => typeErrors(value, branch, path));
+      if (attempts.some((errors) => errors.length === 0)) return [];
+      return attempts.sort((a, b) => a.length - b.length)[0];
+    }
+  }
+
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const object = value as Record<string, unknown>;
+    const properties =
+      schema.properties && typeof schema.properties === "object"
+        ? (schema.properties as Record<string, unknown>)
+        : {};
+    const errors: string[] = [];
+    for (const [key, child] of Object.entries(object)) {
+      const childSchema = properties[key];
+      if (childSchema && typeof childSchema === "object") {
+        errors.push(...typeErrors(child, childSchema as Record<string, unknown>, `${path}.${key}`));
+      } else if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+        errors.push(
+          ...typeErrors(
+            child,
+            schema.additionalProperties as Record<string, unknown>,
+            `${path}.${key}`,
+          ),
+        );
+      } else if (schema.additionalProperties === false) {
+        errors.push(`${path}.${key}: unexpected property`);
+      }
+    }
+    return errors;
+  }
+
+  if (Array.isArray(value) && schema.items && typeof schema.items === "object") {
+    return value.flatMap((item, index) =>
+      typeErrors(item, schema.items as Record<string, unknown>, `${path}[${index}]`),
+    );
+  }
+  return [];
+}
+
 function ctx(): ModelContext | null {
   if (typeof document === "undefined") return null;
   const mc = (document as Document & { modelContext?: ModelContext }).modelContext;
@@ -78,6 +144,8 @@ function wrapTool(tool: WebMcpTool, onInvoke?: InvokeFn): WebMcpTool {
         const unexpected = Object.keys(input).filter((key) => !(key in properties)).sort();
         if (unexpected.length) return { error: "unexpected_arguments", keys: unexpected };
       }
+      const details = typeErrors(input, schema);
+      if (details.length) return { error: "invalid_arguments", details };
       return tool.execute(input, extra);
     },
   };
@@ -87,7 +155,7 @@ function wrapTool(tool: WebMcpTool, onInvoke?: InvokeFn): WebMcpTool {
 export async function registerWebMcpTools(
   tools: WebMcpTool[],
   signal: AbortSignal,
-  opts?: { onInvoke?: InvokeFn },
+  opts?: { onInvoke?: InvokeFn; onRegistrationError?: (name: string) => void },
 ): Promise<void> {
   const mc = (await waitCtx(signal)) ?? ctx();
   if (!mc || signal.aborted) return;
@@ -97,7 +165,7 @@ export async function registerWebMcpTools(
       try {
         await mc.registerTool(wrapTool(tool, opts?.onInvoke), { signal });
       } catch {
-        /* host may reject */
+        opts?.onRegistrationError?.(tool.name);
       }
     }),
   );

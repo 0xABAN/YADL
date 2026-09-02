@@ -369,6 +369,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         const snap = deps.get();
         if (!snap.doc) return { error: "no_image" };
         const oid = String(args.object_id ?? "").trim();
+        if (!oid) return { error: "bad_object_id" };
         if (!snap.doc.objects.some((o) => o.id === oid)) return { error: "not_found" };
         if (!(await persistObjects(deps, snap.doc.objects.filter((o) => o.id !== oid)))) {
           return { error: "save_failed" };

@@ -134,7 +134,9 @@ function StudioBody() {
             ? polyPageTools(shapeDeps)
             : []),
     ];
-    void registerWebMcpTools(tools, ac.signal);
+    void registerWebMcpTools(tools, ac.signal, {
+      onRegistrationError: (name) => session.showAgentRegistrationError(name),
+    });
     return () => ac.abort();
   }, [session, loadState, project?.type]);
 

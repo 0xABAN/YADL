@@ -24,6 +24,8 @@ async function installWebMcpHost(page: Page) {
       configurable: true,
       value: {
         registerTool(tool: RegisteredTool, opts?: { signal?: AbortSignal }) {
+          const host = window as typeof window & { __rejectWebMcpName?: string };
+          if (host.__rejectWebMcpName === tool.name) throw new Error("forced registration failure");
           tools.set(tool.name, tool);
           opts?.signal?.addEventListener("abort", () => tools.delete(tool.name), { once: true });
         },
@@ -77,6 +79,10 @@ test("rejects unexpected arguments even when the WebMCP host skips schema valida
     error: "unexpected_arguments",
     keys: ["ignored"],
   });
+  expect(await callTool(page, "create_project", { name: { nested: true }, type: "boxes" })).toEqual({
+    error: "invalid_arguments",
+    details: ["$.name: expected string"],
+  });
 });
 
 test("checked-in create schemas exactly match the registered source of truth", async () => {
@@ -84,6 +90,39 @@ test("checked-in create schemas exactly match the registered source of truth", a
     readFileSync(join(process.cwd(), "webmcp-evals/schema.json"), "utf8"),
   );
   expect(checkedIn).toEqual(CREATE_TOOL_SCHEMAS);
+});
+
+test("shows a physical UI warning when the host rejects a tool registration", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as typeof window & { __rejectWebMcpName?: string }).__rejectWebMcpName = "create_project";
+  });
+  await page.reload();
+
+  await expect(page.getByText("Could not register `create_project`", { exact: true })).toBeVisible();
+});
+
+test("valid create and open calls return actionable destinations", async ({ page }) => {
+  const created = { ...project, id: "created-1", name: "Created by agent" };
+  await page.route("**/api/projects/created-1**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    return route.fulfill({ json: path.endsWith("/images") ? [] : created });
+  });
+  await page.route("**/api/projects", async (route) => {
+    if (route.request().method() === "POST") return route.fulfill({ json: created });
+    return route.fallback();
+  });
+
+  expect(await callTool(page, "create_project", { name: created.name, type: "keypoints", template: "hand" })).toMatchObject({
+    project: created,
+    studio_url: "/studio/created-1",
+  });
+  await expect(page.getByRole("link", { name: "Created by agent Keypoints" })).toBeVisible();
+
+  expect(await callTool(page, "open_project", { id: created.id })).toEqual({
+    opened: created.id,
+    studio_url: "/studio/created-1",
+  });
+  await expect(page).toHaveURL(/\/studio\/created-1$/);
 });
 
 test("open_project requires exactly one identifier and verifies ids before navigation", async ({ page }) => {

@@ -242,6 +242,20 @@ test("open_image schema requires exactly one selector", async ({ page }) => {
   });
 });
 
+test("Studio and rig schemas reject coercible wrong types at the app boundary", async ({ page }) => {
+  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
+  await openStudio(page, [hand(rig)]);
+
+  expect(await callTool(page, "open_image", { index: "0" })).toEqual({
+    error: "invalid_arguments",
+    details: ["$.index: expected integer"],
+  });
+  expect(await callTool(page, "set_rig", { root: { x: "0.8" } })).toEqual({
+    error: "invalid_arguments",
+    details: ["$.root.x: expected number"],
+  });
+});
+
 test("checked-in Studio and rig schemas exactly match their sources of truth", async () => {
   const read = (name: string) =>
     JSON.parse(readFileSync(join(process.cwd(), "webmcp-evals", name), "utf8"));
@@ -253,6 +267,10 @@ test("set_label and delete_object round-trip without changing the WebMCP page UR
   const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
   await openStudio(page, [hand(rig), hand(rig, "hand-2")]);
   const urlBefore = page.url();
+
+  expect(await callTool(page, "delete_object", { object_id: "   " })).toEqual({
+    error: "bad_object_id",
+  });
 
   expect(await callTool(page, "set_label", { object_id: "hand-2", label: "thumbs_down" })).toMatchObject({
     current: { objects: [{ id: "hand-1", label: null }, { id: "hand-2", label: "thumbs_down" }] },

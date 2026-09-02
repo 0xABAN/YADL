@@ -635,6 +635,15 @@ export class StudioSession {
     this.agentToastTimer = setTimeout(() => this.patch({ agentToastOut: true }), holdMs);
   }
 
+  showAgentRegistrationError(name: string, holdMs = 5000) {
+    if (this.agentToastTimer) clearTimeout(this.agentToastTimer);
+    this.patch({
+      agentToastOut: false,
+      agentToast: `Could not register \`${name}\``,
+    });
+    this.agentToastTimer = setTimeout(() => this.patch({ agentToastOut: true }), holdMs);
+  }
+
   clearAgentToast() {
     this.patch({ agentToast: null, agentToastOut: false });
   }
