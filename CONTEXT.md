@@ -92,6 +92,7 @@ Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geom
 
 | Tool | Role |
 |---|---|
+| `studio_guide` | optional lean orientation (type-agnostic tips) + live `project.type`/`template` + `geometry_tools` names only |
 | `get_studio` | project + progress + current (objects without geometry) + `can_commit` / `unlabeled` + `export_url` |
 | `open_image` | exactly one of `index` \| `id` \| `next_uncommitted` |
 | `set_label` | `{object_id, label}` — null/`""` clears; new label creates class |

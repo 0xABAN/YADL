@@ -29,9 +29,44 @@ export type StudioSnapshot = {
   doc: Doc | null;
 };
 
+/** Type-agnostic studio orientation (same text for boxes | polygons | keypoints). */
+export const STUDIO_GUIDE = [
+  "Prefer registered WebMCP tools for navigation, geometry, labels, and commit. Canvas clicks are human UX; use tools when they exist.",
+  "After writes, take screenshots often and verify annotations visually — do not assume success from a tool OK alone.",
+  "Bad or ambiguous frames: delete_image (soft-delete, recoverable anytime). Do not force labels on junk; uploads are not guaranteed clean.",
+  "Work one image at a time via open_image. get_studio shows progress, can_commit, and unlabeled ids — its objects list has no geometry.",
+  "commit_image only when can_commit (≥1 named label). First successful commit advances the filmstrip.",
+  "Geometry is on type-specific tools listed in geometry_tools — read those tool schemas for args; this guide does not teach them.",
+  "Computer use is for perception and rare UI (e.g. file picker after open_upload), not for dragging shapes when geometry tools exist.",
+  "Use comment for notes to humans when unsure; do not silently invent quality.",
+  "If verification fails: fix via set_* / delete_object, or delete_image, then commit only when it looks right.",
+] as const;
+
+export function geometryToolNames(type?: string | null): string[] {
+  if (type === "boxes") return ["get_boxes", "add_box", "set_box"];
+  if (type === "polygons") return ["get_polygons", "add_polygon", "set_polygon"];
+  if (type === "keypoints") return ["get_rig", "set_rig", "add_instance"];
+  return [];
+}
+
+export function studioGuidePayload(snap: StudioSnapshot) {
+  const p = snap.project;
+  return {
+    guide: [...STUDIO_GUIDE],
+    project: p ? { type: p.type, template: p.template ?? null } : null,
+    geometry_tools: geometryToolNames(p?.type),
+  };
+}
+
 /** Schema-only export for webmcp-evals (keep in sync with tools below). */
 export const STUDIO_TOOL_SCHEMAS = {
   tools: [
+    {
+      name: "studio_guide",
+      description:
+        "Optional orientation for labeling in Studio: lean workflow tips (type-agnostic) plus which geometry tools are registered for this project.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    },
     {
       name: "get_studio",
       description:
@@ -239,10 +274,14 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
   return [
     {
       ...schemas[0],
-      execute: async () => studioPayload(deps.get()),
+      execute: async () => studioGuidePayload(deps.get()),
     },
     {
       ...schemas[1],
+      execute: async () => studioPayload(deps.get()),
+    },
+    {
+      ...schemas[2],
       execute: async (args) => {
         const sel = pickOneSelector(args);
         if (!sel.ok) return { error: sel.error };
@@ -276,7 +315,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[2],
+      ...schemas[3],
       execute: async (args) => {
         const snap = deps.get();
         if (!snap.doc) return { error: "no_image" };
@@ -296,7 +335,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[3],
+      ...schemas[4],
       execute: async (args) => {
         const snap = deps.get();
         if (!snap.doc) return { error: "no_image" };
@@ -307,7 +346,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[4],
+      ...schemas[5],
       execute: async () => {
         const res = await deps.commitCurrent();
         if (!res.ok) return { error: res.error, reason: res.reason };
@@ -315,7 +354,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[5],
+      ...schemas[6],
       execute: async () => {
         const res = await deps.deleteCurrent();
         if (!res.ok) return { error: res.error };
@@ -323,7 +362,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[6],
+      ...schemas[7],
       execute: async (args) => {
         const res = await deps.listComments();
         if (!res.ok) return { error: res.error };
@@ -348,7 +387,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[7],
+      ...schemas[8],
       execute: async (args) => {
         const op = args.op;
         if (op === "add") {
@@ -369,7 +408,7 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       },
     },
     {
-      ...schemas[8],
+      ...schemas[9],
       execute: async () => {
         deps.openUpload();
         return { opened: true, cu: "[data-webmcp=select-files]" };

@@ -1,6 +1,15 @@
 {
   "tools": [
     {
+      "name": "studio_guide",
+      "description": "Optional orientation for labeling in Studio: lean workflow tips (type-agnostic) plus which geometry tools are registered for this project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "get_studio",
       "description": "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, unlabeled ids, export_url.",
       "inputSchema": {
