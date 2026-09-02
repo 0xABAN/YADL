@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import assist, auth, images, projects
+from backend.api import assist, augmentations, auth, images, projects
 from backend.api.deps import require_session_secret
 from backend.infra.db import apply_schema, fetchone
 from backend.infra.store import ensure_user, seed_demo
@@ -13,6 +13,7 @@ app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(images.router)
 app.include_router(assist.router)
+app.include_router(augmentations.router)
 
 
 @app.on_event("startup")

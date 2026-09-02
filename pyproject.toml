@@ -12,6 +12,8 @@ dependencies = [
   "boto3>=1.43.83",
   "botocore[crt]>=1.43.83",
   "python-multipart>=0.0.32",
+  "numpy>=1.26",
+  "pillow>=10",
 ]
 
 [tool.uv]

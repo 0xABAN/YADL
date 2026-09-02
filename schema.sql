@@ -41,3 +41,52 @@ alter table images add column if not exists committed boolean not null default f
 alter table images add column if not exists history jsonb not null default '[]';
 alter table images add column if not exists comments jsonb not null default '[]';
 alter table images add column if not exists deleted_at timestamptz;
+
+create table if not exists augmentation_jobs (
+  id uuid primary key,
+  project_id uuid not null references projects(id) on delete cascade,
+  owner_id text not null references users(id),
+  mode text not null check (mode in ('transform','text_to_image','image_edit')),
+  config jsonb not null,
+  status text not null default 'queued',
+  requested_count integer not null,
+  cancel_requested boolean not null default false,
+  created_at timestamptz not null default now(),
+  started_at timestamptz,
+  finished_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+create index if not exists augmentation_jobs_project_created
+  on augmentation_jobs (project_id, created_at desc);
+
+create table if not exists augmentation_items (
+  id uuid primary key,
+  job_id uuid not null references augmentation_jobs(id) on delete cascade,
+  ordinal integer not null,
+  source_image_id uuid references images(id) on delete set null,
+  source_s3_key text,
+  source_filename text,
+  output_image_id uuid not null unique,
+  output_s3_key text not null,
+  output_filename text not null,
+  status text not null default 'queued',
+  attempts integer not null default 0,
+  error text,
+  provider_prediction_id text,
+  provider_payload jsonb,
+  created_at timestamptz not null default now(),
+  started_at timestamptz,
+  finished_at timestamptz,
+  updated_at timestamptz not null default now(),
+  unique (job_id, ordinal)
+);
+create index if not exists augmentation_items_job_ordinal
+  on augmentation_items (job_id, ordinal);
+create index if not exists augmentation_items_claim
+  on augmentation_items (status, created_at);
+
+create table if not exists worker_heartbeats (
+  worker_id text primary key,
+  metadata jsonb not null default '{}',
+  updated_at timestamptz not null default now()
+);

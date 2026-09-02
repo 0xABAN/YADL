@@ -26,6 +26,10 @@ def put(key: str, body: bytes, content_type: str = "application/octet-stream") -
     _client().put_object(Bucket=_bucket(), Key=key, Body=body, ContentType=content_type)
 
 
+def read(key: str) -> bytes:
+    return _client().get_object(Bucket=_bucket(), Key=key)["Body"].read()
+
+
 def presign_get(key: str, seconds: int = 120) -> str:
     return _client().generate_presigned_url(
         "get_object", Params={"Bucket": _bucket(), "Key": key}, ExpiresIn=seconds
