@@ -192,9 +192,21 @@ test("Generate data remains usable at a narrow in-app-browser width", async ({ p
   const panel = page.getByRole("dialog", { name: "Generate data" });
   await expect(panel).toBeVisible();
   const bounds = await panel.boundingBox();
+  const rail = await page.locator("aside").boundingBox();
+  const tools = await page.locator(".panel.tools").boundingBox();
+  const railToggle = await page.locator(".panel.rail-tog").boundingBox();
+  const footer = await page.locator("footer").boundingBox();
   expect(bounds).not.toBeNull();
+  expect(rail).not.toBeNull();
+  expect(tools).not.toBeNull();
+  expect(railToggle).not.toBeNull();
+  expect(footer).not.toBeNull();
+  const gutter = tools!.x - (rail!.x + rail!.width);
+  expect(bounds!.y).toBeCloseTo(railToggle!.y, 0);
+  expect(bounds!.x).toBeCloseTo(tools!.x + tools!.width + gutter, 0);
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(620);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(footer!.y);
   await expect(panel.getByRole("button", { name: "Create job" })).toBeEnabled();
 });
 

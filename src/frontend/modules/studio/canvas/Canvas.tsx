@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   TransformComponent,
   TransformWrapper,
@@ -128,6 +128,7 @@ function CanvasView({
   commentCount = 0,
   onSynthetic,
   syntheticOpen = false,
+  sidePanel,
   onEdit,
   onSelect,
   selectedId = null,
@@ -151,8 +152,9 @@ function CanvasView({
   onComment?: (btn: HTMLElement) => void;
   commentsOpen?: boolean;
   commentCount?: number;
-  onSynthetic?: (btn: HTMLElement) => void;
+  onSynthetic?: () => void;
   syntheticOpen?: boolean;
+  sidePanel?: ReactNode;
   onEdit?: (id: string | null) => void;
   onSelect?: (id: string | null) => void;
   selectedId?: string | null;
@@ -589,10 +591,10 @@ function CanvasView({
                 }
                 onFocus={(e) => tipAt(e.currentTarget, t.label)}
                 onBlur={() => setTip(null)}
-                onClick={(e) => {
+                onClick={() => {
                   if (t.id === "assist") onAssistOn?.();
                   else if (t.id === "seed") onAssistReseed?.();
-                  else if (t.id === "synthetic") onSynthetic?.(e.currentTarget);
+                  else if (t.id === "synthetic") onSynthetic?.();
                   else setTool(t.id);
                 }}
               >
@@ -680,6 +682,7 @@ function CanvasView({
             RESET
           </button>
         </div>
+        {sidePanel}
       </div>
     </>
   );

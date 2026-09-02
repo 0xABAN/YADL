@@ -56,7 +56,6 @@ export type StudioState = {
   commentsPos: { x: number; y: number } | null;
   commentsSide: boolean;
   synthOpen: boolean;
-  synthPos: { x: number; y: number } | null;
   tip: { x: number; y: number; text: string } | null;
 };
 

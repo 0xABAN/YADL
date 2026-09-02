@@ -98,13 +98,11 @@ function OperationControl({
 
 export default function Synthetic({
   open,
-  pos,
   onClose,
   onCatalogChange,
   onOpenImage,
 }: {
   open: boolean;
-  pos: { x: number; y: number } | null;
   onClose: () => void;
   onCatalogChange: () => Promise<void>;
   onOpenImage: (imageId: string) => Promise<string | null>;
@@ -234,13 +232,12 @@ export default function Synthetic({
     }
   };
 
-  if (!open || !pos) return null;
+  if (!open) return null;
 
   return (
     <div
       className="hist comments side synth"
       data-synth
-      style={{ left: pos.x, top: pos.y }}
       role="dialog"
       aria-label="Generate data"
     >

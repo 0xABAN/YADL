@@ -60,7 +60,6 @@ function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
     commentsPos: null,
     commentsSide: false,
     synthOpen: false,
-    synthPos: null,
     tip: null,
     ...boot,
   };
@@ -703,17 +702,13 @@ export class StudioSession {
     this.patch({ commentsOpen: false });
   }
 
-  toggleSynthetic(btn: HTMLElement) {
+  toggleSynthetic() {
     this.patch({ tip: null, histOpen: false, commentsOpen: false, edit: null });
     if (this.state.synthOpen) {
       this.patch({ synthOpen: false });
       return;
     }
-    const r = btn.getBoundingClientRect();
-    this.patch({
-      synthPos: { x: r.right + 12, y: r.top + r.height / 2 },
-      synthOpen: true,
-    });
+    this.patch({ synthOpen: true });
   }
 
   closeSynthetic() {

@@ -73,7 +73,6 @@ function StudioBody() {
     commentsPos,
     commentsSide,
     synthOpen,
-    synthPos,
     tip,
   } = s;
 
@@ -291,7 +290,17 @@ function StudioBody() {
           commentCount={doc?.comments?.length ?? 0}
           syntheticOpen={synthOpen}
           onComment={doc ? (btn) => session.toggleComments(btn, true) : () => {}}
-          onSynthetic={(btn) => session.toggleSynthetic(btn)}
+          onSynthetic={() => session.toggleSynthetic()}
+          sidePanel={
+            synthOpen ? (
+              <Synthetic
+                open
+                onClose={() => session.closeSynthetic()}
+                onCatalogChange={refreshCatalog}
+                onOpenImage={openAugmentationOutput}
+              />
+            ) : null
+          }
           onEdit={doc ? (oid) => session.editObject(oid) : () => {}}
           railOn={railOn}
           onToggleRail={toggleRail}
@@ -351,15 +360,6 @@ function StudioBody() {
         commentsOpen={commentsOpen}
         commentCount={doc?.comments?.length ?? 0}
       />
-      {synthOpen && synthPos && (
-        <Synthetic
-          open
-          pos={synthPos}
-          onClose={() => session.closeSynthetic()}
-          onCatalogChange={refreshCatalog}
-          onOpenImage={openAugmentationOutput}
-        />
-      )}
       {commentsOpen && commentsPos && (
         <Comments
           open
