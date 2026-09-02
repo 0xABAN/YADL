@@ -2,15 +2,15 @@
 
 *Yet another data labeler*, but in this one, you don't have to click.
 
-**[yadl.vercel.app](https://yadl.vercel.app)** · [github.com/0xABAN/YADL](https://github.com/0xABAN/YADL) · [WebMCP challenge](https://webmcp.devpost.com/)
-
----
+<p align="center">
+  <a href="https://skillicons.dev">
+    <img src="https://skillicons.dev/icons?i=python,typescript,fastapi,nextjs,react,postgres,aws,docker,vercel" alt="python, typescript, fastapi, nextjs, react, postgres, aws, docker, vercel" />
+  </a>
+</p>
 
 ## Why this exists
 
 Computer vision tasks need lots of labeled data. Most data labeling apps make you draw every box by hand. YADL (and WebMCP) lets Codex do it for you while you sleep.
-
----
 
 ## What YADL does
 
