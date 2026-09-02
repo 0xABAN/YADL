@@ -325,6 +325,9 @@ async function openGeneratedStudio(
         },
       });
     }
+    if (path === `/projects/${PID}/images/generated/commit` && method === "POST") {
+      return route.fulfill({ json: { history: [{ id: "negative-review", objects: [] }] } });
+    }
     if (path === `/projects/${PID}/augmentation-jobs` && method === "GET") {
       return route.fulfill({
         json: {
@@ -663,3 +666,19 @@ for (const outcome of ["completed", "no_detection", "failed"] as const) {
     });
   });
 }
+
+test("a no-detection frame can be committed as a reviewed negative sample", async ({ page }) => {
+  await openGeneratedStudio(page, "no_detection");
+
+  const opened = await callTool(page, "open_image", { index: 1 });
+  expect(opened).toMatchObject({
+    current: {
+      id: "generated",
+      objects: [],
+      auto_label_status: "no_detection",
+      can_commit: true,
+      invalid_reasons: [],
+    },
+  });
+  expect(await callTool(page, "commit_image")).toMatchObject({ ok: true });
+});

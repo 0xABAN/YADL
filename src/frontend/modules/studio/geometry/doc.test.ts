@@ -28,7 +28,7 @@ assert(named("untitled") === null, "untitled");
 assert(named("open") === "open", "named");
 
 const empty = commitStatus([]);
-assert(!empty.can_commit && empty.reasons[0] === "no objects", "empty");
+assert(empty.can_commit && empty.reasons.length === 0, "reviewed negative");
 const unlabeled = commitStatus([{ label: null }, { label: "untitled" }]);
 assert(!unlabeled.can_commit && unlabeled.reasons[0] === "unnamed labels", "unlabeled");
 const ok = commitStatus([{ label: null }, { label: "hand" }]);

@@ -74,7 +74,30 @@ def test_export_jsonl_is_lazy_and_skips_uncommitted_images() -> None:
     assert '"image":"keep.jpg"' in chunks[0]
 
 
+def test_commit_accepts_an_empty_reviewed_image() -> None:
+    row = {
+        "id": "image",
+        "filename": "negative.jpg",
+        "s3_key": "owner/project/image/negative.jpg",
+        "objects": [],
+        "history": [],
+        "comments": [],
+        "committed": False,
+    }
+    with (
+        patch.object(store, "image_row", return_value=row),
+        patch.object(store, "execute") as execute,
+        patch.object(store, "presign_get", return_value="https://example.test/negative.jpg"),
+    ):
+        committed = store.commit_image("project", "image", "owner")
+
+    assert committed is not None and committed["committed"] is True
+    assert committed["objects"] == []
+    execute.assert_called_once()
+
+
 if __name__ == "__main__":
     test_list_images_returns_page_and_aggregate_counts()
     test_export_jsonl_is_lazy_and_skips_uncommitted_images()
+    test_commit_accepts_an_empty_reviewed_image()
     print("ok")

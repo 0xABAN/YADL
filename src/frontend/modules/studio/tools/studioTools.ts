@@ -49,7 +49,7 @@ export const STUDIO_GUIDE = [
   "After writes, take screenshots often and verify annotations visually — do not assume success from a tool OK alone.",
   "Bad or ambiguous frames: delete_image soft-deletes the frame. Recovery is only available from the five-second human UI undo; WebMCP has no restore tool.",
   "Work one image at a time via open_image. get_studio shows progress, can_commit, invalid_reasons, and unlabeled ids — its objects list has no geometry.",
-  "commit_image only when can_commit (≥1 named label). First successful commit advances the filmstrip.",
+  "commit_image only when can_commit. Empty images are reviewed negative samples; non-empty images need a named label. First successful commit advances the filmstrip.",
   "Geometry is on type-specific tools listed in geometry_tools — read those tool schemas for args; this guide does not teach them.",
   "Computer use is for perception/verification (screenshots), not for dragging shapes when geometry tools exist. Media upload is outside WebMCP — humans add files in the UI.",
   "Use comment for notes to humans when unsure; do not silently invent quality.",
@@ -251,7 +251,7 @@ export const STUDIO_TOOL_SCHEMAS = {
     {
       name: "commit_image",
       description:
-        "Commit the current image (Footer rules: at least one named object). First commit advances to next image.",
+        "Commit the current image as a reviewed negative sample when empty, or with at least one named object. First commit advances to next image.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
     {

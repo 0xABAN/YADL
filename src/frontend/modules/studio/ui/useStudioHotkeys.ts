@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { named } from "../geometry/doc";
+import { commitStatus, named } from "../geometry/doc";
 import type { StudioSession } from "../session";
 
 /** Global studio keyboard shortcuts (label, nav, commit, undo toast, rail). */
@@ -27,7 +27,7 @@ export function useStudioHotkeys(session: StudioSession, opts?: { toggleRail?: (
       const st = session.getState();
       const objects = st.doc?.objects ?? [];
       const classes = (st.project?.classes ?? []).filter((c) => named(c));
-      const canCommit = objects.some((o) => named(o.label));
+      const canCommit = commitStatus(objects).can_commit;
       if (k === "j") {
         e.preventDefault();
         session.setIndex(st.index + 1);

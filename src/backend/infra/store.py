@@ -400,7 +400,7 @@ def commit_image(pid: str, iid: str, uid: str) -> dict | None:
     if not row:
         return None
     objs = row["objects"] or []
-    if not any(named(o.get("label")) for o in objs):
+    if objs and not any(named(o.get("label")) for o in objs):
         raise ValueError("unlabeled")
     hist = _versions(row.get("history") or [])
     hist.append(
