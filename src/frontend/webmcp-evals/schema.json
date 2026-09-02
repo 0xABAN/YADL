@@ -28,6 +28,13 @@
           }
         },
         "required": ["name", "type"],
+        "oneOf": [
+          {
+            "properties": { "type": { "enum": ["boxes", "polygons"] } },
+            "not": { "required": ["template"] }
+          },
+          { "properties": { "type": { "const": "keypoints" } } }
+        ],
         "additionalProperties": false
       }
     },
@@ -40,6 +47,10 @@
           "id": { "type": "string" },
           "name": { "type": "string" }
         },
+        "oneOf": [
+          { "required": ["id"] },
+          { "required": ["name"] }
+        ],
         "additionalProperties": false
       }
     }

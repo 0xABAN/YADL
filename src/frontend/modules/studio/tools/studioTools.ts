@@ -89,6 +89,14 @@ export const STUDIO_TOOL_SCHEMAS = {
             description: "Jump to next uncommitted image after current (wraps)",
           },
         },
+        oneOf: [
+          { required: ["index"] },
+          { required: ["id"] },
+          {
+            properties: { next_uncommitted: { const: true } },
+            required: ["next_uncommitted"],
+          },
+        ],
         additionalProperties: false,
       },
     },

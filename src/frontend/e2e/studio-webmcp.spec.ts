@@ -127,6 +127,9 @@ async function openStudio(page: Page, initialObjects: unknown[]) {
     const host = window as typeof window & { __webMcpNames?: () => string[] };
     return host.__webMcpNames?.().includes("add_instance") ?? false;
   })).toBe(true);
+  if (initialObjects.length) {
+    await expect(page).toHaveURL(/[?&]obj=/);
+  }
 }
 
 async function openTwoImageStudio(page: Page, secondDelayMs: number) {
@@ -199,6 +202,24 @@ test("add_instance clamps an invalid root and reports every correction", async (
   });
   await page.waitForTimeout(250);
   await expect(page).toHaveURL(urlBefore);
+});
+
+test("open_image schema requires exactly one selector", async ({ page }) => {
+  await openStudio(page, [hand({ root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} })]);
+  const schema = await page.evaluate(() => {
+    const host = window as typeof window & {
+      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
+    };
+    return host.__webMcpSchema?.("open_image");
+  });
+
+  expect(schema).toMatchObject({
+    oneOf: [
+      { required: ["index"] },
+      { required: ["id"] },
+      { required: ["next_uncommitted"] },
+    ],
+  });
 });
 
 test("set_rig reports root clamps alongside joint clamps", async ({ page }) => {

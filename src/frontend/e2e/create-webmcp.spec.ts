@@ -89,3 +89,30 @@ test("open_project requires exactly one identifier and verifies ids before navig
   });
   expect(schema).toMatchObject({ oneOf: [{ required: ["id"] }, { required: ["name"] }] });
 });
+
+test("create_project rejects unexpected and type-inapplicable arguments itself", async ({ page }) => {
+  let posts = 0;
+  await page.route("**/api/projects", async (route) => {
+    if (route.request().method() === "POST") posts += 1;
+    await route.fulfill({ json: [project] });
+  });
+
+  expect(
+    await callTool(page, "create_project", { name: "Bad", type: "boxes", surprise: true }),
+  ).toEqual({ error: "unexpected_arguments", keys: ["surprise"] });
+  expect(
+    await callTool(page, "create_project", { name: "Bad", type: "boxes", template: "hand" }),
+  ).toEqual({ error: "template_not_applicable" });
+  expect(
+    await callTool(page, "create_project", { name: "Bad", type: "keypoints", template: "unknown" }),
+  ).toEqual({ error: "bad_template" });
+  expect(posts).toBe(0);
+
+  const schema = await page.evaluate(() => {
+    const host = window as typeof window & {
+      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
+    };
+    return host.__webMcpSchema?.("create_project");
+  });
+  expect(schema).toMatchObject({ oneOf: [{ not: { required: ["template"] } }, { properties: { type: { const: "keypoints" } } }] });
+});

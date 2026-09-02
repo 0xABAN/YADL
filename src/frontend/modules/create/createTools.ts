@@ -31,6 +31,13 @@ export const CREATE_TOOL_SCHEMAS = {
           },
         },
         required: ["name", "type"],
+        oneOf: [
+          {
+            properties: { type: { enum: ["boxes", "polygons"] } },
+            not: { required: ["template"] },
+          },
+          { properties: { type: { const: "keypoints" } } },
+        ],
         additionalProperties: false,
       },
     },
@@ -76,11 +83,22 @@ export function createPageTools(deps: CreateToolsDeps): WebMcpTool[] {
     {
       ...schemas[1],
       execute: async (args) => {
+        const unexpected = Object.keys(args).filter(
+          (key) => key !== "name" && key !== "type" && key !== "template",
+        );
+        if (unexpected.length) return { error: "unexpected_arguments", keys: unexpected.sort() };
         const n = String(args.name ?? "").trim();
         const t = parseProjectType(args.type);
         if (!n) return { error: "empty_name" };
         if (!t) return { error: "bad_type" };
-        const tmpl = t === "keypoints" ? parseTemplate(args.template) ?? "hand" : undefined;
+        if (t !== "keypoints" && args.template !== undefined) {
+          return { error: "template_not_applicable" };
+        }
+        const parsedTemplate = parseTemplate(args.template);
+        if (t === "keypoints" && args.template !== undefined && !parsedTemplate) {
+          return { error: "bad_template" };
+        }
+        const tmpl = t === "keypoints" ? parsedTemplate ?? "hand" : undefined;
         if (deps.getRows().some((p) => p.name === n)) return { error: "name_taken" };
         const res = await createProject({ name: n, type: t, template: tmpl });
         if (!res.ok) return { error: res.error, status: res.status, detail: res.detail };
