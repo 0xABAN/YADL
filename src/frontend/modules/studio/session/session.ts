@@ -225,18 +225,29 @@ export class StudioSession {
 
   // ── objects ───────────────────────────────────────────
 
-  async saveObjects(objects: AnnObj[]) {
+  async saveObjects(objects: AnnObj[], options?: { selectFallback?: boolean }) {
     const d = this.state.doc;
     if (!d) return;
+    const previousList = this.state.list;
+    const previousSelected = this.state.selected;
     const next: Doc = { ...d, objects };
     const empty = objects.length === 0;
     const list = this.state.list.map((x) => (x.id === d.id ? { ...x, empty } : x));
     const selected =
       this.state.selected && objects.some((o) => o.id === this.state.selected)
         ? this.state.selected
-        : (objects[0]?.id ?? null);
+        : options?.selectFallback === false
+          ? null
+          : (objects[0]?.id ?? null);
     this.patch({ doc: next, list, selected });
-    await studioApi.putImage(this.state.projectId, next, objects);
+    try {
+      await studioApi.putImage(this.state.projectId, next, objects);
+    } catch (error) {
+      if (this.state.doc === next) {
+        this.patch({ doc: d, list: previousList, selected: previousSelected });
+      }
+      throw error;
+    }
   }
 
   setSelected(id: string | null) {

@@ -16,6 +16,23 @@ const UNIT = {
   description: "Required. Prefer norm (0–1 image). px = natural image pixels, not CSS/screen.",
 } as const;
 
+const POLYGON_POINTS = {
+  description: "Vertex list [{x,y},…] or flat [x0,y0,x1,y1,…] (≥3 points)",
+  oneOf: [
+    {
+      type: "array",
+      minItems: 3,
+      items: {
+        type: "object",
+        properties: { x: { type: "number" }, y: { type: "number" } },
+        required: ["x", "y"],
+        additionalProperties: false,
+      },
+    },
+    { type: "array", minItems: 6, items: { type: "number" } },
+  ],
+} as const;
+
 /** Schema-only export for webmcp-evals (boxes pack). */
 export const BOX_TOOL_SCHEMAS = {
   tools: [
@@ -84,11 +101,7 @@ export const POLY_TOOL_SCHEMAS = {
         type: "object",
         properties: {
           unit: UNIT,
-          pts: {
-            type: "array",
-            description: "Vertex list [{x,y},…] or flat [x0,y0,x1,y1,…] (≥3 points)",
-            minItems: 3,
-          },
+          pts: POLYGON_POINTS,
           label: {
             type: ["string", "null"],
             description: "Optional; null/omit = unlabeled. Prefer set_label to rename later.",
@@ -107,11 +120,7 @@ export const POLY_TOOL_SCHEMAS = {
         properties: {
           object_id: { type: "string" },
           unit: UNIT,
-          pts: {
-            type: "array",
-            description: "Full replace: [{x,y},…] or flat [x0,y0,…] (≥3 points)",
-            minItems: 3,
-          },
+          pts: { ...POLYGON_POINTS, description: "Full replacement polygon in either supported point format." },
         },
         required: ["unit", "pts"],
         additionalProperties: false,
@@ -204,6 +213,25 @@ function tooSmallPoly(pts: Pt[], size: { w: number; h: number } | null): boolean
     if (p.y > y1) y1 = p.y;
   }
   return tooSmallBox({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, size);
+}
+
+function polygonArea(pts: Pt[]): number {
+  let twiceArea = 0;
+  for (let i = 0; i < pts.length; i += 1) {
+    const current = pts[i];
+    const next = pts[(i + 1) % pts.length];
+    twiceArea += current.x * next.y - next.x * current.y;
+  }
+  return Math.abs(twiceArea) / 2;
+}
+
+function currentDoc(
+  deps: ShapeToolsDeps,
+  imageId: string,
+): { ok: true; snap: StudioSnapshot & { doc: NonNullable<StudioSnapshot["doc"]> } } | { ok: false; error: string } {
+  const snap = deps.get();
+  if (!snap.doc || snap.doc.id !== imageId) return { ok: false, error: "image_changed" };
+  return { ok: true, snap: snap as StudioSnapshot & { doc: NonNullable<StudioSnapshot["doc"]> } };
 }
 
 /** Parse pts from [{x,y}] or flat [x0,y0,...]. */
@@ -379,8 +407,9 @@ export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
           edited: true,
           geom: { t: "box", ...box },
         };
-        await deps.saveObjects([...snap.doc.objects, obj]);
-        deps.setSelected?.(obj.id);
+        const latest = currentDoc(deps, snap.doc.id);
+        if (!latest.ok) return { error: latest.error };
+        await deps.saveObjects([...latest.snap.doc.objects, obj]);
         return { ...boxPayload(obj), ...dims(deps), clamped_keys };
       },
     },
@@ -411,7 +440,6 @@ export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         if (tooSmallBox(box, size)) return { error: "too_small", ...dims(deps), got: box };
         const updated: BoxObj = { ...pick.obj, edited: true, geom: { t: "box", ...box } };
         await deps.saveObjects(snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)));
-        deps.setSelected?.(updated.id);
         return { ...boxPayload(updated), ...dims(deps), clamped_keys };
       },
     },
@@ -448,6 +476,7 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         if (!conv.ok) return { error: conv.error };
         const { pts, clamped_keys } = clampPts(conv.pts);
         if (tooSmallPoly(pts, size)) return { error: "too_small", ...dims(deps) };
+        if (polygonArea(pts) <= 1e-8) return { error: "degenerate_polygon", ...dims(deps) };
         const label = parseLabel(args.label) ?? null;
         if (label) await deps.ensureClass(label);
         const obj: PolyObj = {
@@ -457,8 +486,9 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
           edited: true,
           geom: { t: "polygon", pts },
         };
-        await deps.saveObjects([...snap.doc.objects, obj]);
-        deps.setSelected?.(obj.id);
+        const latest = currentDoc(deps, snap.doc.id);
+        if (!latest.ok) return { error: latest.error };
+        await deps.saveObjects([...latest.snap.doc.objects, obj]);
         return { ...polyPayload(obj), ...dims(deps), clamped_keys };
       },
     },
@@ -477,9 +507,9 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         if (!conv.ok) return { error: conv.error };
         const { pts, clamped_keys } = clampPts(conv.pts);
         if (tooSmallPoly(pts, size)) return { error: "too_small", ...dims(deps) };
+        if (polygonArea(pts) <= 1e-8) return { error: "degenerate_polygon", ...dims(deps) };
         const updated: PolyObj = { ...pick.obj, edited: true, geom: { t: "polygon", pts } };
         await deps.saveObjects(snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)));
-        deps.setSelected?.(updated.id);
         return { ...polyPayload(updated), ...dims(deps), clamped_keys };
       },
     },

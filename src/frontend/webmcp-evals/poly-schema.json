@@ -17,9 +17,20 @@
             "description": "Required. Prefer norm (0–1 image). px = natural image pixels, not CSS/screen."
           },
           "pts": {
-            "type": "array",
             "description": "Vertex list [{x,y},…] or flat [x0,y0,x1,y1,…] (≥3 points)",
-            "minItems": 3
+            "oneOf": [
+              {
+                "type": "array",
+                "minItems": 3,
+                "items": {
+                  "type": "object",
+                  "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                  "required": ["x", "y"],
+                  "additionalProperties": false
+                }
+              },
+              { "type": "array", "minItems": 6, "items": { "type": "number" } }
+            ]
           },
           "label": {
             "type": ["string", "null"],
@@ -43,9 +54,20 @@
             "description": "Required. Prefer norm (0–1 image). px = natural image pixels, not CSS/screen."
           },
           "pts": {
-            "type": "array",
-            "description": "Full replace: [{x,y},…] or flat [x0,y0,…] (≥3 points)",
-            "minItems": 3
+            "description": "Full replacement polygon in either supported point format.",
+            "oneOf": [
+              {
+                "type": "array",
+                "minItems": 3,
+                "items": {
+                  "type": "object",
+                  "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                  "required": ["x", "y"],
+                  "additionalProperties": false
+                }
+              },
+              { "type": "array", "minItems": 6, "items": { "type": "number" } }
+            ]
           }
         },
         "required": ["unit", "pts"],

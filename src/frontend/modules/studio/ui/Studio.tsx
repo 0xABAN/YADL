@@ -79,27 +79,33 @@ function StudioBody() {
     session.clampIndexToList();
   }, [list.length, index, session]);
 
-  const imageSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const imageSizeRef = useRef<{
+    imageId: string | null;
+    size: { w: number; h: number } | null;
+  }>({ imageId: null, size: null });
   const onImageSize = useCallback((size: { w: number; h: number } | null) => {
-    imageSizeRef.current = size;
-  }, []);
+    imageSizeRef.current = { imageId: session.getState().doc?.id ?? null, size };
+  }, [session]);
 
   useEffect(() => {
     if (loadState !== "ready") return;
     const ac = new AbortController();
     const shapeDeps = {
       get: () => session.snapshot(),
-      saveObjects: (objects: AnnObj[]) => session.saveObjects(objects),
+      saveObjects: (objects: AnnObj[]) => session.saveObjects(objects, { selectFallback: false }),
       ensureClass: (name: string) => session.ensureClass(name),
       setSelected: (oid: string | null) => session.setSelected(oid),
-      getImageSize: () => imageSizeRef.current,
+      getImageSize: () => {
+        const current = imageSizeRef.current;
+        return current.imageId === session.getState().doc?.id ? current.size : null;
+      },
     };
     const ptype = session.getState().project?.type;
     const tools = [
       ...studioPageTools({
         get: () => session.snapshot(),
         setIndex: (i) => session.setIndex(i),
-        saveObjects: (objects) => session.saveObjects(objects),
+        saveObjects: (objects) => session.saveObjects(objects, { selectFallback: false }),
         ensureClass: (name) => session.ensureClass(name),
         commitCurrent: () => session.commitCurrent(),
         deleteCurrent: () => session.deleteCurrent(),
@@ -118,7 +124,7 @@ function StudioBody() {
       ...(ptype === "keypoints"
         ? rigPageTools({
             get: () => session.snapshot(),
-            saveObjects: (objects) => session.saveObjects(objects),
+            saveObjects: (objects) => session.saveObjects(objects, { selectFallback: false }),
             setSelected: (oid) => session.setSelected(oid),
           })
         : ptype === "boxes"
