@@ -1,0 +1,56 @@
+{
+  "tools": [
+    {
+      "name": "get_polygons",
+      "description": "List all polygon annotations on the current image with full geometry. Coords are image-normalized 0–1 (coord_space=norm), never pan-zoom screen px. Includes natural image_width/height when known.",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "add_polygon",
+      "description": "Create one polygon. unit required: norm or px (natural image pixels only). pts: [{x,y},…] or flat [x0,y0,…] (≥3 verts). Optional label. Full contour only — no vertex micro-ops.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "unit": {
+            "type": "string",
+            "enum": ["norm", "px"],
+            "description": "Required. Prefer norm (0–1 image). px = natural image pixels, not CSS/screen."
+          },
+          "pts": {
+            "type": "array",
+            "description": "Vertex list [{x,y},…] or flat [x0,y0,x1,y1,…] (≥3 points)",
+            "minItems": 3
+          },
+          "label": {
+            "type": ["string", "null"],
+            "description": "Optional; null/omit = unlabeled. Prefer set_label to rename later."
+          }
+        },
+        "required": ["unit", "pts"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_polygon",
+      "description": "Replace full polygon pts (≥3). object_id required when more than one polygon. unit required. Does not set label — use set_label. Echoes norm pts + clamped_keys.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": { "type": "string" },
+          "unit": {
+            "type": "string",
+            "enum": ["norm", "px"],
+            "description": "Required. Prefer norm (0–1 image). px = natural image pixels, not CSS/screen."
+          },
+          "pts": {
+            "type": "array",
+            "description": "Full replace: [{x,y},…] or flat [x0,y0,…] (≥3 points)",
+            "minItems": 3
+          }
+        },
+        "required": ["unit", "pts"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

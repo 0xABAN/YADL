@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Canvas from "../canvas/Canvas";
 import { named, writeObjects, type AnnObj } from "../geometry/doc";
@@ -8,6 +8,7 @@ import { exportUrl, fetchProjectComments } from "../api";
 import { StudioProvider, useStudioSession, useStudioState } from "../session";
 import { studioPageTools } from "../tools/studioTools";
 import { rigPageTools } from "../tools/rigTools";
+import { boxPageTools, polyPageTools } from "../tools/shapeTools";
 import { registerWebMcpTools } from "@/shared/webmcp";
 import Classes from "./Classes";
 import Comments from "./Comments";
@@ -76,9 +77,22 @@ function StudioBody() {
     session.clampIndexToList();
   }, [list.length, index, session]);
 
+  const imageSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const onImageSize = useCallback((size: { w: number; h: number } | null) => {
+    imageSizeRef.current = size;
+  }, []);
+
   useEffect(() => {
     if (loadState !== "ready") return;
     const ac = new AbortController();
+    const shapeDeps = {
+      get: () => session.snapshot(),
+      saveObjects: (objects: AnnObj[]) => session.saveObjects(objects),
+      ensureClass: (name: string) => session.ensureClass(name),
+      setSelected: (oid: string | null) => session.setSelected(oid),
+      getImageSize: () => imageSizeRef.current,
+    };
+    const ptype = session.getState().project?.type;
     const tools = [
       ...studioPageTools({
         get: () => session.snapshot(),
@@ -100,13 +114,17 @@ function StudioBody() {
         openUpload: () => session.openUpload(),
         waitForImage: (imageId, ms) => session.waitForImage(imageId, ms),
       }),
-      ...(session.getState().project?.type === "keypoints"
+      ...(ptype === "keypoints"
         ? rigPageTools({
             get: () => session.snapshot(),
             saveObjects: (objects) => session.saveObjects(objects),
             setSelected: (oid) => session.setSelected(oid),
           })
-        : []),
+        : ptype === "boxes"
+          ? boxPageTools(shapeDeps)
+          : ptype === "polygons"
+            ? polyPageTools(shapeDeps)
+            : []),
     ];
     void registerWebMcpTools(tools, ac.signal);
     return () => ac.abort();
@@ -223,6 +241,7 @@ function StudioBody() {
             onEdit={doc ? (oid) => session.editObject(oid) : () => {}}
             railOn={railOn}
             onToggleRail={toggleRail}
+            onImageSize={onImageSize}
           />
         </div>
       ) : (

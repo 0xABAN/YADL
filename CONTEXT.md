@@ -57,6 +57,23 @@ Registered on `/studio/:id` when `project.type === "keypoints"` (any template). 
 
 Agent loop: `open_image` → `add_instance` → `set_rig` → `get_rig(include_landmarks)` → `set_label` → `commit_image`.
 
+### WebMCP Studio (boxes / polygons shape packs)
+
+Registered on `/studio/:id` when `project.type` is `boxes` or `polygons` (never with FK). SSOT: `modules/studio/tools/shapeTools.ts` (`lib/shapeTools.ts` re-export). General studio pack still handles nav/label/commit — **no geometry on `get_studio`**.
+
+| Type | Tools |
+|---|---|
+| `boxes` | `get_boxes`, `add_box`, `set_box` |
+| `polygons` | `get_polygons`, `add_polygon`, `set_polygon` |
+
+**Coords:** store is always image-normalized 0–1 (`coord_space: "norm"`). Writes require `unit: "norm" \| "px"` (prefer norm). `px` = natural bitmap pixels only — never pan-zoom CSS/screen. Responses echo `image_width` / `image_height` + norm geom + `clamped_keys`. Boxes are **xywh only** (no xyxy). Polys: full `pts` replace; accept `[{x,y}]` or flat `[x0,y0,…]`. Optional `label` on add only. `object_id` required when count ≠ 1.
+
+**Non-goals (locked):** xyxy dual format, bulk replace, vertex micro-ops, dx/dy, screen/CSS px, geometry on `get_studio`, assist/detector shape tools, duplicate label/delete/commit tools.
+
+Agent loops:
+- Boxes: `open_image` → `get_boxes` → `add_box(unit, xywh, label?)` → [`set_box`] → `commit_image`
+- Polys: `open_image` → `get_polygons` → `add_polygon(unit, pts, label?)` → [`set_polygon`] → `commit_image`
+
 ### WebMCP Phase 1 (create page)
 
 | Tool | Role |
@@ -71,7 +88,7 @@ Human flow: `/create` → `/upload?name=&type=` (create-on-submit). Agent: `crea
 
 ### WebMCP Studio (general, type-agnostic)
 
-Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geometry** — label/delete existing objects only. Keypoints geometry = FK pack above.
+Registered on `/studio/:id` only. Live Studio state (same path as UI). **No geometry** — label/delete existing objects only. Geometry packs: keypoints = FK; boxes/polygons = shape tools above.
 
 | Tool | Role |
 |---|---|
@@ -95,6 +112,7 @@ Register via `document.modelContext`; no-op if unavailable.
 - Create SSOT: `lib/createTools.ts` → `webmcp-evals/{schema,evals}.json`
 - Studio SSOT: `lib/studioTools.ts` → `webmcp-evals/studio-{schema,evals}.json`
 - Rig SSOT: `lib/rigTools.ts` → `webmcp-evals/rig-{schema,evals}.json`
+- Box/poly SSOT: `lib/shapeTools.ts` → `webmcp-evals/{box,poly}-{schema,evals}.json`
 - Smoke create: `npm run webmcp:smoke` (page `/create`)
 - Smoke studio: `npm run webmcp:smoke:studio`
 - Smoke rig: `npm run webmcp:smoke:rig` (keypoints + Playwright UI clicks)

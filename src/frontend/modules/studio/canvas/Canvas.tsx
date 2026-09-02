@@ -109,6 +109,9 @@ export default function Canvas({
   classes = [],
   tool: toolProp,
   onTool,
+  railOn = true,
+  onToggleRail,
+  onImageSize,
 }: {
   src?: string;
   alt?: string;
@@ -130,6 +133,10 @@ export default function Canvas({
   classes?: string[];
   tool?: ToolId;
   onTool?: (t: ToolId) => void;
+  railOn?: boolean;
+  onToggleRail?: () => void;
+  /** Natural pixel size after decode; null when src clears / unknown. */
+  onImageSize?: (size: { w: number; h: number } | null) => void;
 }) {
   const shown = SHOWN[projectType];
   const [zoom, setZoom] = useState(0);
@@ -148,6 +155,12 @@ export default function Canvas({
   const live = useRef(objects);
   live.current = objects;
   const tickHist = () => setHist({ u: undo.current.length, r: redo.current.length });
+  const onImageSizeRef = useRef(onImageSize);
+  onImageSizeRef.current = onImageSize;
+
+  useEffect(() => {
+    onImageSizeRef.current?.(imgSize);
+  }, [imgSize]);
 
   const fitScale = useRef<number | null>(null);
   const zoomDirty = useRef(false);
@@ -471,6 +484,33 @@ export default function Canvas({
         </TransformWrapper>
       </main>
       <div className="stack">
+        {onToggleRail && (
+          <div className="panel rail-tog" onMouseLeave={() => setTip(null)}>
+            <button
+              type="button"
+              aria-label={railOn ? "Hide labels rail" : "Show labels rail"}
+              title={railOn ? "Hide labels (⌘B)" : "Show labels (⌘B)"}
+              onMouseEnter={(e) => tipAt(e.currentTarget, railOn ? "Hide labels" : "Show labels")}
+              onFocus={(e) => tipAt(e.currentTarget, railOn ? "Hide labels" : "Show labels")}
+              onBlur={() => setTip(null)}
+              onClick={onToggleRail}
+            >
+              <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+                {railOn ? (
+                  <path
+                    d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"
+                    fill="currentColor"
+                  />
+                ) : (
+                  <path
+                    d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z"
+                    fill="currentColor"
+                  />
+                )}
+              </svg>
+            </button>
+          </div>
+        )}
         <div className="panel tools" onMouseLeave={() => setTip(null)}>
           {shown
             .map((id) => TOOLS.find((t) => t.id === id))

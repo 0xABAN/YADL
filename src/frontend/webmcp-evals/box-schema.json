@@ -1,0 +1,54 @@
+{
+  "tools": [
+    {
+      "name": "get_boxes",
+      "description": "List all box annotations on the current image with full geometry. Coords are image-normalized 0–1 (coord_space=norm), never pan-zoom screen px. Includes natural image_width/height when known.",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "add_box",
+      "description": "Create one box. unit required: norm (0–1 image) or px (natural image pixels, top-left of bitmap — not CSS/screen). xywh only. Optional label (ensureClass); rename/clear later via set_label. Geometry only — not a label tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "unit": {
+            "type": "string",
+            "enum": ["norm", "px"],
+            "description": "Required. Prefer norm (0–1 image). px = natural image pixels, not CSS/screen."
+          },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "w": { "type": "number" },
+          "h": { "type": "number" },
+          "label": {
+            "type": ["string", "null"],
+            "description": "Optional; null/omit = unlabeled. Prefer set_label to rename later."
+          }
+        },
+        "required": ["unit", "x", "y", "w", "h"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "set_box",
+      "description": "Update one box geometry (partial x/y/w/h). object_id required when more than one box. unit required (norm|px). Does not set label — use set_label. Echoes norm geom + clamped_keys.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object_id": { "type": "string" },
+          "unit": {
+            "type": "string",
+            "enum": ["norm", "px"],
+            "description": "Required. Prefer norm (0–1 image). px = natural image pixels, not CSS/screen."
+          },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "w": { "type": "number" },
+          "h": { "type": "number" }
+        },
+        "required": ["unit"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

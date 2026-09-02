@@ -11,11 +11,14 @@
     "webmcp:smoke": "webmcp-evals smoke -u http://localhost:3000/create -e webmcp-evals/evals.json -v",
     "webmcp:smoke:studio": "node scripts/studio-webmcp-smoke.mjs",
     "webmcp:smoke:rig": "node scripts/rig-webmcp-smoke.mjs",
+    "webmcp:smoke:shape": "node scripts/shape-webmcp-smoke.mjs",
     "webmcp:smoke:studio:kit": "webmcp-evals smoke -u ${STUDIO_URL:-http://localhost:3000/studio} -e webmcp-evals/studio-evals.json -v --chrome-channel chrome",
     "webmcp:local": "webmcp-evals local -t webmcp-evals/schema.json -e webmcp-evals/evals.json",
     "webmcp:local:studio": "webmcp-evals local -t webmcp-evals/studio-schema.json -e webmcp-evals/studio-evals.json",
     "webmcp:local:rig": "webmcp-evals local -t webmcp-evals/rig-schema.json -e webmcp-evals/rig-evals.json",
-    "webmcp:schema-check": "node -e \"const a=require('./webmcp-evals/schema.json').tools.map(t=>t.name).join(','); const b=require('./webmcp-evals/studio-schema.json').tools.map(t=>t.name).join(','); const c=require('./webmcp-evals/rig-schema.json').tools.map(t=>t.name).join(','); if(a!=='list_projects,create_project,open_project') process.exit(1); if(b!=='get_studio,open_image,set_label,delete_object,commit_image,delete_image,get_comments,comment,open_upload') process.exit(1); if(c!=='get_rig,set_rig,add_instance') process.exit(1); console.log('ok create',a); console.log('ok studio',b); console.log('ok rig',c)\"",
+    "webmcp:local:box": "webmcp-evals local -t webmcp-evals/box-schema.json -e webmcp-evals/box-evals.json",
+    "webmcp:local:poly": "webmcp-evals local -t webmcp-evals/poly-schema.json -e webmcp-evals/poly-evals.json",
+    "webmcp:schema-check": "node -e \"const a=require('./webmcp-evals/schema.json').tools.map(t=>t.name).join(','); const b=require('./webmcp-evals/studio-schema.json').tools.map(t=>t.name).join(','); const c=require('./webmcp-evals/rig-schema.json').tools.map(t=>t.name).join(','); const d=require('./webmcp-evals/box-schema.json').tools.map(t=>t.name).join(','); const e=require('./webmcp-evals/poly-schema.json').tools.map(t=>t.name).join(','); if(a!=='list_projects,create_project,open_project') process.exit(1); if(b!=='get_studio,open_image,set_label,delete_object,commit_image,delete_image,get_comments,comment,open_upload') process.exit(1); if(c!=='get_rig,set_rig,add_instance') process.exit(1); if(d!=='get_boxes,add_box,set_box') process.exit(1); if(e!=='get_polygons,add_polygon,set_polygon') process.exit(1); console.log('ok create',a); console.log('ok studio',b); console.log('ok rig',c); console.log('ok box',d); console.log('ok poly',e)\"",
     "webmcp:browser": "webmcp-evals browser -u http://localhost:3000/create -e webmcp-evals/evals.json --chrome-channel chrome"
   },
   "dependencies": {
