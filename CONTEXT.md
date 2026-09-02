@@ -149,4 +149,4 @@ Live camera stays in the browser. Stills seed and train may use RunPod. Image ge
 - Dual-path: human/assist clears `rig`; agent writes only via `set_rig` / `add_instance`.
 - Core labels stay free-form. ASL→Codex names are class labels only when that demo path is shown.
 - Web app in a real browser tab (`document.modelContext`). Not Electron/Tauri.
-- License still unset (MIT or Apache-2.0 candidates)
+- License: Apache-2.0
