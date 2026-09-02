@@ -199,7 +199,7 @@ function StudioBody() {
         </button>
       )}
       <h1 className="sr-only">Studio{project ? ` — ${project.name}` : ""}</h1>
-      {loadState === "ready" && list.length > 0 && (
+      {loadState === "ready" && list.length > 0 && doc && !assistBusy && (
         <div className={`validity ${canCommit ? "ok" : "bad"}`} aria-live="polite">
           {canCommit ? "Valid" : "Invalid"} annotation
         </div>
@@ -220,45 +220,33 @@ function StudioBody() {
           await session.dropClass(name);
         }}
       />
-      {(loadState === "ready" && list.length === 0) || doc?.url ? (
-        <div id="studio-main">
-          <Canvas
-            src={doc?.url ?? undefined}
-            alt={doc?.image || (list.length === 0 ? "No images" : "Sample")}
-            objects={doc ? objects : []}
-            projectType={project?.type ?? "keypoints"}
-            classes={classes}
-            selectedId={doc ? selected : null}
-            assistOn={assistOn}
-            assistBusy={!!doc && assistBusy}
-            tool={tool}
-            onTool={(t) => session.setTool(t)}
-            onChange={doc ? save : () => {}}
-            onSelect={doc ? (id) => session.setSelected(id) : () => {}}
-            onAssistOn={() => session.toggleAssist()}
-            onAssistReseed={() => void session.reseedAssist()}
-            commentsOpen={!!doc && commentsOpen}
-            commentCount={doc?.comments?.length ?? 0}
-            syntheticOpen={!!doc && synthOpen}
-            onComment={doc ? (btn) => session.toggleComments(btn, true) : () => {}}
-            onSynthetic={doc ? (btn) => session.toggleSynthetic(btn) : () => {}}
-            onEdit={doc ? (oid) => session.editObject(oid) : () => {}}
-            railOn={railOn}
-            onToggleRail={toggleRail}
-            onImageSize={onImageSize}
-          />
-        </div>
-      ) : (
-        <main id="studio-main" className="empty-main">
-          <p>
-            {loadState === "loading"
-              ? "Loading…"
-              : loadState === "error"
-                ? "Failed to load project."
-                : "Loading image…"}
-          </p>
-        </main>
-      )}
+      <div id="studio-main">
+        <Canvas
+          src={doc?.url}
+          alt={doc?.image || (list.length === 0 ? "No images" : "Sample")}
+          objects={doc ? objects : []}
+          projectType={project?.type ?? "keypoints"}
+          classes={classes}
+          selectedId={doc ? selected : null}
+          assistOn={assistOn}
+          assistBusy={assistBusy}
+          tool={tool}
+          onTool={(t) => session.setTool(t)}
+          onChange={doc ? save : () => {}}
+          onSelect={doc ? (id) => session.setSelected(id) : () => {}}
+          onAssistOn={() => session.toggleAssist()}
+          onAssistReseed={() => void session.reseedAssist()}
+          commentsOpen={!!doc && commentsOpen}
+          commentCount={doc?.comments?.length ?? 0}
+          syntheticOpen={!!doc && synthOpen}
+          onComment={doc ? (btn) => session.toggleComments(btn, true) : () => {}}
+          onSynthetic={doc ? (btn) => session.toggleSynthetic(btn) : () => {}}
+          onEdit={doc ? (oid) => session.editObject(oid) : () => {}}
+          railOn={railOn}
+          onToggleRail={toggleRail}
+          onImageSize={onImageSize}
+        />
+      </div>
       {edit && (
         <LabelForm
           edit={edit}

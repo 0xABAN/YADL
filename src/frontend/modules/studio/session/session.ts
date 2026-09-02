@@ -146,14 +146,23 @@ export class StudioSession {
     try {
       const doc = await studioApi.fetchImage(projectId, iid);
       if (ac.signal.aborted) return;
-      this.applyDoc(doc);
 
-      if (!assistOn || project?.type !== "keypoints" || doc.objects.length) return;
-      if (assistedIds.has(iid)) return;
+      const willAssist =
+        assistOn && project?.type === "keypoints" && !doc.objects.length && !assistedIds.has(iid);
 
+      if (!willAssist) {
+        this.applyDoc(doc);
+        return;
+      }
+
+      // Seed flag + busy before paint so Valid/Invalid doesn't flash on empty doc.
       const nextAssisted = new Set(assistedIds);
       nextAssisted.add(iid);
-      this.patch({ assistedIds: nextAssisted, assistBusy: true });
+      const selected =
+        this.state.selected && doc.objects.some((o) => o.id === this.state.selected)
+          ? this.state.selected
+          : (doc.objects[0]?.id ?? null);
+      this.patch({ doc, selected, assistedIds: nextAssisted, assistBusy: true });
       try {
         const d2 = await studioApi.postAssist(projectId, iid, false, ac.signal);
         if (ac.signal.aborted) return;

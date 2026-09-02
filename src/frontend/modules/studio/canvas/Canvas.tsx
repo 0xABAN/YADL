@@ -113,7 +113,7 @@ const TOOLS = [
 ] as const;
 
 export default function Canvas({
-  src = "/default.jpg",
+  src,
   alt = "Sample",
   objects = [],
   projectType = "keypoints",
