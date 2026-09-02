@@ -12,7 +12,6 @@ import {
   isKeypoint,
   type AnnObj,
   type BoxObj,
-  type HandObj,
   type PolyObj,
   type Project,
   type ToolId,
@@ -21,10 +20,14 @@ import Hands from "./editors/Hands";
 import Boxes from "./editors/Boxes";
 import Polys from "./editors/Polys";
 
-const STEP = 0.1;
-const MIN = 0.05;
-const MAX = 4;
+/** Fit = 100%. Zoom range and steps are relative to fit. */
 const FIT_PAD = 0.88;
+const MIN_FIT = 0.25; // 25% of fit
+const MAX_FIT = 8; // 800% of fit
+const WHEEL_FIT = 0.04; // ~4% of fit per wheel notch (smooth off)
+const BTN_FIT = 0.12; // ~12% of fit per ± click
+const FALLBACK_MIN = 0.05;
+const FALLBACK_MAX = 8;
 
 /** UI % relative to fit scale — fit is always 100%. */
 const zoomPct = (scale: number, fit: number) =>
@@ -37,7 +40,6 @@ function toolKey(type: Project["type"]) {
 function readTool(type: Project["type"], fallback: ToolId): ToolId {
   try {
     const v = sessionStorage.getItem(toolKey(type));
-    if (v === "move") return "move";
     if (type === "keypoints" && v === "landmarks") return "landmarks";
     if (type === "boxes" && v === "box") return "box";
     if (type === "polygons" && v === "polygon") return "polygon";
@@ -56,11 +58,6 @@ function writeTool(type: Project["type"], t: ToolId) {
 }
 
 const TOOLS = [
-  {
-    id: "move",
-    label: "Pan Tool",
-    d: "M168,132.69,214.08,115l.33-.13A16,16,0,0,0,213,85.07L52.92,32.8A15.95,15.95,0,0,0,32.8,52.92L85.07,213a15.82,15.82,0,0,0,14.41,11l.78,0a15.84,15.84,0,0,0,14.61-9.59l.13-.33L132.69,168,184,219.31a16,16,0,0,0,22.63,0l12.68-12.68a16,16,0,0,0,0-22.63ZM195.31,208,144,156.69a16,16,0,0,0-26,4.93c0,.11-.09.22-.13.32l-17.65,46L48,48l159.85,52.2-45.95,17.64-.32.13a16,16,0,0,0-4.93,26h0L208,195.31Z",
-  },
   {
     id: "box",
     label: "Bounding Box",
@@ -140,8 +137,8 @@ export default function Canvas({
 }) {
   const shown = SHOWN[projectType];
   const [zoom, setZoom] = useState(0);
-  const [spacePan, setSpacePan] = useState(false);
   const [tool, setToolInner] = useState<ToolId>(() => toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]));
+  const [scaleLim, setScaleLim] = useState({ min: FALLBACK_MIN, max: FALLBACK_MAX, wheel: 0.02, btn: 0.1 });
   const [tip, setTip] = useState<string | null>(null);
   const [imgReady, setImgReady] = useState(false);
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
@@ -163,7 +160,8 @@ export default function Canvas({
   }, [imgSize]);
 
   const fitScale = useRef<number | null>(null);
-  const zoomDirty = useRef(false);
+  /** User panned or zoomed — skip auto-refit on resize until Reset. */
+  const viewDirty = useRef(false);
   const fitting = useRef(false);
 
   const setDotsPos = (x: number, y: number) => {
@@ -200,19 +198,28 @@ export default function Canvas({
     const aw = Math.max(1, right - left);
     const ah = Math.max(1, bottom - top);
 
-    const scale = Math.min(MAX, Math.max(MIN, Math.min(aw / size.w, ah / size.h) * FIT_PAD));
+    const scale = Math.min(aw / size.w, ah / size.h) * FIT_PAD;
     // center in free space (past stack, above footer)
     const x = left + (aw - size.w * scale) / 2;
     const y = top + (ah - size.h * scale) / 2;
 
     fitScale.current = scale;
-    zoomDirty.current = false;
+    viewDirty.current = false;
     fitting.current = true;
+    setScaleLim({
+      min: scale * MIN_FIT,
+      max: scale * MAX_FIT,
+      wheel: scale * WHEEL_FIT,
+      btn: scale * BTN_FIT,
+    });
     api.setTransform(x, y, scale, 0);
     setDotsPos(x, y);
     setViewScale(scale);
-    queueMicrotask(() => {
-      fitting.current = false;
+    // Hold through lib onTransform (can be async) so fit doesn't mark viewDirty.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        fitting.current = false;
+      });
     });
     setZoom(100);
   }, [imgSize]);
@@ -238,7 +245,7 @@ export default function Canvas({
   useEffect(() => {
     setImgReady(false);
     setImgSize(null);
-    zoomDirty.current = false;
+    viewDirty.current = false;
     fitScale.current = null;
     if (!src) return;
     let dead = false;
@@ -269,7 +276,7 @@ export default function Canvas({
     const onResize = () => {
       if (!alive) return;
       // refit when still at default fit (or dirty flag never stuck true)
-      if (!zoomDirty.current) fitView();
+      if (!viewDirty.current) fitView();
     };
     const t = requestAnimationFrame(() => requestAnimationFrame(run));
     window.addEventListener("resize", onResize);
@@ -343,10 +350,6 @@ export default function Canvas({
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !(e.target instanceof HTMLInputElement)) {
-        e.preventDefault();
-        setSpacePan(true);
-      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
         e.preventDefault();
@@ -354,20 +357,12 @@ export default function Canvas({
         else doUndo();
       }
     };
-    const up = (e: KeyboardEvent) => {
-      if (e.code === "Space") setSpacePan(false);
-    };
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-    };
+    return () => window.removeEventListener("keydown", down);
   }, [doUndo, doRedo]);
 
-  const move = tool === "move";
-  const panning = move || spacePan;
-  const drawing = !panning && (tool === "box" || tool === "polygon");
+  // Draw tools own empty-image drag; pan is empty chrome / non-draw tools (excluded hit targets).
+  const drawing = tool === "box" || tool === "polygon";
 
   const hands = objects.filter(isKeypoint);
   const boxes = objects.filter((o): o is BoxObj => o.kind === "box");
@@ -388,7 +383,7 @@ export default function Canvas({
         ref={mainRef}
         className={drawing ? "cross" : undefined}
         onPointerDown={() => {
-          if (panning || drawing) return;
+          if (drawing) return;
           if (tool === "landmarks") onEdit?.(null);
         }}
       >
@@ -397,16 +392,34 @@ export default function Canvas({
         <TransformWrapper
           key={src}
           ref={zpp}
-          minScale={MIN}
-          maxScale={MAX}
+          minScale={scaleLim.min}
+          maxScale={scaleLim.max}
           initialScale={1}
-          limitToBounds={false}
+          limitToBounds
+          centerZoomedOut
           disablePadding
+          smooth={false}
           doubleClick={{ disabled: true }}
           zoomAnimation={{ disabled: true }}
-          panning={{ disabled: !panning, velocityDisabled: true }}
-          wheel={{ disabled: !move, step: 0.04 }}
-          pinch={{ disabled: !move }}
+          panning={{
+            velocityDisabled: true,
+            // Annotation hit targets + draw layers win over pan (window-level mousedown).
+            excluded: [
+              "boxes",
+              "box",
+              "h",
+              "box-tab",
+              "polys",
+              "poly",
+              "edge",
+              "pv",
+              "hand",
+              "pt",
+              "chip",
+            ],
+          }}
+          wheel={{ step: scaleLim.wheel, excluded: ["panel", "tools", "zoom"] }}
+          pinch={{ step: 5 }}
           onInit={fitView}
           onTransform={(_, s) => {
             setDotsPos(s.positionX, s.positionY);
@@ -414,7 +427,8 @@ export default function Canvas({
             const fit = fitScale.current ?? s.scale;
             setZoom(zoomPct(s.scale, fit));
             if (fitting.current || fitScale.current == null) return;
-            if (Math.abs(s.scale - fitScale.current) > 0.01) zoomDirty.current = true;
+            // Any user pan/zoom locks the view against resize auto-fit.
+            viewDirty.current = true;
           }}
         >
           <TransformComponent
@@ -443,7 +457,7 @@ export default function Canvas({
                 <Boxes
                   objects={boxes}
                   classes={classes}
-                  locked={panning}
+                  locked={false}
                   active={tool === "box"}
                   selectedId={selectedId}
                   frameRef={frame}
@@ -456,7 +470,7 @@ export default function Canvas({
                 <Polys
                   objects={polys}
                   classes={classes}
-                  locked={panning}
+                  locked={false}
                   active={tool === "polygon"}
                   selectedId={selectedId}
                   frameRef={frame}
@@ -556,7 +570,6 @@ export default function Canvas({
                   if (t.id === "assist") onAssistOn?.();
                   else if (t.id === "seed") onAssistReseed?.();
                   else if (t.id === "synthetic") onSynthetic?.(e.currentTarget);
-                  else if (t.id === "move") setTool(tool === "move" ? DEFAULT_TOOL[projectType] : "move");
                   else setTool(t.id);
                 }}
               >
@@ -564,72 +577,68 @@ export default function Canvas({
                   <path d={t.d} fill="currentColor" />
                 </svg>
               </button>
-              {t.id === "move" && (
-                <>
-                  <hr />
-                  <button
-                    type="button"
-                    data-tip="comment-tool"
-                    aria-label="Comment (T)"
-                    aria-pressed={commentsOpen}
-                    title="Comment (T)"
-                    onMouseEnter={(e) =>
-                      tipAt(e.currentTarget, commentCount ? `Comment (T) · ${commentCount}` : "Comment (T)")
-                    }
-                    onMouseLeave={() => setTip(null)}
-                    onClick={(e) => onComment?.(e.currentTarget)}
-                  >
-                    <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
-                      <path
-                        d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={hist.u === 0}
-                    aria-label="Undo"
-                    title="Undo (⌘Z)"
-                    onMouseEnter={(e) => tipAt(e.currentTarget, "Undo (⌘Z)")}
-                    onMouseLeave={() => setTip(null)}
-                    onClick={doUndo}
-                  >
-                    <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
-                      <path
-                        d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L60.63,81.29l17,17A8,8,0,0,1,72,112H24a8,8,0,0,1-8-8V56A8,8,0,0,1,29.66,50.3L49.31,70,60.25,60A96,96,0,0,1,224,128Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={hist.r === 0}
-                    aria-label="Redo"
-                    title="Redo (⇧⌘Z)"
-                    onMouseEnter={(e) => tipAt(e.currentTarget, "Redo (⇧⌘Z)")}
-                    onMouseLeave={() => setTip(null)}
-                    onClick={doRedo}
-                  >
-                    <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
-                      <path
-                        d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1-5.66-13.66l17-17-10.55-9.65-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,1,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60l10.93,10L226.34,50.3A8,8,0,0,1,240,56Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </button>
-                </>
-              )}
             </Fragment>
           ))}
+          <hr />
+          <button
+            type="button"
+            data-tip="comment-tool"
+            aria-label="Comment (T)"
+            aria-pressed={commentsOpen}
+            title="Comment (T)"
+            onMouseEnter={(e) =>
+              tipAt(e.currentTarget, commentCount ? `Comment (T) · ${commentCount}` : "Comment (T)")
+            }
+            onMouseLeave={() => setTip(null)}
+            onClick={(e) => onComment?.(e.currentTarget)}
+          >
+            <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+              <path
+                d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            disabled={hist.u === 0}
+            aria-label="Undo"
+            title="Undo (⌘Z)"
+            onMouseEnter={(e) => tipAt(e.currentTarget, "Undo (⌘Z)")}
+            onMouseLeave={() => setTip(null)}
+            onClick={doUndo}
+          >
+            <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+              <path
+                d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L60.63,81.29l17,17A8,8,0,0,1,72,112H24a8,8,0,0,1-8-8V56A8,8,0,0,1,29.66,50.3L49.31,70,60.25,60A96,96,0,0,1,224,128Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            disabled={hist.r === 0}
+            aria-label="Redo"
+            title="Redo (⇧⌘Z)"
+            onMouseEnter={(e) => tipAt(e.currentTarget, "Redo (⇧⌘Z)")}
+            onMouseLeave={() => setTip(null)}
+            onClick={doRedo}
+          >
+            <svg viewBox="0 0 256 256" width="16" height="16" aria-hidden="true">
+              <path
+                d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1-5.66-13.66l17-17-10.55-9.65-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,1,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60l10.93,10L226.34,50.3A8,8,0,0,1,240,56Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
         </div>
         {tip && <span className="tip">{tip}</span>}
         <div className="panel zoom">
           <button
             type="button"
             className="step"
-            disabled={zoom <= zoomPct(MIN, fitScale.current ?? 1)}
-            onClick={() => zpp.current?.zoomOut(STEP)}
+            disabled={zoom <= Math.round(MIN_FIT * 100)}
+            onClick={() => zpp.current?.zoomOut(scaleLim.btn, 0)}
             aria-label="Zoom out"
           >
             −
@@ -638,8 +647,8 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={zoom >= zoomPct(MAX, fitScale.current ?? 1)}
-            onClick={() => zpp.current?.zoomIn(STEP)}
+            disabled={zoom >= Math.round(MAX_FIT * 100)}
+            onClick={() => zpp.current?.zoomIn(scaleLim.btn, 0)}
             aria-label="Zoom in"
           >
             +

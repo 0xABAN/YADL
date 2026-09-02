@@ -77,18 +77,18 @@ export type Project = {
   classes: string[];
 };
 
-export type ToolId = "move" | "box" | "polygon" | "landmarks" | "assist" | "seed" | "synthetic";
+export type ToolId = "box" | "polygon" | "landmarks" | "assist" | "seed" | "synthetic";
 
 export const SHOWN: Record<ProjectType, ToolId[]> = {
-  keypoints: ["move", "seed", "assist", "synthetic"],
-  boxes: ["move", "box", "synthetic"],
-  polygons: ["move", "polygon", "synthetic"],
+  keypoints: ["seed", "assist", "synthetic"],
+  boxes: ["box", "synthetic"],
+  polygons: ["polygon", "synthetic"],
 };
 
 export const DEFAULT_TOOL: Record<ProjectType, ToolId> = {
-  keypoints: "move",
-  boxes: "move",
-  polygons: "move",
+  keypoints: "landmarks",
+  boxes: "box",
+  polygons: "polygon",
 };
 
 export const CLASS_COLOR = ["#99edff", "#bfff00", "#ff9ffc", "#ffd43b", "#ffa8a8", "#c5f6fa"];
