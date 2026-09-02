@@ -132,7 +132,7 @@ export const POLY_TOOL_SCHEMAS = {
 export type ShapeToolsDeps = {
   get: () => StudioSnapshot;
   saveObjects: (objects: AnnObj[]) => void | Promise<void>;
-  ensureClass: (name: string) => Promise<void>;
+  ensureClass: (name: string) => Promise<boolean>;
   setSelected?: (id: string | null) => void;
   /** Natural image pixel size from decode; null until ready. */
   getImageSize: () => { w: number; h: number } | null;
@@ -370,6 +370,15 @@ function gateType(p: Project | null, want: "boxes" | "polygons"): string | null 
   return null;
 }
 
+async function persistObjects(deps: ShapeToolsDeps, objects: AnnObj[]): Promise<boolean> {
+  try {
+    await deps.saveObjects(objects);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
   const schemas = BOX_TOOL_SCHEMAS.tools;
   return [
@@ -399,7 +408,7 @@ export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         const { box, clamped_keys } = clampBox(conv.box);
         if (tooSmallBox(box, size)) return { error: "too_small", ...dims(deps), got: box };
         const label = parseLabel(args.label) ?? null;
-        if (label) await deps.ensureClass(label);
+        if (label && !(await deps.ensureClass(label))) return { error: "class_create_failed" };
         const obj: BoxObj = {
           id: newId("box"),
           kind: "box",
@@ -409,7 +418,9 @@ export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         };
         const latest = currentDoc(deps, snap.doc.id);
         if (!latest.ok) return { error: latest.error };
-        await deps.saveObjects([...latest.snap.doc.objects, obj]);
+        if (!(await persistObjects(deps, [...latest.snap.doc.objects, obj]))) {
+          return { error: "save_failed" };
+        }
         return { ...boxPayload(obj), ...dims(deps), clamped_keys };
       },
     },
@@ -439,7 +450,14 @@ export function boxPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         const { box, clamped_keys } = clampBox(next);
         if (tooSmallBox(box, size)) return { error: "too_small", ...dims(deps), got: box };
         const updated: BoxObj = { ...pick.obj, edited: true, geom: { t: "box", ...box } };
-        await deps.saveObjects(snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)));
+        if (
+          !(await persistObjects(
+            deps,
+            snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)),
+          ))
+        ) {
+          return { error: "save_failed" };
+        }
         return { ...boxPayload(updated), ...dims(deps), clamped_keys };
       },
     },
@@ -478,7 +496,7 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         if (tooSmallPoly(pts, size)) return { error: "too_small", ...dims(deps) };
         if (polygonArea(pts) <= 1e-8) return { error: "degenerate_polygon", ...dims(deps) };
         const label = parseLabel(args.label) ?? null;
-        if (label) await deps.ensureClass(label);
+        if (label && !(await deps.ensureClass(label))) return { error: "class_create_failed" };
         const obj: PolyObj = {
           id: newId("poly"),
           kind: "polygon",
@@ -488,7 +506,9 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         };
         const latest = currentDoc(deps, snap.doc.id);
         if (!latest.ok) return { error: latest.error };
-        await deps.saveObjects([...latest.snap.doc.objects, obj]);
+        if (!(await persistObjects(deps, [...latest.snap.doc.objects, obj]))) {
+          return { error: "save_failed" };
+        }
         return { ...polyPayload(obj), ...dims(deps), clamped_keys };
       },
     },
@@ -509,7 +529,14 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         if (tooSmallPoly(pts, size)) return { error: "too_small", ...dims(deps) };
         if (polygonArea(pts) <= 1e-8) return { error: "degenerate_polygon", ...dims(deps) };
         const updated: PolyObj = { ...pick.obj, edited: true, geom: { t: "polygon", pts } };
-        await deps.saveObjects(snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)));
+        if (
+          !(await persistObjects(
+            deps,
+            snap.doc!.objects.map((o) => (o.id === updated.id ? updated : o)),
+          ))
+        ) {
+          return { error: "save_failed" };
+        }
         return { ...polyPayload(updated), ...dims(deps), clamped_keys };
       },
     },

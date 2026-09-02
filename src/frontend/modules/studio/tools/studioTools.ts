@@ -176,7 +176,7 @@ export type StudioToolsDeps = {
   setIndex: (i: number) => void;
   /** Persist objects on current doc (optimistic local, awaited network). */
   saveObjects: (objects: AnnObj[]) => void | Promise<void>;
-  ensureClass: (name: string) => Promise<void>;
+  ensureClass: (name: string) => Promise<boolean>;
   commitCurrent: () => Promise<
     | { ok: true; advanced: boolean }
     | { ok: false; error: "cannot_commit" | "no_image"; reason?: string }
@@ -202,6 +202,15 @@ export type StudioToolsDeps = {
   /** Wait until doc matches target image id (post open_image). */
   waitForImage?: (imageId: string, ms?: number) => Promise<boolean>;
 };
+
+async function persistObjects(deps: StudioToolsDeps, objects: AnnObj[]): Promise<boolean> {
+  try {
+    await deps.saveObjects(objects);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function slimObjects(objects: AnnObj[]) {
   return objects.map((o) => ({
@@ -342,8 +351,15 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
           const t = String(args.label).trim();
           label = t === "" ? null : t;
         }
-        if (label) await deps.ensureClass(label);
-        await deps.saveObjects(snap.doc.objects.map((o) => (o.id === oid ? { ...o, label } : o)));
+        if (label && !(await deps.ensureClass(label))) return { error: "class_create_failed" };
+        if (
+          !(await persistObjects(
+            deps,
+            snap.doc.objects.map((o) => (o.id === oid ? { ...o, label } : o)),
+          ))
+        ) {
+          return { error: "save_failed" };
+        }
         return { current: currentSummary(deps.get()) };
       },
     },
@@ -354,7 +370,9 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         if (!snap.doc) return { error: "no_image" };
         const oid = String(args.object_id ?? "").trim();
         if (!snap.doc.objects.some((o) => o.id === oid)) return { error: "not_found" };
-        await deps.saveObjects(snap.doc.objects.filter((o) => o.id !== oid));
+        if (!(await persistObjects(deps, snap.doc.objects.filter((o) => o.id !== oid)))) {
+          return { error: "save_failed" };
+        }
         return { current: currentSummary(deps.get()) };
       },
     },

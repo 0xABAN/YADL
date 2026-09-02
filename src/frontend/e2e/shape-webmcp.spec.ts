@@ -37,7 +37,7 @@ async function installWebMcpHost(page: Page) {
 async function mockShapeStudio(
   page: Page,
   type: ShapeType,
-  options: { failNextSave?: boolean; classDelayMs?: number } = {},
+  options: { failNextSave?: boolean; classDelayMs?: number; failClasses?: boolean } = {},
 ) {
   let objects: unknown[] = [];
   let classes: string[] = [];
@@ -77,6 +77,9 @@ async function mockShapeStudio(
       return route.fulfill({ json: { ok: true } });
     }
     if (path === `/projects/${PID}/classes` && method === "POST") {
+      if (options.failClasses) {
+        return route.fulfill({ status: 500, json: { detail: "forced class failure" } });
+      }
       if (options.classDelayMs) {
         await new Promise((resolve) => setTimeout(resolve, options.classDelayMs));
       }
@@ -283,10 +286,28 @@ test("concurrent labeled box adds do not overwrite each other", async ({ page })
 test("a failed shape save rolls back the optimistic object", async ({ page }) => {
   await openShapeStudio(page, "boxes", { failNextSave: true });
 
-  expect(
-    await captureTool(page, "add_box", { unit: "norm", x: 0.1, y: 0.1, w: 0.3, h: 0.3 }),
-  ).toMatchObject({ ok: false });
+  expect(await captureTool(page, "add_box", { unit: "norm", x: 0.1, y: 0.1, w: 0.3, h: 0.3 })).toEqual({
+    ok: true,
+    result: { error: "save_failed" },
+  });
   expect(await callTool(page, "get_boxes")).toMatchObject({ n: 0 });
+});
+
+test("a failed class creation cannot leave a labeled shape or phantom class", async ({ page }) => {
+  await openShapeStudio(page, "boxes", { failClasses: true });
+
+  expect(
+    await callTool(page, "add_box", {
+      unit: "norm",
+      x: 0.1,
+      y: 0.1,
+      w: 0.3,
+      h: 0.3,
+      label: "phantom",
+    }),
+  ).toEqual({ error: "class_create_failed" });
+  expect(await callTool(page, "get_boxes")).toMatchObject({ n: 0 });
+  expect(await callTool(page, "get_studio")).toMatchObject({ project: { classes: [] } });
 });
 
 test("pixel geometry never reuses dimensions from the previous image", async ({ page }) => {

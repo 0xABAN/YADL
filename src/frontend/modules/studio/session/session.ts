@@ -268,13 +268,19 @@ export class StudioSession {
 
   // ── classes ───────────────────────────────────────────
 
-  async ensureClass(label: string) {
+  async ensureClass(label: string): Promise<boolean> {
     const p = this.state.project;
-    if (!p || p.classes.includes(label)) return;
+    if (!p) return false;
+    if (p.classes.includes(label)) return true;
     const optimistic = { ...p, classes: [...p.classes, label] };
     this.patch({ project: optimistic });
     const row = await studioApi.postClass(this.state.projectId, label);
-    if (row) this.patch({ project: row });
+    if (row) {
+      this.patch({ project: row });
+      return true;
+    }
+    if (this.state.project === optimistic) this.patch({ project: p });
+    return false;
   }
 
   async renameClass(oldName: string, name: string) {

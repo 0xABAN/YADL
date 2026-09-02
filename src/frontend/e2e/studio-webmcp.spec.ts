@@ -53,8 +53,13 @@ async function installWebMcpHost(page: Page) {
   });
 }
 
-async function mockStudio(page: Page, initialObjects: unknown[]) {
+async function mockStudio(
+  page: Page,
+  initialObjects: unknown[],
+  options: { failNextSave?: boolean; failClasses?: boolean } = {},
+) {
   let objects = initialObjects;
+  let failNextSave = options.failNextSave ?? false;
   let comments: { id: string; body: string; at: string }[] = [];
   const imageDoc = () => ({
     id: IID,
@@ -81,10 +86,17 @@ async function mockStudio(page: Page, initialObjects: unknown[]) {
       return route.fulfill({ json: imageDoc() });
     }
     if (path === `/projects/${PID}/images/${IID}` && method === "PUT") {
+      if (failNextSave) {
+        failNextSave = false;
+        return route.fulfill({ status: 500, json: { detail: "forced save failure" } });
+      }
       objects = (request.postDataJSON() as { objects: unknown[] }).objects;
       return route.fulfill({ json: { ok: true } });
     }
     if (path === `/projects/${PID}/classes` && method === "POST") {
+      if (options.failClasses) {
+        return route.fulfill({ status: 500, json: { detail: "forced class failure" } });
+      }
       return route.fulfill({
         json: { id: PID, name: "WebMCP rig", type: "keypoints", template: "hand", classes: [] },
       });
@@ -122,9 +134,13 @@ async function callTool(page: Page, name: string, args: Record<string, unknown> 
   );
 }
 
-async function openStudio(page: Page, initialObjects: unknown[]) {
+async function openStudio(
+  page: Page,
+  initialObjects: unknown[],
+  options: { failNextSave?: boolean; failClasses?: boolean } = {},
+) {
   await installWebMcpHost(page);
-  await mockStudio(page, initialObjects);
+  await mockStudio(page, initialObjects, options);
   await page.goto(`/studio/${PID}`);
   await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => page.evaluate(() => {
@@ -251,6 +267,39 @@ test("set_label and delete_object round-trip without changing the WebMCP page UR
   await expect(page).toHaveURL(urlBefore);
   expect(await callTool(page, "get_studio")).toMatchObject({
     current: { objects: [{ id: "hand-2", label: "thumbs_down" }] },
+  });
+});
+
+test("general and rig writes report save failures and roll back their optimistic state", async ({ page }) => {
+  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
+  await openStudio(page, [hand(rig)], { failNextSave: true });
+
+  expect(await callTool(page, "set_label", { object_id: "hand-1", label: null })).toEqual({
+    error: "save_failed",
+  });
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    current: { objects: [{ id: "hand-1", label: null }] },
+  });
+});
+
+test("set_rig reports a save failure and retains the previous rig", async ({ page }) => {
+  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
+  await openStudio(page, [hand(rig)], { failNextSave: true });
+
+  expect(await callTool(page, "set_rig", { root: { x: 0.8 } })).toEqual({ error: "save_failed" });
+  expect(await callTool(page, "get_rig")).toMatchObject({ root: { x: 0.5 } });
+});
+
+test("set_label reports class creation failure without leaving a phantom class", async ({ page }) => {
+  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
+  await openStudio(page, [hand(rig)], { failClasses: true });
+
+  expect(await callTool(page, "set_label", { object_id: "hand-1", label: "phantom" })).toEqual({
+    error: "class_create_failed",
+  });
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    project: { classes: [] },
+    current: { objects: [{ id: "hand-1", label: null }] },
   });
 });
 

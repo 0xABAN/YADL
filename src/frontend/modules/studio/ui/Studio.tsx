@@ -162,7 +162,7 @@ function StudioBody() {
       const label = name.trim();
       if (!label || !project) return;
       const creating = edit === "new";
-      await session.ensureClass(label);
+      if (!(await session.ensureClass(label))) return;
       if (!creating) {
         const target = editing?.id ?? selected;
         if (target) {
