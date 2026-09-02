@@ -19,7 +19,7 @@ export function TetrisLoaderCard({
         rows={16}
         cellSize={3}
         gap={1}
-        speed={40}
+        speed={12}
         label={label ?? title}
       />
       <div className="tetris-card-copy">

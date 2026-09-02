@@ -163,26 +163,26 @@ button.studio-back {
   to { opacity: 0; transform: translateX(-50%) translateY(6px); }
 }
 .undo-link { text-decoration: underline; margin-left: 8px; color: inherit }
+/* Free stage only: right of tool stack, above footer (same box as fitView). */
 .canvas-loader {
   position: absolute;
-  inset: 0;
   z-index: 4;
+  top: var(--rail-pad);
+  left: calc(var(--rail-col, var(--rail)) + var(--rail-pad) + var(--stack-w) + var(--rail-pad));
+  right: var(--rail-pad);
+  bottom: calc(var(--foot-h) + var(--rail-pad) / 2 + var(--rail-pad));
   display: grid;
   place-items: center;
   pointer-events: none;
   background: color-mix(in oklab, var(--canvas) 72%, transparent);
 }
-/* Demo card: board + copy (shadcn demo layout, studio tokens) */
+/* Board + copy; chrome (cut + outline) from shared .panel language below */
 .tetris-card {
   display: flex;
   align-items: center;
   gap: 20px;
   padding: 16px 20px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
   color: var(--text);
-  box-shadow: var(--shadow);
 }
 .tetris-card-copy {
   display: flex;
@@ -663,7 +663,8 @@ aside,
 .shell footer,
 .panel,
 .ann,
-.hist {
+.hist,
+.tetris-card {
   --cut: 16px;
   background-color: var(--panel);
   background-image:
@@ -699,7 +700,8 @@ aside,
 }
 .shell footer,
 .panel,
-.hist { --cut: 8px; }
+.hist,
+.tetris-card { --cut: 8px; }
 aside {
   position: relative;
   overflow: hidden;
