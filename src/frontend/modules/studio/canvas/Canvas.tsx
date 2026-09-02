@@ -22,16 +22,21 @@ import Polys from "./editors/Polys";
 
 /** Fit = 100%. Zoom range and steps are relative to fit. */
 const FIT_PAD = 0.88;
-const MIN_FIT = 0.25; // 25% of fit
-const MAX_FIT = 8; // 800% of fit
+/** Actual scale floor/ceiling relative to fit. UI maps floor→0%, fit→100%, ceil→200%. */
+const MIN_FIT = 0.5; // half of prior 25% floor — less zoom-out
+const MAX_FIT = 2; // 200% of fit
 const WHEEL_FIT = 0.04; // ~4% of fit per wheel notch (smooth off)
 const BTN_FIT = 0.12; // ~12% of fit per ± click
 const FALLBACK_MIN = 0.05;
-const FALLBACK_MAX = 8;
+const FALLBACK_MAX = 4;
 
-/** UI % relative to fit scale — fit is always 100%. */
-const zoomPct = (scale: number, fit: number) =>
-  Math.round((scale / Math.max(fit, 1e-6)) * 100);
+/** Display %: min→0, fit→100, max→200 (not raw scale/fit). */
+const zoomPct = (scale: number, fit: number) => {
+  const f = Math.max(fit, 1e-6);
+  const r = scale / f;
+  if (r <= 1) return Math.round(Math.max(0, ((r - MIN_FIT) / (1 - MIN_FIT)) * 100));
+  return Math.round(Math.min(200, 100 + ((r - 1) / (MAX_FIT - 1)) * 100));
+};
 
 /** Keep ≥ fraction of the scaled image inside the wrapper (soft pan lock). */
 const VIS = 0.2;
@@ -665,7 +670,7 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={zoom <= Math.round(MIN_FIT * 100)}
+            disabled={zoom <= 0}
             onClick={() => zpp.current?.zoomOut(scaleLim.btn, 0)}
             aria-label="Zoom out"
           >
@@ -675,7 +680,7 @@ export default function Canvas({
           <button
             type="button"
             className="step"
-            disabled={zoom >= Math.round(MAX_FIT * 100)}
+            disabled={zoom >= 200}
             onClick={() => zpp.current?.zoomIn(scaleLim.btn, 0)}
             aria-label="Zoom in"
           >
