@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/modules/studio/geometry/doc";
 import ConfirmDialog from "@/modules/studio/ui/ConfirmDialog";
@@ -75,6 +75,8 @@ export default function New() {
   const [err, setErr] = useState<"empty" | "taken" | null>(null);
   const [rows, setRows] = useState<Project[]>([]);
   const [pendingDel, setPendingDel] = useState<Project | null>(null);
+  const [agentTool, setAgentTool] = useState<string | null>(null);
+  const agentToolTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ex = useRotatingIndex(EXAMPLES.length);
   const rowsRef = useRef(rows);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -127,6 +129,16 @@ export default function New() {
     );
   };
 
+  const showAgentTool = useCallback((toolName: string) => {
+    if (agentToolTimer.current) clearTimeout(agentToolTimer.current);
+    setAgentTool(toolName);
+    agentToolTimer.current = setTimeout(() => setAgentTool(null), 1600);
+  }, []);
+
+  useEffect(() => () => {
+    if (agentToolTimer.current) clearTimeout(agentToolTimer.current);
+  }, []);
+
   useEffect(() => {
     const ac = new AbortController();
     void registerWebMcpTools(
@@ -136,9 +148,10 @@ export default function New() {
         onCreated: (p) => setRows((rs) => [p, ...rs.filter((x) => x.id !== p.id)]),
       }),
       ac.signal,
+      { onInvoke: showAgentTool },
     );
     return () => ac.abort();
-  }, [router]);
+  }, [router, showAgentTool]);
 
   return (
     <div className="create">
@@ -273,6 +286,11 @@ export default function New() {
           });
         }}
       />
+      {agentTool && (
+        <div className="live create-agent-live" aria-live="polite">
+          Agent used `{agentTool}`
+        </div>
+      )}
     </div>
   );
 }

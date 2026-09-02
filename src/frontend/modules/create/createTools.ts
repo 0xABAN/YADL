@@ -43,6 +43,10 @@ export const CREATE_TOOL_SCHEMAS = {
           id: { type: "string" },
           name: { type: "string" },
         },
+        oneOf: [
+          { required: ["id"] },
+          { required: ["name"] },
+        ],
         additionalProperties: false,
       },
     },
@@ -91,19 +95,23 @@ export function createPageTools(deps: CreateToolsDeps): WebMcpTool[] {
     {
       ...schemas[2],
       execute: async (args) => {
-        let id = typeof args.id === "string" ? args.id.trim() : "";
-        if (!id && typeof args.name === "string") {
-          const want = args.name.trim();
-          const hit = deps.getRows().find((p) => p.name === want);
-          if (hit) id = hit.id;
-          else {
-            const list = await fetchProjects();
-            if (list.ok) id = list.projects.find((p) => p.name === want)?.id ?? "";
-          }
+        const id = typeof args.id === "string" ? args.id.trim() : "";
+        const name = typeof args.name === "string" ? args.name.trim() : "";
+        if (Boolean(id) === Boolean(name)) return { error: "choose_one_identifier" };
+
+        const match = (projects: Project[]) =>
+          id ? projects.find((p) => p.id === id) : projects.find((p) => p.name === name);
+        let hit = match(deps.getRows());
+        if (!hit) {
+          const list = await fetchProjects();
+          if (!list.ok) return { error: list.error, status: list.status };
+          hit = match(list.projects);
         }
-        if (!id) return { error: "not_found" };
-        deps.router.push(studioPath(id));
-        return { opened: id, studio_url: studioPath(id) };
+        if (!hit) return { error: "not_found" };
+
+        const path = studioPath(hit.id);
+        deps.router.push(path);
+        return { opened: hit.id, studio_url: path };
       },
     },
   ];

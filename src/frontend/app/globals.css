@@ -153,6 +153,7 @@ button.studio-back {
 .live.agent-live.stacked {
   bottom: calc(var(--foot-h) + var(--rail-pad) / 2 + 8px + 40px);
 }
+.live.create-agent-live { bottom: 20px; }
 
 @keyframes live-in {
   from { opacity: 0; transform: translateX(-50%) translateY(6px); }
