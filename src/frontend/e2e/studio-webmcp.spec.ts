@@ -544,6 +544,7 @@ test("open_image reports a timeout without exposing the previous image document"
 
 test("commit_image waits for and returns the advanced image", async ({ page }) => {
   await openTwoImageStudio(page, 500);
+  const urlBefore = page.url();
 
   const result = await callTool(page, "commit_image");
 
@@ -557,10 +558,12 @@ test("commit_image waits for and returns the advanced image", async ({ page }) =
       objects: [{ id: "hand-2", label: "second" }],
     },
   });
+  await expect(page).toHaveURL(urlBefore);
 });
 
 test("delete_image waits for and returns the successor image", async ({ page }) => {
   await openTwoImageStudio(page, 500);
+  const urlBefore = page.url();
 
   const result = await callTool(page, "delete_image");
 
@@ -573,6 +576,7 @@ test("delete_image waits for and returns the successor image", async ({ page }) 
       objects: [{ id: "hand-2", label: "second" }],
     },
   });
+  await expect(page).toHaveURL(urlBefore);
 });
 
 test("all augmentation WebMCP tools share the durable job contract", async ({ page }) => {
@@ -654,6 +658,7 @@ test("augmentation tools return explicit errors for missing ids and API failures
 for (const outcome of ["completed", "no_detection", "failed"] as const) {
   test(`open_image waits for generated-image Auto Label: ${outcome}`, async ({ page }) => {
     await openGeneratedStudio(page, outcome);
+    const urlBefore = page.url();
 
     const result = await callTool(page, "open_image", { index: 1 });
 
@@ -664,6 +669,7 @@ for (const outcome of ["completed", "no_detection", "failed"] as const) {
         auto_label_status: outcome,
       },
     });
+    await expect(page).toHaveURL(urlBefore);
   });
 }
 

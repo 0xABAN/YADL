@@ -13,11 +13,11 @@ import {
   fetchProjectComments,
   retryAugmentationJob,
 } from "../api";
-import { StudioProvider, useStudioSession, useStudioState } from "../session";
+import { StudioProvider, useStudioSession, useStudioState, type StudioSession } from "../session";
 import { studioPageTools } from "../tools/studioTools";
 import { rigPageTools } from "../tools/rigTools";
 import { boxPageTools, polyPageTools } from "../tools/shapeTools";
-import { onWebMcpInvoke, registerWebMcpTools } from "@/shared/webmcp";
+import { onWebMcpActivity, onWebMcpInvoke, registerWebMcpTools } from "@/shared/webmcp";
 import Classes from "./Classes";
 import Comments from "./Comments";
 import Synthetic from "./Synthetic";
@@ -39,11 +39,16 @@ function relTime(iso: string) {
   return rtf.format(Math.round(sec / 86400), "day");
 }
 
+function urlStateKey(state: Pick<ReturnType<StudioSession["getState"]>, "index" | "tab" | "urlSelected" | "tool">) {
+  return [state.index, state.tab, state.urlSelected ?? "", state.tool ?? ""].join("\0");
+}
+
 function StudioBody() {
   const session = useStudioSession();
   const s = useStudioState();
   const router = useRouter();
   const pathname = usePathname();
+  const webMcpUrl = useRef({ active: 0, suppressed: null as string | null });
 
   const {
     project,
@@ -77,6 +82,8 @@ function StudioBody() {
   } = s;
 
   useEffect(() => {
+    const key = urlStateKey({ index, tab, urlSelected, tool });
+    if (webMcpUrl.current.active || webMcpUrl.current.suppressed === key) return;
     const q = new URLSearchParams();
     if (index > 0) q.set("i", String(index));
     if (tab !== "labels") q.set("tab", tab);
@@ -176,6 +183,20 @@ function StudioBody() {
 
   // Live session listener — survives tool re-register / avoids destroyed-session closures
   useEffect(() => onWebMcpInvoke((name) => session.showAgentTool(name)), [session]);
+  useEffect(
+    () =>
+      onWebMcpActivity((_name, active) => {
+        if (active) {
+          webMcpUrl.current.active += 1;
+          return;
+        }
+        webMcpUrl.current.active = Math.max(0, webMcpUrl.current.active - 1);
+        if (!webMcpUrl.current.active) {
+          webMcpUrl.current.suppressed = urlStateKey(session.getState());
+        }
+      }),
+    [session],
+  );
 
   const [railOn, setRailOn] = useState(true);
   const toggleRail = useCallback(() => setRailOn((v) => !v), []);

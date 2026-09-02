@@ -10,7 +10,9 @@ type ModelContext = {
 };
 
 type InvokeFn = (name: string) => void;
+type ActivityFn = (name: string, active: boolean) => void;
 const invokeListeners = new Set<InvokeFn>();
+const activityListeners = new Set<ActivityFn>();
 
 /** Subscribe to any registered tool execute (Studio toast, logging, …). */
 export function onWebMcpInvoke(fn: InvokeFn): () => void {
@@ -20,10 +22,28 @@ export function onWebMcpInvoke(fn: InvokeFn): () => void {
   };
 }
 
+/** Subscribe to WebMCP tool lifetime so UI side effects can stay call-scoped. */
+export function onWebMcpActivity(fn: ActivityFn): () => void {
+  activityListeners.add(fn);
+  return () => {
+    activityListeners.delete(fn);
+  };
+}
+
 function emitInvoke(name: string) {
   for (const fn of invokeListeners) {
     try {
       fn(name);
+    } catch {
+      /* listener errors must not break tools */
+    }
+  }
+}
+
+function emitActivity(name: string, active: boolean) {
+  for (const fn of activityListeners) {
+    try {
+      fn(name, active);
     } catch {
       /* listener errors must not break tools */
     }
@@ -135,22 +155,27 @@ function waitCtx(signal: AbortSignal): Promise<ModelContext | null> {
 function wrapTool(tool: WebMcpTool, onInvoke?: InvokeFn): WebMcpTool {
   return {
     ...tool,
-    execute: (args, extra) => {
+    execute: async (args, extra) => {
       emitInvoke(tool.name);
       onInvoke?.(tool.name);
-      const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
-      const schema = tool.inputSchema;
-      const properties =
-        schema.properties && typeof schema.properties === "object"
-          ? (schema.properties as Record<string, unknown>)
-          : {};
-      if (schema.additionalProperties === false) {
-        const unexpected = Object.keys(input).filter((key) => !(key in properties)).sort();
-        if (unexpected.length) return { error: "unexpected_arguments", keys: unexpected };
+      emitActivity(tool.name, true);
+      try {
+        const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
+        const schema = tool.inputSchema;
+        const properties =
+          schema.properties && typeof schema.properties === "object"
+            ? (schema.properties as Record<string, unknown>)
+            : {};
+        if (schema.additionalProperties === false) {
+          const unexpected = Object.keys(input).filter((key) => !(key in properties)).sort();
+          if (unexpected.length) return { error: "unexpected_arguments", keys: unexpected };
+        }
+        const details = typeErrors(input, schema);
+        if (details.length) return { error: "invalid_arguments", details };
+        return await tool.execute(input, extra);
+      } finally {
+        emitActivity(tool.name, false);
       }
-      const details = typeErrors(input, schema);
-      if (details.length) return { error: "invalid_arguments", details };
-      return tool.execute(input, extra);
     },
   };
 }
