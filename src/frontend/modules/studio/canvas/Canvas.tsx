@@ -19,6 +19,7 @@ import {
 import Hands from "./editors/Hands";
 import Boxes from "./editors/Boxes";
 import Polys from "./editors/Polys";
+import { TetrisLoader } from "@/components/ui/loader-tetris";
 
 /** Fit = 100%. Zoom range and steps are relative to fit. */
 const FIT_PAD = 0.88;
@@ -136,6 +137,7 @@ export default function Canvas({
   railOn = true,
   onToggleRail,
   onImageSize,
+  busy = false,
 }: {
   src?: string;
   alt?: string;
@@ -161,6 +163,8 @@ export default function Canvas({
   onToggleRail?: () => void;
   /** Natural pixel size after decode; null when src clears / unknown. */
   onImageSize?: (size: { w: number; h: number } | null) => void;
+  /** Center tetris while project/image/assist settles. */
+  busy?: boolean;
 }) {
   const shown = SHOWN[projectType];
   const [zoom, setZoom] = useState(0);
@@ -433,6 +437,11 @@ export default function Canvas({
       >
         {/* full-bleed dots — pitch fixed; offset tracks pan */}
         <div className="dots" aria-hidden="true" />
+        {busy && (
+          <div className="canvas-loader">
+            <TetrisLoader cellSize={4} gap={1.5} speed={36} label="Loading" />
+          </div>
+        )}
         <TransformWrapper
           key={src}
           ref={zpp}

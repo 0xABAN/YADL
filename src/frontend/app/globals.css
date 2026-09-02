@@ -43,6 +43,16 @@
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   --font: ui-sans-serif, system-ui, sans-serif;
   --font-display: "Rose Tinted", ui-sans-serif, system-ui, sans-serif;
+  /* Tetris loader (dark studio) */
+  --tetris-1: oklch(0.797 0.134 211.5);
+  --tetris-2: oklch(0.861 0.173 91.9);
+  --tetris-3: oklch(0.709 0.159 293.5);
+  --tetris-4: oklch(0.8 0.182 151.7);
+  --tetris-5: oklch(0.711 0.166 22.2);
+  --tetris-6: oklch(0.714 0.143 254.6);
+  --tetris-7: oklch(0.758 0.159 55.9);
+  --tetris-flash: var(--text);
+  --tetris-dead: color-mix(in oklab, var(--text) 45%, transparent);
 }
 
 * { box-sizing: border-box; margin: 0 }
@@ -153,6 +163,22 @@ button.studio-back {
   to { opacity: 0; transform: translateX(-50%) translateY(6px); }
 }
 .undo-link { text-decoration: underline; margin-left: 8px; color: inherit }
+.canvas-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--canvas) 72%, transparent);
+}
+.tetris-loader {
+  display: grid;
+  width: fit-content;
+}
+.tetris-loader-cell {
+  background: color-mix(in oklab, var(--text) 12%, transparent);
+}
 .empty-main {
   position: relative;
   z-index: 0;

@@ -165,12 +165,11 @@ function StudioBody() {
     [session, project, edit, editing?.id, selected, objects],
   );
 
-  const railStatus = useMemo(() => {
-    if (loadState === "loading") return "Loading project…";
-    if (loadState === "error") return "Could not load project.";
-    if (assistBusy) return "Auto Label running…";
-    return undefined;
-  }, [loadState, assistBusy]);
+  const railStatus = loadState === "error" ? "Could not load project." : undefined;
+  // Project/image/assist wait is short — silent chrome + center tetris, no copy.
+  const canvasBusy =
+    loadState === "loading" ||
+    (loadState === "ready" && list.length > 0 && (!doc?.url || assistBusy));
 
   const save = useCallback((objs: AnnObj[]) => void session.saveObjects(objs), [session]);
 
@@ -222,7 +221,7 @@ function StudioBody() {
       />
       <div id="studio-main">
         <Canvas
-          src={doc?.url}
+          src={doc?.url ?? undefined}
           alt={doc?.image || (list.length === 0 ? "No images" : "Sample")}
           objects={doc ? objects : []}
           projectType={project?.type ?? "keypoints"}
@@ -245,6 +244,7 @@ function StudioBody() {
           railOn={railOn}
           onToggleRail={toggleRail}
           onImageSize={onImageSize}
+          busy={canvasBusy}
         />
       </div>
       {edit && (
