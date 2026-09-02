@@ -16,15 +16,28 @@ Computer vision tasks need lots of labeled data. Most data labeling apps make yo
 
 You create a project. Our studio registers WebMCP tools for that project. Codex (or any WebMCP client) calls them to draw geometry, name classes, and commit frames onto the same canvas you see. You review, provide comments, fix stragglers, export. The output is a labeled dataset.
 
-
 ```mermaid
 flowchart TD
-  H[You: create project + upload media] --> S[Studio opens]
-  S --> W[Page registers WebMCP tools]
-  W --> A[Agent calls tools on that page]
-  A --> C[Labels appear on the canvas]
-  C --> R[You review and export]
-  R --> D[Labeled dataset]
+  A[raw data] --> B[pick annotation type]
+  B --> U[augment]
+  U -->|WebMCP| G[agent: label N frames]
+  U -.->|optional| H[human: label N frames]
+  G --> C[commit]
+  H --> C
+  C --> Q{needs work?}
+  Q -->|no| F[export]
+  Q -->|yes| U
+
+  classDef step fill:#1e293b,stroke:#94a3b8,color:#f8fafc
+  classDef human fill:#0c4a6e,stroke:#38bdf8,color:#e0f2fe
+  classDef agent fill:#312e81,stroke:#818cf8,color:#e0e7ff
+  classDef gate fill:#422006,stroke:#fbbf24,color:#fef3c7
+  classDef done fill:#14532d,stroke:#4ade80,color:#dcfce7
+  class A,B,C,U step
+  class H human
+  class G agent
+  class Q gate
+  class F done
 ```
 
 ---
@@ -44,26 +57,6 @@ The agent does not free-drag dots. It drives a small FK **rig** (joints in, land
 | `get_rig` | Read back the live rig (and optional landmarks) |
 
 Then the shared tools finish the frame: open image → rig tools → set label → commit. Humans can still free-drag dots and run MediaPipe assist; that path is UI-only.
-
----
-
-## End to end
-
-```mermaid
-flowchart TD
-  A[Sign in] --> B[Create project]
-  B --> C[You upload media]
-  C --> D[Open studio]
-  D --> E[Agent: open_image]
-  E --> F[Agent: add_instance]
-  F --> G[Agent: set_rig]
-  G --> H[Agent: set_label]
-  H --> I{can_commit?}
-  I -->|no| H
-  I -->|yes| J[commit_image]
-  J --> K[Next image or you review]
-  K --> L[Export]
-```
 
 ---
 
