@@ -1,22 +1,26 @@
 import subprocess
 import tempfile
+import uuid
 import zipfile
 from io import BytesIO
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.api.deps import uid
 from backend.domain.models import Doc
+from backend.infra import s3
 from backend.infra.store import (
     add_comment,
+    add_image_keys,
     add_images,
     commit_image,
     count_images,
     delete_comment,
     delete_image,
     get_image,
+    get_project,
     list_images,
     list_project_comments,
     put_objects,
@@ -41,6 +45,46 @@ MAX_N, MAX_B = 500, 100 * 1024 * 1024
 
 class CommentIn(BaseModel):
     body: str
+
+
+class PresignFile(BaseModel):
+    name: str
+    content_type: str = ""
+    size: int = Field(ge=0)
+
+
+class PresignIn(BaseModel):
+    files: list[PresignFile]
+
+
+class CompleteFile(BaseModel):
+    name: str
+    key: str
+
+
+class CompleteIn(BaseModel):
+    files: list[CompleteFile]
+    interval: float = 1.0
+
+
+def _ctype(name: str, hinted: str = "") -> str:
+    ext = Path(name).suffix.lower()
+    if ext in VIDEO:
+        return hinted or "application/octet-stream"
+    if ext == ".zip":
+        return "application/zip"
+    return OK.get(ext) or hinted or "application/octet-stream"
+
+
+def _kind(name: str) -> str | None:
+    ext = Path(name).suffix.lower()
+    if ext in OK:
+        return "image"
+    if ext in VIDEO:
+        return "video"
+    if ext == ".zip":
+        return "zip"
+    return None
 
 
 def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
@@ -130,6 +174,103 @@ def images(pid: str, user: str = Depends(uid)):
     return rows
 
 
+@router.post("/projects/{pid}/images/presign")
+def presign_uploads(pid: str, body: PresignIn, user: str = Depends(uid)):
+    """Return S3 PUT URLs so the browser never ships bytes through Vercel."""
+    if not get_project(pid, user):
+        raise HTTPException(404)
+    if not body.files:
+        raise HTTPException(400, "files")
+    n = count_images(pid, user) or 0
+    room = MAX_N - n
+    if room <= 0:
+        raise HTTPException(400, "files")
+    if len(body.files) > room:
+        raise HTTPException(400, "files")
+    total = 0
+    out = []
+    for f in body.files:
+        name = Path(f.name).name or "file"
+        if not _kind(name):
+            raise HTTPException(400, "files")
+        total += f.size
+        if f.size <= 0 or total > MAX_B:
+            raise HTTPException(400, "files")
+        ct = _ctype(name, f.content_type)
+        iid = str(uuid.uuid4())
+        key = f"{user}/{pid}/{iid}/{name}"
+        out.append(
+            {
+                "name": name,
+                "key": key,
+                "content_type": ct,
+                "url": s3.presign_put(key, ct),
+            }
+        )
+    return {"items": out}
+
+
+@router.post("/projects/{pid}/images/complete")
+def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
+    """After browser PUTs to S3: register images or expand video/zip."""
+    if not 0.1 <= body.interval <= 5:
+        raise HTTPException(400, "interval")
+    n = count_images(pid, user)
+    if n is None:
+        raise HTTPException(404)
+    room = MAX_N - n
+    if room <= 0 or not body.files:
+        raise HTTPException(400, "files")
+
+    prefix = f"{user}/{pid}/"
+    blobs: list[tuple[str, bytes, str]] = []
+    direct: list[tuple[str, str]] = []
+
+    for f in body.files:
+        name = Path(f.name).name or "file"
+        key = f.key
+        if not key.startswith(prefix) or ".." in key:
+            raise HTTPException(400, "key")
+        if not s3.exists(key):
+            raise HTTPException(400, "missing")
+        kind = _kind(name)
+        if kind == "image":
+            direct.append((name, key))
+        elif kind in ("video", "zip"):
+            ext = Path(name).suffix.lower() or (".mp4" if kind == "video" else ".zip")
+            with tempfile.TemporaryDirectory() as td:
+                path = Path(td) / f"in{ext}"
+                s3.download(key, path)
+                raw = path.read_bytes()
+                if kind == "video":
+                    left = room - len(blobs) - len(direct)
+                    blobs.extend(frames_from_video(name, raw, body.interval, left))
+                else:
+                    blobs.extend(flatten(name, raw))
+            s3.delete(key)
+        else:
+            raise HTTPException(400, "files")
+        if len(blobs) + len(direct) > room:
+            raise HTTPException(400, "files")
+
+    rows: list[dict] = []
+    if direct:
+        got = add_image_keys(pid, user, direct)
+        if got is None:
+            raise HTTPException(404)
+        rows.extend(got)
+    if blobs:
+        if len(blobs) > room - len(rows):
+            raise HTTPException(400, "files")
+        got = add_images(pid, user, blobs)
+        if got is None:
+            raise HTTPException(404)
+        rows.extend(got)
+    if not rows:
+        raise HTTPException(400, "files")
+    return rows
+
+
 @router.post("/projects/{pid}/images")
 async def upload(
     pid: str,
@@ -137,6 +278,7 @@ async def upload(
     user: str = Depends(uid),
     files: list[UploadFile] = File(),
 ):
+    """Legacy multipart path (local/scripts). Prefer presign + complete."""
     if not 0.1 <= interval <= 5:
         raise HTTPException(400, "interval")
     n = count_images(pid, user)

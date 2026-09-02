@@ -32,6 +32,24 @@ def presign_get(key: str, seconds: int = 120) -> str:
     )
 
 
+def presign_put(key: str, content_type: str, seconds: int = 600) -> str:
+    """Browser PUT must send the same Content-Type."""
+    return _client().generate_presigned_url(
+        "put_object",
+        Params={"Bucket": _bucket(), "Key": key, "ContentType": content_type},
+        ExpiresIn=seconds,
+        HttpMethod="PUT",
+    )
+
+
+def exists(key: str) -> bool:
+    try:
+        _client().head_object(Bucket=_bucket(), Key=key)
+        return True
+    except Exception:
+        return False
+
+
 def download(key: str, dest: Path) -> None:
     _client().download_file(_bucket(), key, str(dest))
 

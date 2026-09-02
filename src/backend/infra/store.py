@@ -451,6 +451,27 @@ def add_images(pid: str, uid: str, files: list[tuple[str, bytes, str]]) -> list[
     return out
 
 
+def add_image_keys(pid: str, uid: str, items: list[tuple[str, str]]) -> list[dict] | None:
+    """Register images already in S3. items = [(filename, s3_key), ...]."""
+    if not get_project(pid, uid):
+        return None
+    prefix = f"{uid}/{pid}/"
+    out = []
+    for name, key in items:
+        if not key.startswith(prefix):
+            return None
+        filename = Path(name).name or "image.jpg"
+        # id from key path …/{iid}/filename when possible
+        parts = key[len(prefix) :].split("/")
+        iid = parts[0] if len(parts) >= 2 else str(uuid.uuid4())
+        execute(
+            "insert into images (id, project_id, s3_key, filename) values (%s,%s,%s,%s)",
+            (iid, pid, key, filename),
+        )
+        out.append({"id": iid, "filename": filename})
+    return out
+
+
 def seed_demo() -> None:
     if fetchone("select id from projects where owner_id=%s limit 1", ("dev",)):
         return

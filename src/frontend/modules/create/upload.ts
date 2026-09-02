@@ -46,46 +46,40 @@ export function fmtSize(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** upload = bytes on the wire; process = server extract/save after body is sent */
+/** upload = bytes to S3; process = server expand/save after PUTs */
 export type UploadProgress =
   | { phase: "upload"; loaded: number; total: number }
   | { phase: "process" };
 
 export type UploadResult = { ok: boolean; status: number; json: unknown };
 
-export function uploadFiles(
-  url: string,
-  files: File[],
-  opts: {
-    interval?: number;
-    signal?: AbortSignal;
-    onProgress?: (p: UploadProgress) => void;
-  } = {},
-): Promise<UploadResult> {
-  const iv =
-    opts.interval != null ? clampInterval(opts.interval) : null;
-  const q = iv != null && iv !== 1 ? `?interval=${iv}` : "";
-  const body = new FormData();
-  files.forEach((f) => body.append("files", f));
+type PresignItem = { name: string; key: string; content_type: string; url: string };
 
+function putS3(
+  url: string,
+  file: File,
+  contentType: string,
+  opts: {
+    signal?: AbortSignal;
+    onProgress?: (loaded: number) => void;
+  },
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${url}${q}`);
-    xhr.responseType = "json";
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", contentType);
 
     const onAbort = () => xhr.abort();
     opts.signal?.addEventListener("abort", onAbort);
 
     xhr.upload.onprogress = (e) => {
-      if (!e.lengthComputable) return;
-      opts.onProgress?.({ phase: "upload", loaded: e.loaded, total: e.total });
+      if (e.lengthComputable) opts.onProgress?.(e.loaded);
     };
-    xhr.upload.onload = () => opts.onProgress?.({ phase: "process" });
 
     xhr.onload = () => {
       opts.signal?.removeEventListener("abort", onAbort);
-      const json = xhr.response ?? null;
-      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, json });
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`s3 ${xhr.status}`));
     };
     xhr.onerror = () => {
       opts.signal?.removeEventListener("abort", onAbort);
@@ -96,8 +90,83 @@ export function uploadFiles(
       reject(new DOMException("Aborted", "AbortError"));
     };
 
-    xhr.send(body);
+    xhr.send(file);
   });
+}
+
+/**
+ * Presign → browser PUT to S3 → complete (avoids Vercel 4.5MB body cap).
+ * `url` is `/api/projects/:id/images` (legacy multipart base).
+ */
+export async function uploadFiles(
+  url: string,
+  files: File[],
+  opts: {
+    interval?: number;
+    signal?: AbortSignal;
+    onProgress?: (p: UploadProgress) => void;
+  } = {},
+): Promise<UploadResult> {
+  const base = url.replace(/\/$/, "");
+  const interval = opts.interval != null ? clampInterval(opts.interval) : 1;
+
+  const presignRes = await fetch(`${base}/presign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      files: files.map((f) => ({
+        name: f.name,
+        content_type: f.type || "",
+        size: f.size,
+      })),
+    }),
+    signal: opts.signal,
+  });
+  if (!presignRes.ok) {
+    const json = await presignRes.json().catch(() => null);
+    return { ok: false, status: presignRes.status, json };
+  }
+  const presignJson = (await presignRes.json()) as { items: PresignItem[] };
+  const items = presignJson.items;
+  if (!items?.length || items.length !== files.length) {
+    return { ok: false, status: 400, json: presignJson };
+  }
+
+  const total = files.reduce((s, f) => s + f.size, 0);
+  let done = 0;
+  opts.onProgress?.({ phase: "upload", loaded: 0, total });
+
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const item = items[i];
+      const before = done;
+      await putS3(item.url, file, item.content_type, {
+        signal: opts.signal,
+        onProgress: (loaded) =>
+          opts.onProgress?.({ phase: "upload", loaded: before + loaded, total }),
+      });
+      done += file.size;
+      opts.onProgress?.({ phase: "upload", loaded: done, total });
+    }
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    return { ok: false, status: 0, json: { error: String(e) } };
+  }
+
+  opts.onProgress?.({ phase: "process" });
+
+  const completeRes = await fetch(`${base}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      interval,
+      files: items.map((it) => ({ name: it.name, key: it.key })),
+    }),
+    signal: opts.signal,
+  });
+  const json = await completeRes.json().catch(() => null);
+  return { ok: completeRes.ok, status: completeRes.status, json };
 }
 
 export function progressLabel(
