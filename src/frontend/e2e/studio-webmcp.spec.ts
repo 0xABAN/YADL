@@ -13,9 +13,9 @@ const landmarks = Array.from({ length: 21 }, (_, i) => ({
   z: 0,
 }));
 
-function hand(rig: unknown) {
+function hand(rig: unknown, id = "hand-1") {
   return {
-    id: "hand-1",
+    id,
     kind: "hand",
     label: null,
     edited: false,
@@ -111,6 +111,7 @@ async function openStudio(page: Page, initialObjects: unknown[]) {
 
 test("add_instance clamps an invalid root and reports every correction", async ({ page }) => {
   await openStudio(page, [hand({ root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} })]);
+  const urlBefore = page.url();
 
   const result = await callTool(page, "add_instance", {
     root: { x: -4, y: 7, scale: 0, roll: 12 },
@@ -120,13 +121,17 @@ test("add_instance clamps an invalid root and reports every correction", async (
     root: { x: 0, y: 1, scale: 0.02, roll: 12 },
     clamped_keys: ["root.x", "root.y", "root.scale"],
   });
+  await page.waitForTimeout(250);
+  await expect(page).toHaveURL(urlBefore);
 });
 
 test("set_rig reports root clamps alongside joint clamps", async ({ page }) => {
-  await openStudio(page, [hand({ root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} })]);
+  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
+  await openStudio(page, [hand(rig), hand(rig, "hand-2")]);
+  const urlBefore = page.url();
 
   const result = await callTool(page, "set_rig", {
-    object_id: "hand-1",
+    object_id: "hand-2",
     root: { x: -4, y: 7, scale: 99 },
     joints: { index_pip: 4 },
   });
@@ -135,6 +140,8 @@ test("set_rig reports root clamps alongside joint clamps", async ({ page }) => {
     root: { x: 0, y: 1, scale: 1.5 },
     clamped_keys: ["root.x", "root.y", "root.scale", "index_pip"],
   });
+  await page.waitForTimeout(250);
+  await expect(page).toHaveURL(urlBefore);
 });
 
 test("get_rig identifies replacement defaults when a human edit invalidated FK", async ({ page }) => {

@@ -278,7 +278,6 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
           },
         };
         await deps.saveObjects(pick.others.map((o) => (o.id === obj.id ? nextObj : o)));
-        deps.setSelected?.(nextObj.id);
         return {
           ...rigPayload(snap, nextObj),
           clamped_keys: [...rootResult.clamped_keys, ...clamped_keys],
@@ -319,7 +318,6 @@ export function rigPageTools(deps: RigToolsDeps): WebMcpTool[] {
           },
         };
         await deps.saveObjects([...snap.doc.objects, obj]);
-        deps.setSelected?.(obj.id);
         return { ...rigPayload(snap, obj), clamped_keys: rootResult.clamped_keys };
       },
     },
