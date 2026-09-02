@@ -109,47 +109,46 @@ export default function Hands({
     trackPointer(move, up);
   };
 
-  return objects.map((obj, h) => (
-    <div
-      key={obj.id}
-      className={`hand${active && !locked ? " edit" : ""}${selectedId === obj.id ? " sel" : ""}`}
-      style={{ "--c": classColor(obj.label, classes) } as CSSProperties}
-    >
-      <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
-        {connectionsFor(obj.geom.landmarks.length).map(([a, b]) => {
-          const pa = obj.geom.landmarks[a];
-          const pb = obj.geom.landmarks[b];
-          if (!pa || !pb) return null;
-          return (
-            <line
-              key={`${a}-${b}`}
-              x1={pa.x}
-              y1={pa.y}
-              x2={pb.x}
-              y2={pb.y}
-            />
-          );
-        })}
-      </svg>
-      {obj.geom.landmarks.map((p, i) => (
-        <span
-          key={i}
-          role="button"
-          tabIndex={active && !locked ? 0 : -1}
-          aria-label={nameFor(i, obj.geom.landmarks.length)}
-          className={`pt${hold?.h === h && hold.i === i ? " on" : ""}`}
-          style={ptStyle(p)}
-          onFocus={() => {
-            sel.current = { h, i };
-            onSelect(obj.id);
-          }}
-          onPointerDown={(e) => startPt(e, h, i, obj.id)}
-        >
-          <span className="chip" aria-hidden="true">
-            {i}
+  return objects.map((obj, h) => {
+    const n = obj.geom.landmarks.length;
+    // face mesh (~478): numbered chips become a solid slab — dots only
+    const mesh = n > 40;
+    return (
+      <div
+        key={obj.id}
+        className={`hand${mesh ? " mesh" : ""}${active && !locked ? " edit" : ""}${selectedId === obj.id ? " sel" : ""}`}
+        style={{ "--c": classColor(obj.label, classes) } as CSSProperties}
+      >
+        <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+          {connectionsFor(n).map(([a, b]) => {
+            const pa = obj.geom.landmarks[a];
+            const pb = obj.geom.landmarks[b];
+            if (!pa || !pb) return null;
+            return <line key={`${a}-${b}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} />;
+          })}
+        </svg>
+        {obj.geom.landmarks.map((p, i) => (
+          <span
+            key={i}
+            role="button"
+            tabIndex={active && !locked ? 0 : -1}
+            aria-label={nameFor(i, n)}
+            className={`pt${hold?.h === h && hold.i === i ? " on" : ""}`}
+            style={ptStyle(p)}
+            onFocus={() => {
+              sel.current = { h, i };
+              onSelect(obj.id);
+            }}
+            onPointerDown={(e) => startPt(e, h, i, obj.id)}
+          >
+            {!mesh && (
+              <span className="chip" aria-hidden="true">
+                {i}
+              </span>
+            )}
           </span>
-        </span>
-      ))}
-    </div>
-  ));
+        ))}
+      </div>
+    );
+  });
 }

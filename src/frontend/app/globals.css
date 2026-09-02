@@ -109,21 +109,6 @@ button.studio-back {
   font: inherit;
   padding: 0;
 }
-.rail-toggle {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  margin: 0 auto;
-  flex: none;
-  border: 0;
-  background: #fff;
-  color: #000;
-  cursor: pointer;
-  padding: 0;
-}
-.rail-toggle:hover { background: #e5e5e5; }
-.rail-toggle svg { display: block; }
 .validity {
   position: absolute;
   z-index: 5;
@@ -898,6 +883,25 @@ main.cross, main.cross:active { cursor: crosshair }
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
+/* dense face mesh — tiny screen-stable dots, not numbered chips */
+.hand.mesh .pt {
+  width: 5px;
+  height: 5px;
+  background: var(--c, #99edff);
+  box-shadow: 0 0 0 1px #111;
+  /* cap counter-scale so fit-zoom doesn't turn 478 pts into a solid slab */
+  --inv: min(1.25, calc(1 / var(--view-scale, 1)));
+}
+.hand.mesh .pt:hover,
+.hand.mesh .pt.on {
+  background: #fff;
+  box-shadow: 0 0 0 1px #111, 0 0 0 2px var(--c, #99edff);
+  transform: translate(-50%, -50%) scale(calc(var(--inv) * 1.6));
+}
+.hand.mesh.sel .pt {
+  box-shadow: 0 0 0 1px #fff;
+}
+
 .boxes { position: absolute; inset: 0; pointer-events: none; user-select: none }
 .boxes.edit { pointer-events: auto }
 /* detector-style box: white edges, label-color corners, 2px */
@@ -1063,6 +1067,19 @@ main.cross, main.cross:active { cursor: crosshair }
   flex-direction: column;
   gap: var(--rail-pad);
   width: var(--stack-w);
+}
+/* rail toggle — same panel chrome, square corners (no cut); always white icon */
+.panel.rail-tog {
+  --cut: 0px;
+  clip-path: none;
+}
+.panel.rail-tog button,
+.panel.rail-tog button:hover,
+.panel.rail-tog button[aria-pressed="true"] {
+  color: #fff;
+}
+.panel.rail-tog button svg {
+  fill: #fff;
 }
 
 .panel {
