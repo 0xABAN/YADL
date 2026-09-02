@@ -9,6 +9,27 @@ type ModelContext = {
   registerTool: (tool: WebMcpTool, opts?: { signal?: AbortSignal }) => Promise<void> | void;
 };
 
+type InvokeFn = (name: string) => void;
+const invokeListeners = new Set<InvokeFn>();
+
+/** Subscribe to any registered tool execute (Studio toast, logging, …). */
+export function onWebMcpInvoke(fn: InvokeFn): () => void {
+  invokeListeners.add(fn);
+  return () => {
+    invokeListeners.delete(fn);
+  };
+}
+
+function emitInvoke(name: string) {
+  for (const fn of invokeListeners) {
+    try {
+      fn(name);
+    } catch {
+      /* listener errors must not break tools */
+    }
+  }
+}
+
 function ctx(): ModelContext | null {
   if (typeof document === "undefined") return null;
   const mc = (document as Document & { modelContext?: ModelContext }).modelContext;
@@ -41,26 +62,30 @@ function waitCtx(signal: AbortSignal): Promise<ModelContext | null> {
   });
 }
 
+function wrapTool(tool: WebMcpTool, onInvoke?: InvokeFn): WebMcpTool {
+  return {
+    ...tool,
+    execute: (args, extra) => {
+      emitInvoke(tool.name);
+      onInvoke?.(tool.name);
+      return tool.execute(args, extra);
+    },
+  };
+}
+
 /** Register tools in parallel; no-op when WebMCP is unavailable. */
 export async function registerWebMcpTools(
   tools: WebMcpTool[],
   signal: AbortSignal,
-  opts?: { onInvoke?: (name: string) => void },
+  opts?: { onInvoke?: InvokeFn },
 ): Promise<void> {
   const mc = (await waitCtx(signal)) ?? ctx();
   if (!mc || signal.aborted) return;
   await Promise.all(
     tools.map(async (tool) => {
       if (signal.aborted) return;
-      const wrapped: WebMcpTool = {
-        ...tool,
-        execute: (args, extra) => {
-          opts?.onInvoke?.(tool.name);
-          return tool.execute(args, extra);
-        },
-      };
       try {
-        await mc.registerTool(wrapped, { signal });
+        await mc.registerTool(wrapTool(tool, opts?.onInvoke), { signal });
       } catch {
         /* host may reject */
       }

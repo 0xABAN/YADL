@@ -9,7 +9,7 @@ import { StudioProvider, useStudioSession, useStudioState } from "../session";
 import { studioPageTools } from "../tools/studioTools";
 import { rigPageTools } from "../tools/rigTools";
 import { boxPageTools, polyPageTools } from "../tools/shapeTools";
-import { registerWebMcpTools } from "@/shared/webmcp";
+import { onWebMcpInvoke, registerWebMcpTools } from "@/shared/webmcp";
 import Classes from "./Classes";
 import Comments from "./Comments";
 import Synthetic from "./Synthetic";
@@ -127,11 +127,12 @@ function StudioBody() {
             ? polyPageTools(shapeDeps)
             : []),
     ];
-    void registerWebMcpTools(tools, ac.signal, {
-      onInvoke: (name) => session.showAgentTool(name),
-    });
+    void registerWebMcpTools(tools, ac.signal);
     return () => ac.abort();
   }, [session, loadState, project?.type]);
+
+  // Live session listener — survives tool re-register / avoids destroyed-session closures
+  useEffect(() => onWebMcpInvoke((name) => session.showAgentTool(name)), [session]);
 
   const [railOn, setRailOn] = useState(true);
   const toggleRail = useCallback(() => setRailOn((v) => !v), []);
@@ -393,7 +394,7 @@ export default function Studio({ id }: { id: string }) {
     [id],
   );
   return (
-    <StudioProvider projectId={id} boot={boot}>
+    <StudioProvider key={id} projectId={id} boot={boot}>
       <StudioBody />
     </StudioProvider>
   );

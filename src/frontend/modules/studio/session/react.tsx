@@ -24,15 +24,13 @@ export function StudioProvider({
   children: ReactNode;
 }) {
   const bootRef = useRef(boot);
-  // Fresh session per mount so Strict Mode destroy + remount works
-  const [session, setSession] = useState(() => createStudioSession(projectId, bootRef.current));
+  // One session for this provider mount. Parent should remount (key=projectId) on id change.
+  const [session] = useState(() => createStudioSession(projectId, bootRef.current));
 
   useEffect(() => {
-    const s = createStudioSession(projectId, bootRef.current);
-    setSession(s);
-    void s.load();
-    return () => s.destroy();
-  }, [projectId]);
+    void session.load();
+    return () => session.destroy();
+  }, [session]);
 
   return <Ctx.Provider value={session}>{children}</Ctx.Provider>;
 }
