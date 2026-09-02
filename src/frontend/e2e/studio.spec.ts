@@ -122,7 +122,7 @@ test("studio reveals assisted image, annotation, and warning after the loader cl
   await expect(loader).toHaveCount(0, { timeout: 10_000 });
   await expect(image).toBeVisible();
   await expect(page.locator(".hand .pt").first()).toBeVisible();
-  await expect(page.locator(".validity")).toHaveText("Invalid annotation");
+  await expect(page.locator(".validity")).toHaveText("Invalid annotation: unnamed labels");
 });
 
 test("studio session: label, url state, commit", async ({ page }) => {
