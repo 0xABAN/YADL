@@ -1414,6 +1414,13 @@ main.cross, main.cross:active { cursor: crosshair }
 .hist time { color: var(--muted); font-size: 11px; font-family: var(--font); }
 .hist .empty { color: var(--muted); padding: 10px; }
 .create {
+  --create-sheet-w: clamp(360px, 35.5vw, 560px);
+  --create-side-w: clamp(144px, 13.95vw, 220px);
+  --create-page-pad: clamp(20px, 2.54vw, 40px);
+  --create-panel-pad: clamp(24px, 2.03vw, 32px);
+  --create-control-pad-y: clamp(10px, 0.76vw, 12px);
+  --create-control-pad-x: clamp(12px, 1.02vw, 16px);
+  --create-gap: clamp(6px, 0.51vw, 8px);
   position: relative;
   height: 100%;
   display: grid;
@@ -1645,7 +1652,7 @@ main.cross, main.cross:active { cursor: crosshair }
 .create.up:not(.auth) > h1 {
   flex: 0 0 auto;
   padding-bottom: 0;
-  width: min(880px, calc(100% - 80px));
+  width: min(clamp(640px, 55.8vw, 880px), calc(100% - 40px));
 }
 /* page grain only — scanlines live on .create-guide dark cells */
 .create::after {
@@ -1672,7 +1679,7 @@ main.cross, main.cross:active { cursor: crosshair }
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 20px 40px 0;
+  padding: 20px var(--create-page-pad) 0;
   background: transparent;
   border: 0;
 }
@@ -1700,13 +1707,18 @@ main.cross, main.cross:active { cursor: crosshair }
 .create.auth .word {
   position: static;
 }
-.create .body { width: min(1080px, 100%); margin: 0 auto; padding: 28px 40px 16px; overflow: auto; }
+.create .body {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 28px var(--create-page-pad) 16px;
+  overflow: auto;
+}
 .create:not(.upload) .body {
   position: relative;
   z-index: 2;
   width: 100%;
   margin: 0 auto;
-  padding: 16px 40px 0;
+  padding: 16px var(--create-page-pad) 0;
   justify-self: stretch;
   align-self: stretch;
   display: flex;
@@ -1737,7 +1749,7 @@ main.cross, main.cross:active { cursor: crosshair }
 .create:not(.auth) > h1 {
   position: relative;
   z-index: 2;
-  width: min(880px, calc(100% - 80px));
+  width: min(clamp(640px, 55.8vw, 880px), calc(100% - 40px));
   justify-self: center;
   margin: 0;
   padding: 0 0 8px;
@@ -1762,21 +1774,24 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .qr-side { view-transition-name: create-open; }
 .create .split {
   display: grid;
-  /* sheet centered in viewport; Recent/QR sit in the right free column */
-  grid-template-columns: 1fr minmax(0, 560px) 1fr;
-  column-gap: 16px;
+  /* Symmetric wings center the sheet until the side panel needs its reserved width. */
+  grid-template-columns:
+    minmax(100px, 1fr)
+    minmax(0, var(--create-sheet-w))
+    minmax(var(--create-side-w), 1fr);
+  column-gap: clamp(10px, 1.02vw, 16px);
   align-items: start;
   width: 100%;
 }
 .create .sheet {
   grid-column: 2;
   width: 100%;
-  max-width: 560px;
+  max-width: var(--create-sheet-w);
   justify-self: stretch;
 }
 .create .history {
   grid-column: 3;
-  width: 220px;
+  width: var(--create-side-w);
   justify-self: start;
 }
 .create .qr-side {
@@ -1792,14 +1807,14 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 ::view-transition-old(create-open) { animation: 0.2s ease both fade-out; }
 @keyframes fade-out { to { opacity: 0; } }
-.create h1 { font-size: 32px; font-weight: 300; letter-spacing: -0.02em; margin: 0 0 8px; }
-.create:not(.upload) h1 { font-size: 46px; line-height: 1.15; margin: 0; }
+.create h1 { font-size: clamp(26px, 2.03vw, 32px); font-weight: 300; letter-spacing: -0.02em; margin: 0 0 8px; }
+.create:not(.upload) h1 { font-size: clamp(36px, 2.92vw, 46px); line-height: 1.15; margin: 0; }
 .create h1 .ex {
   display: inline-block;
   position: relative;
-  padding: 0 12px 3px;
+  padding: 0 clamp(9px, 0.76vw, 12px) 3px;
   font-family: var(--font-display);
-  font-size: 58px;
+  font-size: clamp(44px, 3.68vw, 58px);
   font-weight: 700;
   font-style: italic;
   letter-spacing: 0;
@@ -1870,22 +1885,22 @@ main.cross, main.cross:active { cursor: crosshair }
   );
 }
 .create .sheet {
-  padding: 32px;
+  padding: var(--create-panel-pad);
   box-sizing: border-box;
 }
 .create .sheet .commit {
   display: block;
   width: 100%;
-  margin-top: 16px;
-  padding: 12px 16px;
-  font-size: 15px;
+  margin-top: clamp(12px, 1.02vw, 16px);
+  padding: var(--create-control-pad-y) var(--create-control-pad-x);
+  font-size: clamp(13px, 0.95vw, 15px);
   font-weight: 500;
   border-radius: 0;
 }
 .create .fields {
   display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--create-gap);
+  margin-bottom: clamp(9px, 0.76vw, 12px);
 }
 .create .fields .err {
   min-height: 1.2em; /* reserve so types don't jump */
@@ -1894,7 +1909,7 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .fields .k { margin: 0; }
 .create label, .create .k { display: block; font-size: 13px; font-weight: 500; margin: 0 0 8px; }
 .create input[type=text] {
-  display: block; width: 100%; padding: 12px 16px;
+  display: block; width: 100%; padding: var(--create-control-pad-y) var(--create-control-pad-x);
   border: 1px solid var(--line); border-radius: 0;
   background: #000; color: #fff; font: inherit;
 }
@@ -1904,7 +1919,7 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .types {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--create-gap);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -1912,8 +1927,8 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .types .type-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: var(--create-gap);
+  padding: var(--create-gap);
   background: #0a0a0a;
   border: 1px solid #141414;
 }
@@ -1922,7 +1937,7 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .types .type-group > button,
 .create .types .type-group > .type-card,
 .create .history a {
-  display: block; width: 100%; text-align: left; padding: 12px 16px;
+  display: block; width: 100%; text-align: left; padding: var(--create-control-pad-y) var(--create-control-pad-x);
   color: #fff; text-decoration: none;
   border: 1px solid var(--line);
   border-radius: 0;
@@ -1954,13 +1969,13 @@ main.cross, main.cross:active { cursor: crosshair }
 .create .types span { color: var(--muted); font-size: 12px; }
 .create .types .tmpl {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--create-gap);
+  margin-top: var(--create-gap);
 }
 .create .types .tmpl button {
   flex: 1;
   width: auto;
-  padding: 5px 8px;
+  padding: clamp(4px, 0.32vw, 5px) var(--create-gap);
   font-size: 12px;
   font-weight: 500;
   text-align: center;
@@ -1979,10 +1994,10 @@ main.cross, main.cross:active { cursor: crosshair }
   align-self: start;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--create-gap);
   box-sizing: border-box;
   min-height: 148px;
-  padding: 16px 12px;
+  padding: clamp(12px, 1.02vw, 16px) clamp(9px, 0.76vw, 12px);
 }
 .create .history h2 {
   padding: 0 8px;
@@ -2039,13 +2054,10 @@ main.cross, main.cross:active { cursor: crosshair }
   aspect-ratio: 1 / 1;
   background: #eee;
 }
-@media (max-width: 900px) {
-  .create .qr-side { display: none; }
-}
 .create .history-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--create-gap);
   max-height: 83px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2352,13 +2364,16 @@ main.cross, main.cross:active { cursor: crosshair }
   border: 1px solid var(--line);
 }
 @media (max-width: 800px) {
+  .create {
+    --create-sheet-w: 340px;
+    --create-side-w: 128px;
+  }
   .create:not(.upload) header { padding: 16px 24px 0; }
   .create:not(.upload) .body {
     width: auto;
     justify-self: stretch;
     padding: 16px 24px 0;
   }
-  .create .split { grid-template-columns: 1fr; }
 }
 
 /* in-app confirm — centered, no browser chrome */
