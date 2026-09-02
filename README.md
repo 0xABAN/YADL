@@ -1,4 +1,4 @@
-# YADL
+<h1 align="center">YADL</h1>
 
 <p align=center>
   <a href="https://skillicons.dev">
