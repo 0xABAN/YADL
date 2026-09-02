@@ -184,6 +184,9 @@ test("box tools preserve geometry, ambiguity rules, and the page URL", async ({ 
   const urlBefore = page.url();
 
   expect(await callTool(page, "get_boxes")).toMatchObject({ n: 0, coord_space: "norm" });
+  expect(await callTool(page, "add_box", { unit: "px", x: 0, y: 0, w: 100, h: 1 })).toMatchObject({
+    error: "too_small",
+  });
   const first = (await callTool(page, "add_box", {
     unit: "norm",
     x: 0.1,
@@ -210,6 +213,15 @@ test("box tools preserve geometry, ambiguity rules, and the page URL", async ({ 
   expect(await callTool(page, "get_boxes")).toMatchObject({ n: 2 });
   await page.waitForTimeout(250);
   await expect(page).toHaveURL(urlBefore);
+});
+
+test("shape schemas are enforced when the WebMCP host passes coercible wrong types", async ({ page }) => {
+  await openShapeStudio(page, "boxes");
+
+  expect(await callTool(page, "add_box", { unit: "norm", x: "0.1", y: 0.1, w: 0.2, h: 0.2 })).toEqual({
+    error: "invalid_arguments",
+    details: ["$.x: expected number"],
+  });
 });
 
 test("checked-in shape schemas exactly match their sources of truth", async () => {
@@ -242,6 +254,12 @@ test("polygon schemas describe both point formats and reject zero-area geometry"
       ],
     }),
   ).toMatchObject({ error: "degenerate_polygon" });
+  expect(
+    await callTool(page, "add_polygon", {
+      unit: "norm",
+      pts: [0.1, 0.1, 0.8, 0.1, 0.2, 0.8, 0.7, 0.8],
+    }),
+  ).toMatchObject({ error: "self_intersection" });
   expect(await callTool(page, "add_polygon", { unit: "norm", pts: [0.1, 0.1, 0.2] })).toEqual({
     error: "bad_geom",
   });

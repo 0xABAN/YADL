@@ -7,7 +7,7 @@
     },
     {
       "name": "add_polygon",
-      "description": "Create one polygon. unit required: norm or px (natural image pixels only). pts: [{x,y},…] or flat [x0,y0,…] (≥3 verts). Optional label. Full contour only — no vertex micro-ops.",
+      "description": "Create one simple, non-zero-area polygon. unit required: norm or px (natural image pixels only). pts: [{x,y},…] or flat [x0,y0,…] (≥3 verts). Optional label. Full contour only — no vertex micro-ops.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -43,7 +43,7 @@
     },
     {
       "name": "set_polygon",
-      "description": "Replace full polygon pts (≥3). object_id required when more than one polygon. unit required. Does not set label — use set_label. Echoes norm pts + clamped_keys.",
+      "description": "Replace full polygon pts with a simple, non-zero-area contour (≥3). object_id required when more than one polygon. unit required. Does not set label — use set_label. Echoes norm pts + clamped_keys.",
       "inputSchema": {
         "type": "object",
         "properties": {

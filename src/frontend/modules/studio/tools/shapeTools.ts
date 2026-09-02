@@ -96,7 +96,7 @@ export const POLY_TOOL_SCHEMAS = {
     {
       name: "add_polygon",
       description:
-        "Create one polygon. unit required: norm or px (natural image pixels only). pts: [{x,y},…] or flat [x0,y0,…] (≥3 verts). Optional label. Full contour only — no vertex micro-ops.",
+        "Create one simple, non-zero-area polygon. unit required: norm or px (natural image pixels only). pts: [{x,y},…] or flat [x0,y0,…] (≥3 verts). Optional label. Full contour only — no vertex micro-ops.",
       inputSchema: {
         type: "object",
         properties: {
@@ -114,7 +114,7 @@ export const POLY_TOOL_SCHEMAS = {
     {
       name: "set_polygon",
       description:
-        "Replace full polygon pts (≥3). object_id required when more than one polygon. unit required. Does not set label — use set_label. Echoes norm pts + clamped_keys.",
+        "Replace full polygon pts with a simple, non-zero-area contour (≥3). object_id required when more than one polygon. unit required. Does not set label — use set_label. Echoes norm pts + clamped_keys.",
       inputSchema: {
         type: "object",
         properties: {
@@ -185,7 +185,7 @@ function clampBox(b: NormBox): { box: NormBox; clamped_keys: string[] } {
 function tooSmallBox(b: NormBox, size: { w: number; h: number } | null): boolean {
   if (!(b.w > 0) || !(b.h > 0)) return true;
   if (!size) return false;
-  return b.w * size.w < 4 && b.h * size.h < 4;
+  return b.w * size.w < 4 || b.h * size.h < 4;
 }
 
 function clampPts(pts: Pt[]): { pts: Pt[]; clamped_keys: string[] } {
@@ -223,6 +223,46 @@ function polygonArea(pts: Pt[]): number {
     twiceArea += current.x * next.y - next.x * current.y;
   }
   return Math.abs(twiceArea) / 2;
+}
+
+function cross(a: Pt, b: Pt, c: Pt): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+function onSegment(a: Pt, b: Pt, p: Pt): boolean {
+  const epsilon = 1e-9;
+  return (
+    Math.abs(cross(a, b, p)) <= epsilon &&
+    p.x >= Math.min(a.x, b.x) - epsilon &&
+    p.x <= Math.max(a.x, b.x) + epsilon &&
+    p.y >= Math.min(a.y, b.y) - epsilon &&
+    p.y <= Math.max(a.y, b.y) + epsilon
+  );
+}
+
+function segmentsIntersect(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+  const abC = cross(a, b, c);
+  const abD = cross(a, b, d);
+  const cdA = cross(c, d, a);
+  const cdB = cross(c, d, b);
+  if ((abC > 0) !== (abD > 0) && (cdA > 0) !== (cdB > 0)) return true;
+  return (
+    onSegment(a, b, c) || onSegment(a, b, d) || onSegment(c, d, a) || onSegment(c, d, b)
+  );
+}
+
+function selfIntersects(pts: Pt[]): boolean {
+  for (let i = 0; i < pts.length; i += 1) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    for (let j = i + 1; j < pts.length; j += 1) {
+      if (j === i + 1 || (i === 0 && j === pts.length - 1)) continue;
+      const c = pts[j];
+      const d = pts[(j + 1) % pts.length];
+      if (segmentsIntersect(a, b, c, d)) return true;
+    }
+  }
+  return false;
 }
 
 function currentDoc(
@@ -495,6 +535,7 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         const { pts, clamped_keys } = clampPts(conv.pts);
         if (tooSmallPoly(pts, size)) return { error: "too_small", ...dims(deps) };
         if (polygonArea(pts) <= 1e-8) return { error: "degenerate_polygon", ...dims(deps) };
+        if (selfIntersects(pts)) return { error: "self_intersection", ...dims(deps) };
         const label = parseLabel(args.label) ?? null;
         if (label && !(await deps.ensureClass(label))) return { error: "class_create_failed" };
         const obj: PolyObj = {
@@ -528,6 +569,7 @@ export function polyPageTools(deps: ShapeToolsDeps): WebMcpTool[] {
         const { pts, clamped_keys } = clampPts(conv.pts);
         if (tooSmallPoly(pts, size)) return { error: "too_small", ...dims(deps) };
         if (polygonArea(pts) <= 1e-8) return { error: "degenerate_polygon", ...dims(deps) };
+        if (selfIntersects(pts)) return { error: "self_intersection", ...dims(deps) };
         const updated: PolyObj = { ...pick.obj, edited: true, geom: { t: "polygon", pts } };
         if (
           !(await persistObjects(
