@@ -2,11 +2,13 @@
 
 <p align=center>
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=python,ts,js,java,cs,cpp,pytorch,fastapi,flask,nodejs,postgres,mongodb,aws,azure,git" alt="python,ts,js,java,cs,cpp,pytorch,fastapi,flask,nodejs,postgres,mongodb,aws,azure,git" />
+    <img src="https://skillicons.dev/icons?i=python,typescript,fastapi,nextjs,react,postgres,aws,docker,vercel" alt="python, typescript, fastapi, nextjs, react, postgres, aws, docker, vercel" />
   </a>
 </p>
 
-*Yet another data labeler*, but in this one, you don't have to click.
+<p align="center">
+  <em>Yet another data labeler, but in this one, you don't have to click.</em>
+</p>
 
 ## Why this exists
 
