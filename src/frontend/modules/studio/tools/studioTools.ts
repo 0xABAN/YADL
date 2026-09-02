@@ -34,7 +34,7 @@ export type StudioSnapshot = {
 export const STUDIO_GUIDE = [
   "Prefer registered WebMCP tools for navigation, geometry, labels, and commit. Canvas clicks are human UX; use tools when they exist.",
   "After writes, take screenshots often and verify annotations visually — do not assume success from a tool OK alone.",
-  "Bad or ambiguous frames: delete_image (soft-delete, recoverable anytime). Do not force labels on junk; uploads are not guaranteed clean.",
+  "Bad or ambiguous frames: delete_image soft-deletes the frame. Recovery is only available from the five-second human UI undo; WebMCP has no restore tool.",
   "Work one image at a time via open_image. get_studio shows progress, can_commit, invalid_reasons, and unlabeled ids — its objects list has no geometry.",
   "commit_image only when can_commit (≥1 named label). First successful commit advances the filmstrip.",
   "Geometry is on type-specific tools listed in geometry_tools — read those tool schemas for args; this guide does not teach them.",
@@ -152,6 +152,10 @@ export const STUDIO_TOOL_SCHEMAS = {
           id: { type: "string", description: "Comment id; required for delete" },
         },
         required: ["op"],
+        oneOf: [
+          { properties: { op: { const: "add" } }, required: ["op", "body"] },
+          { properties: { op: { const: "delete" } }, required: ["op", "id"] },
+        ],
         additionalProperties: false,
       },
     },
@@ -362,7 +366,9 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       execute: async (args) => {
         const res = await deps.listComments();
         if (!res.ok) return { error: res.error };
+        const hasImageId = args.image_id !== undefined && args.image_id !== null;
         const iid = typeof args.image_id === "string" ? args.image_id.trim() : "";
+        if (hasImageId && !iid) return { error: "bad_image_id" };
         const images = iid ? res.images.filter((x) => x.id === iid) : res.images;
         if (iid && !images.length) return { error: "not_found" };
         const n_comments = images.reduce((n, x) => n + x.comments.length, 0);
@@ -396,6 +402,11 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         if (op === "delete") {
           const cid = String(args.id ?? "").trim();
           if (!cid) return { error: "need_id" };
+          const current = currentSummary(deps.get());
+          if (!current) return { error: "no_image" };
+          if (!current.comments.some((comment) => comment.id === cid)) {
+            return { error: "not_found" };
+          }
           const res = await deps.deleteComment(cid);
           if (!res.ok) return { error: res.error };
           return { comments: currentSummary(deps.get())?.comments ?? [] };

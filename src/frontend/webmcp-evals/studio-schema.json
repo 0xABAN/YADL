@@ -138,6 +138,16 @@
         "required": [
           "op"
         ],
+        "oneOf": [
+          {
+            "properties": { "op": { "const": "add" } },
+            "required": ["op", "body"]
+          },
+          {
+            "properties": { "op": { "const": "delete" } },
+            "required": ["op", "id"]
+          }
+        ],
         "additionalProperties": false
       }
     }

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 type RegisteredTool = {
   name: string;
+  inputSchema: Record<string, unknown>;
   execute: (args: Record<string, unknown>) => unknown;
 };
 
@@ -42,6 +43,7 @@ async function installWebMcpHost(page: Page) {
     });
     Object.assign(window, {
       __webMcpCall: (name: string, args: Record<string, unknown> = {}) => tools.get(name)?.execute(args),
+      __webMcpSchema: (name: string) => tools.get(name)?.inputSchema,
       __webMcpNames: () => [...tools.keys()],
     });
   });
@@ -49,6 +51,16 @@ async function installWebMcpHost(page: Page) {
 
 async function mockStudio(page: Page, initialObjects: unknown[]) {
   let objects = initialObjects;
+  let comments: { id: string; body: string; at: string }[] = [];
+  const imageDoc = () => ({
+    id: IID,
+    image: "hand.jpg",
+    url: "/default.jpg",
+    committed: false,
+    objects,
+    comments,
+    history: [],
+  });
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^\/api/, "");
@@ -62,16 +74,7 @@ async function mockStudio(page: Page, initialObjects: unknown[]) {
       return route.fulfill({ json: [{ id: IID, filename: "hand.jpg", committed: false, empty: false }] });
     }
     if (path === `/projects/${PID}/images/${IID}` && method === "GET") {
-      return route.fulfill({
-        json: {
-          id: IID,
-          image: "hand.jpg",
-          url: "/default.jpg",
-          committed: false,
-          objects,
-          history: [],
-        },
-      });
+      return route.fulfill({ json: imageDoc() });
     }
     if (path === `/projects/${PID}/images/${IID}` && method === "PUT") {
       objects = (request.postDataJSON() as { objects: unknown[] }).objects;
@@ -81,6 +84,23 @@ async function mockStudio(page: Page, initialObjects: unknown[]) {
       return route.fulfill({
         json: { id: PID, name: "WebMCP rig", type: "keypoints", template: "hand", classes: [] },
       });
+    }
+    if (path === `/projects/${PID}/comments` && method === "GET") {
+      return route.fulfill({
+        json: {
+          images: [{ id: IID, filename: "hand.jpg", index: 0, comments }],
+        },
+      });
+    }
+    if (path === `/projects/${PID}/images/${IID}/comments` && method === "POST") {
+      const body = String((request.postDataJSON() as { body?: unknown }).body ?? "");
+      comments = [{ id: "comment-1", body, at: "2026-09-02T12:00:00Z" }, ...comments];
+      return route.fulfill({ json: imageDoc() });
+    }
+    if (path.startsWith(`/projects/${PID}/images/${IID}/comments/`) && method === "DELETE") {
+      const id = path.split("/").at(-1);
+      comments = comments.filter((comment) => comment.id !== id);
+      return route.fulfill({ json: imageDoc() });
     }
     return route.fulfill({ status: 404, body: `unmocked ${method} ${path}` });
   });
@@ -162,4 +182,53 @@ test("get_rig preserves valid zero root coordinates from persisted data", async 
   const result = await callTool(page, "get_rig", { object_id: "hand-1" });
 
   expect(result).toMatchObject({ root: { x: 0, y: 0, scale: 0.3, roll: 0 } });
+});
+
+test("get_comments rejects a supplied blank image id instead of dropping the filter", async ({ page }) => {
+  await openStudio(page, [hand(undefined)]);
+
+  const result = await callTool(page, "get_comments", { image_id: "   " });
+
+  expect(result).toEqual({ error: "bad_image_id" });
+});
+
+test("comment schema encodes the operation-specific required field", async ({ page }) => {
+  await openStudio(page, [hand(undefined)]);
+
+  const schema = await page.evaluate(() => {
+    const host = window as typeof window & {
+      __webMcpSchema?: (name: string) => Record<string, unknown> | undefined;
+    };
+    return host.__webMcpSchema?.("comment");
+  });
+
+  expect(schema).toMatchObject({
+    oneOf: [
+      { properties: { op: { const: "add" } }, required: ["op", "body"] },
+      { properties: { op: { const: "delete" } }, required: ["op", "id"] },
+    ],
+  });
+});
+
+test("studio_guide states the real recovery boundary for deleted images", async ({ page }) => {
+  await openStudio(page, [hand(undefined)]);
+
+  const result = await callTool(page, "studio_guide");
+
+  expect(result.guide).toContain(
+    "Bad or ambiguous frames: delete_image soft-deletes the frame. Recovery is only available from the five-second human UI undo; WebMCP has no restore tool.",
+  );
+});
+
+test("comment add/delete round-trips and rejects an unknown comment id", async ({ page }) => {
+  await openStudio(page, [hand(undefined)]);
+
+  const added = await callTool(page, "comment", { op: "add", body: "Needs human review" });
+  expect(added).toMatchObject({ comments: [{ id: "comment-1", body: "Needs human review" }] });
+
+  const missing = await callTool(page, "comment", { op: "delete", id: "missing-comment" });
+  expect(missing).toEqual({ error: "not_found" });
+
+  const deleted = await callTool(page, "comment", { op: "delete", id: "comment-1" });
+  expect(deleted).toEqual({ comments: [] });
 });
