@@ -20,6 +20,7 @@ export type StudioCurrent = {
   unlabeled: string[];
   objects: { id: string; kind: string; label: string | null }[];
   comments: { id: string; body: string; at?: string | null }[];
+  loading: boolean;
 };
 
 export type StudioSnapshot = {
@@ -211,20 +212,22 @@ export function currentSummary(snap: StudioSnapshot): StudioCurrent | null {
   if (!list.length) return null;
   const i = Math.min(Math.max(0, index), list.length - 1);
   const row = list[i];
-  const objects = doc?.id === row.id ? doc.objects : [];
+  const docReady = doc?.id === row.id;
+  const objects = docReady ? doc.objects : [];
   const unlabeled = objects.filter((o) => !named(o.label)).map((o) => o.id);
-  const status = commitStatus(objects);
+  const status = docReady ? commitStatus(objects) : { can_commit: false, reasons: ["image_loading"] };
   return {
     id: row.id,
     index: i,
     filename: row.filename,
-    committed: Boolean(row.committed || doc?.committed),
-    empty: row.empty ?? objects.length === 0,
+    committed: Boolean(row.committed || (docReady && doc.committed)),
+    empty: docReady ? objects.length === 0 : Boolean(row.empty),
     can_commit: status.can_commit,
     invalid_reasons: status.reasons,
     unlabeled,
     objects: slimObjects(objects),
-    comments: doc?.id === row.id ? slimComments(doc.comments) : [],
+    comments: docReady ? slimComments(doc.comments) : [],
+    loading: !docReady,
   };
 }
 
@@ -310,7 +313,9 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
 
         const row = list[target];
         deps.setIndex(target);
-        if (deps.waitForImage) await deps.waitForImage(row.id, 2500);
+        if (deps.waitForImage && !(await deps.waitForImage(row.id, 2500))) {
+          return { error: "image_load_timeout", image_id: row.id };
+        }
         return { current: currentSummary(deps.get()) };
       },
     },
@@ -350,6 +355,17 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       execute: async () => {
         const res = await deps.commitCurrent();
         if (!res.ok) return { error: res.error, reason: res.reason };
+        if (res.advanced && deps.waitForImage) {
+          const target = currentSummary(deps.get());
+          if (target && !(await deps.waitForImage(target.id, 2500))) {
+            return {
+              ok: true,
+              advanced: true,
+              current: currentSummary(deps.get()),
+              warning: "next_image_load_timeout",
+            };
+          }
+        }
         return { ok: true, advanced: res.advanced, current: currentSummary(deps.get()) };
       },
     },
@@ -358,6 +374,14 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       execute: async () => {
         const res = await deps.deleteCurrent();
         if (!res.ok) return { error: res.error };
+        const target = currentSummary(deps.get());
+        if (target && deps.waitForImage && !(await deps.waitForImage(target.id, 2500))) {
+          return {
+            deleted_id: res.deleted_id,
+            current: currentSummary(deps.get()),
+            warning: "next_image_load_timeout",
+          };
+        }
         return { deleted_id: res.deleted_id, current: currentSummary(deps.get()) };
       },
     },

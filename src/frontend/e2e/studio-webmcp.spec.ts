@@ -129,6 +129,62 @@ async function openStudio(page: Page, initialObjects: unknown[]) {
   })).toBe(true);
 }
 
+async function openTwoImageStudio(page: Page, secondDelayMs: number) {
+  await installWebMcpHost(page);
+  const rig = { root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} };
+  const docs = {
+    "image-1": { ...hand(rig, "hand-1"), label: "first" },
+    "image-2": { ...hand(rig, "hand-2"), label: "second" },
+  };
+  let deletedFirst = false;
+  await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api/, "");
+    const method = request.method();
+    if (path === `/projects/${PID}` && method === "GET") {
+      return route.fulfill({
+        json: { id: PID, name: "WebMCP navigation", type: "keypoints", template: "hand", classes: ["first", "second"] },
+      });
+    }
+    if (path === `/projects/${PID}/images` && method === "GET") {
+      const images = [
+        { id: "image-1", filename: "first.jpg", committed: false, empty: false },
+        { id: "image-2", filename: "second.jpg", committed: false, empty: false },
+      ];
+      return route.fulfill({ json: deletedFirst ? images.slice(1) : images });
+    }
+    const match = path.match(new RegExp(`^/projects/${PID}/images/(image-[12])$`));
+    if (match && method === "GET") {
+      if (match[1] === "image-2" && secondDelayMs) await new Promise((resolve) => setTimeout(resolve, secondDelayMs));
+      return route.fulfill({
+        json: {
+          id: match[1],
+          image: `${match[1]}.jpg`,
+          url: "/default.jpg",
+          committed: false,
+          objects: [docs[match[1] as keyof typeof docs]],
+          comments: [],
+          history: [],
+        },
+      });
+    }
+    if (path === `/projects/${PID}/images/image-1/commit` && method === "POST") {
+      return route.fulfill({ json: { history: [] } });
+    }
+    if (path === `/projects/${PID}/images/image-1` && method === "DELETE") {
+      deletedFirst = true;
+      return route.fulfill({ json: { ok: true } });
+    }
+    return route.fulfill({ status: 404, body: `unmocked ${method} ${path}` });
+  });
+  await page.goto(`/studio/${PID}`);
+  await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => page.evaluate(() => {
+    const host = window as typeof window & { __webMcpNames?: () => string[] };
+    return host.__webMcpNames?.().includes("open_image") ?? false;
+  })).toBe(true);
+}
+
 test("add_instance clamps an invalid root and reports every correction", async ({ page }) => {
   await openStudio(page, [hand({ root: { x: 0.5, y: 0.5, scale: 0.22, roll: 0 }, joints: {} })]);
   const urlBefore = page.url();
@@ -231,4 +287,52 @@ test("comment add/delete round-trips and rejects an unknown comment id", async (
 
   const deleted = await callTool(page, "comment", { op: "delete", id: "comment-1" });
   expect(deleted).toEqual({ comments: [] });
+});
+
+test("open_image reports a timeout without exposing the previous image document", async ({ page }) => {
+  await openTwoImageStudio(page, 3_000);
+
+  const result = await callTool(page, "open_image", { index: 1 });
+  expect(result).toEqual({ error: "image_load_timeout", image_id: "image-2" });
+
+  const studio = await callTool(page, "get_studio");
+  expect(studio.current).toMatchObject({
+    id: "image-2",
+    committed: false,
+    loading: true,
+    objects: [],
+  });
+});
+
+test("commit_image waits for and returns the advanced image", async ({ page }) => {
+  await openTwoImageStudio(page, 500);
+
+  const result = await callTool(page, "commit_image");
+
+  expect(result).toMatchObject({
+    ok: true,
+    advanced: true,
+    current: {
+      id: "image-2",
+      committed: false,
+      loading: false,
+      objects: [{ id: "hand-2", label: "second" }],
+    },
+  });
+});
+
+test("delete_image waits for and returns the successor image", async ({ page }) => {
+  await openTwoImageStudio(page, 500);
+
+  const result = await callTool(page, "delete_image");
+
+  expect(result).toMatchObject({
+    deleted_id: "image-1",
+    current: {
+      id: "image-2",
+      committed: false,
+      loading: false,
+      objects: [{ id: "hand-2", label: "second" }],
+    },
+  });
 });

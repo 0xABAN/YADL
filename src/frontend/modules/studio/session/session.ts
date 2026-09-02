@@ -188,7 +188,7 @@ export class StudioSession {
     const n = this.state.list.length;
     const next = n ? Math.min(Math.max(0, i), n - 1) : 0;
     if (next === this.state.index) return;
-    this.patch({ index: next });
+    this.patch({ index: next, doc: null, selected: null });
     void this.loadCurrentImage();
   }
 
@@ -217,7 +217,7 @@ export class StudioSession {
           resolve(false);
           return;
         }
-        requestAnimationFrame(tick);
+        setTimeout(tick, 16);
       };
       tick();
     });
@@ -338,7 +338,7 @@ export class StudioSession {
       edit: null,
       histOpen: false,
       commentsOpen: false,
-      doc: next.length === 0 ? null : this.state.doc,
+      doc: null,
       index: ni,
     });
     if (next.length) void this.loadCurrentImage();
