@@ -60,6 +60,15 @@ def execute(sql: str, params: tuple = ()):
             cur.execute(sql, params)
 
 
+def iterate(sql: str, params: tuple = (), *, batch_size: int = 200):
+    """Yield rows from a server-side cursor without buffering the result set."""
+    with pool().connection() as conn:
+        with conn.cursor(name=f"yadl_stream_{os.urandom(6).hex()}") as cur:
+            cur.itersize = batch_size
+            cur.execute(sql, params)
+            yield from cur
+
+
 def apply_schema() -> None:
     sql = (ROOT / "schema.sql").read_text()
     with pool().connection() as conn:

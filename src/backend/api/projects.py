@@ -1,6 +1,7 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.api.deps import uid
@@ -95,7 +96,7 @@ def dump(pid: str, user: str = Depends(uid)):
         raise HTTPException(404)
     name, body = out
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name) or "export"
-    return Response(
+    return StreamingResponse(
         body,
         media_type="application/x-ndjson",
         headers={"Content-Disposition": f'attachment; filename="{safe}.jsonl"'},

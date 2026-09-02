@@ -8,7 +8,6 @@ import {
   INTERVAL_MIN,
   INTERVAL_STEP,
   MAX_B,
-  MAX_N,
   clampInterval,
   filterFiles,
   fmtSize,
@@ -29,15 +28,12 @@ export type SubmitOpts = {
 function UploadPanel({
   busy = false,
   err = null,
-  existing = 0,
   submitLabel = "Upload",
   onSubmit,
   onCancel,
 }: {
   busy?: boolean;
   err?: string | null;
-  /** images already in the project (studio add) */
-  existing?: number;
   submitLabel?: string;
   onSubmit: (files: File[], opts: SubmitOpts) => void | Promise<void>;
   onCancel?: () => void;
@@ -57,12 +53,10 @@ function UploadPanel({
     };
   }, []);
 
-  const room = Math.max(0, MAX_N - existing);
   const hasVideo = rows.some((r) => r.kind === "video");
   const hasZip = rows.some((r) => r.kind === "zip");
   const totalBytes = rows.reduce((n, r) => n + r.file.size, 0);
   const overSize = totalBytes > MAX_B;
-  const overCount = rows.filter((r) => r.kind === "image").length > room;
   const canSend = rows.length > 0 && !busy && !overSize;
 
   const pct =
@@ -271,9 +265,6 @@ function UploadPanel({
         <small className="err">{skipped} skipped — unsupported type.</small>
       )}
       {overSize && <small className="err">Over {fmtSize(MAX_B)} total.</small>}
-      {overCount && !overSize && (
-        <small className="err">May exceed {room} remaining image slots (max {MAX_N}).</small>
-      )}
       {err && <small className="err">{err}</small>}
 
       {!busy ? (

@@ -10,7 +10,6 @@ export default function StudioUpload() {
   const uploadOpen = useStudioState((s) => s.uploadOpen);
   const uploadBusy = useStudioState((s) => s.uploadBusy);
   const uploadErr = useStudioState((s) => s.uploadErr);
-  const listLen = useStudioState((s) => s.list.length);
 
   if (!uploadOpen) return null;
 
@@ -29,7 +28,6 @@ export default function StudioUpload() {
         <UploadPanel
           busy={uploadBusy}
           err={uploadErr}
-          existing={listLen}
           submitLabel="Add"
           onCancel={() => session.closeUpload()}
           onSubmit={async (files, opts) => {

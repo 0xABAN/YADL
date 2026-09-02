@@ -40,6 +40,9 @@ function StudioBody() {
   const {
     project,
     list,
+    pageOffset,
+    total,
+    committedCount,
     index,
     doc,
     selected,
@@ -78,7 +81,7 @@ function StudioBody() {
 
   useEffect(() => {
     session.clampIndexToList();
-  }, [list.length, index, session]);
+  }, [total, index, session]);
 
   const imageSizeRef = useRef<{
     imageId: string | null;
@@ -113,6 +116,9 @@ function StudioBody() {
       ...studioPageTools({
         get: () => session.snapshot(),
         setIndex: (i) => session.setIndex(i),
+        openImageAt: (i) => session.openImageAt(i),
+        openImageById: (id) => session.openImageById(id),
+        openNextUncommitted: () => session.nextOpen(),
         saveObjects,
         ensureClass: (name) => session.ensureClass(name),
         commitCurrent: () => session.commitCurrent(),
@@ -161,9 +167,9 @@ function StudioBody() {
   const validityLabel = canCommit
     ? "Valid annotation"
     : `Invalid annotation: ${commitReasons.join(", ") || "blocked"}`;
-  const nCommitted = list.filter((x) => x.committed).length;
-  const idx = list.length ? Math.min(index, list.length - 1) : 0;
-  const canNextOpen = list.some((x, i) => !x.committed && i !== idx);
+  const currentRow = list[index - pageOffset];
+  const nCommitted = committedCount;
+  const canNextOpen = total - committedCount > (currentRow?.committed ? 0 : 1);
 
   const stamp = useCallback(
     async (name: string) => {
@@ -187,7 +193,7 @@ function StudioBody() {
   // Project/image/assist wait is short — silent chrome + center tetris, no copy.
   const canvasBusy =
     loadState === "loading" ||
-    (loadState === "ready" && list.length > 0 && (!doc?.url || assistBusy));
+    (loadState === "ready" && total > 0 && (!doc?.url || assistBusy));
 
   const save = useCallback((objs: AnnObj[]) => void session.saveObjects(objs), [session]);
 
@@ -216,7 +222,7 @@ function StudioBody() {
         </button>
       )}
       <h1 className="sr-only">Studio{project ? ` — ${project.name}` : ""}</h1>
-      {loadState === "ready" && list.length > 0 && doc && !assistBusy && (
+      {loadState === "ready" && total > 0 && doc && !assistBusy && (
         <div className={`validity ${canCommit ? "ok" : "bad"}`} aria-live="polite">
           {validityLabel}
         </div>
@@ -240,7 +246,7 @@ function StudioBody() {
       <div id="studio-main">
         <Canvas
           src={doc?.url ?? undefined}
-          alt={doc?.image || (list.length === 0 ? "No images" : "Sample")}
+          alt={doc?.image || (total === 0 ? "No images" : "Sample")}
           objects={doc ? objects : []}
           projectType={project?.type ?? "keypoints"}
           classes={classes}
@@ -282,11 +288,11 @@ function StudioBody() {
       )}
       <Footer
         path={doc && project ? `${project.name}/${doc.image}` : ""}
-        index={list.length ? Math.min(index, list.length - 1) : 0}
-        n={list.length}
+        index={total ? Math.min(index, total - 1) : 0}
+        n={total}
         onPrev={() => session.setIndex(index - 1)}
         onNext={() => session.setIndex(index + 1)}
-        onNextOpen={() => session.nextOpen()}
+        onNextOpen={() => void session.nextOpen()}
         onDelete={() => void session.deleteCurrent()}
         onAdd={() => session.openUpload()}
         onCommit={async () => {

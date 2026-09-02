@@ -27,6 +27,10 @@ export type StudioSnapshot = {
   projectId: string;
   project: Project | null;
   list: StudioImgRow[];
+  pageOffset: number;
+  total: number;
+  committedCount: number;
+  emptyCount: number;
   index: number;
   doc: Doc | null;
 };
@@ -174,6 +178,9 @@ export const STUDIO_TOOL_SCHEMAS = {
 export type StudioToolsDeps = {
   get: () => StudioSnapshot;
   setIndex: (i: number) => void;
+  openImageAt: (i: number) => Promise<string | null>;
+  openImageById: (id: string) => Promise<string | null>;
+  openNextUncommitted: () => Promise<string | null>;
   /** Persist objects on current doc (optimistic local, awaited network). */
   saveObjects: (objects: AnnObj[]) => Promise<boolean>;
   ensureClass: (name: string) => Promise<boolean>;
@@ -216,10 +223,11 @@ function slimComments(comments: Comment[] | undefined) {
 }
 
 export function currentSummary(snap: StudioSnapshot): StudioCurrent | null {
-  const { list, index, doc } = snap;
-  if (!list.length) return null;
-  const i = Math.min(Math.max(0, index), list.length - 1);
-  const row = list[i];
+  const { list, pageOffset, total, index, doc } = snap;
+  if (!total) return null;
+  const i = Math.min(Math.max(0, index), total - 1);
+  const row = list[i - pageOffset];
+  if (!row) return null;
   const docReady = doc?.id === row.id;
   const objects = docReady ? doc.objects : [];
   const unlabeled = objects.filter((o) => !named(o.label)).map((o) => o.id);
@@ -241,7 +249,6 @@ export function currentSummary(snap: StudioSnapshot): StudioCurrent | null {
 
 function studioPayload(snap: StudioSnapshot) {
   const p = snap.project;
-  const list = snap.list;
   return {
     project: p
       ? {
@@ -253,9 +260,9 @@ function studioPayload(snap: StudioSnapshot) {
         }
       : null,
     progress: {
-      n: list.length,
-      committed: list.filter((x) => x.committed).length,
-      empty: list.filter((x) => x.empty).length,
+      n: snap.total,
+      committed: snap.committedCount,
+      empty: snap.emptyCount,
     },
     current: currentSummary(snap),
     export_url: `/api/projects/${snap.projectId}/export`,
@@ -297,32 +304,22 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         const sel = pickOneSelector(args);
         if (!sel.ok) return { error: sel.error };
         const snap = deps.get();
-        const { list, index } = snap;
-        if (!list.length) return { error: "no_images" };
+        if (!snap.total) return { error: "no_images" };
 
-        let target = -1;
+        let imageId: string | null;
         if (sel.kind === "index") {
-          if (sel.index! >= list.length) return { error: "index_out_of_range" };
-          target = sel.index!;
+          if (sel.index! >= snap.total) return { error: "index_out_of_range" };
+          imageId = await deps.openImageAt(sel.index!);
         } else if (sel.kind === "id") {
-          target = list.findIndex((x) => x.id === sel.id);
-          if (target < 0) return { error: "not_found" };
+          imageId = await deps.openImageById(sel.id!);
+          if (!imageId) return { error: "not_found" };
         } else {
-          const i = Math.min(index, list.length - 1);
-          for (let k = 1; k < list.length; k++) {
-            const j = (i + k) % list.length;
-            if (!list[j].committed) {
-              target = j;
-              break;
-            }
-          }
-          if (target < 0) return { error: "no_uncommitted" };
+          imageId = await deps.openNextUncommitted();
+          if (!imageId) return { error: "no_uncommitted" };
         }
-
-        const row = list[target];
-        deps.setIndex(target);
-        if (deps.waitForImage && !(await deps.waitForImage(row.id, 2500))) {
-          return { error: "image_load_timeout", image_id: row.id };
+        if (!imageId) return { error: "image_load_failed" };
+        if (deps.waitForImage && !(await deps.waitForImage(imageId, 2500))) {
+          return { error: "image_load_timeout", image_id: imageId };
         }
         return { current: currentSummary(deps.get()) };
       },

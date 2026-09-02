@@ -4,7 +4,6 @@ export const ZIP_EXTS = [".zip"] as const;
 export const ALL_EXTS = [...IMG_EXTS, ...VID_EXTS, ...ZIP_EXTS] as const;
 export const ACCEPT = ALL_EXTS.join(",");
 
-export const MAX_N = 500;
 export const MAX_B = 100 * 1024 * 1024;
 export const INTERVAL_MIN = 0.1;
 export const INTERVAL_MAX = 5;

@@ -15,6 +15,11 @@ function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
     projectId,
     project: null,
     list: [],
+    pageOffset: 0,
+    pageLimit: 100,
+    total: 0,
+    committedCount: 0,
+    emptyCount: 0,
     index: 0,
     doc: null,
     selected: null,
@@ -68,6 +73,10 @@ export class StudioSession {
       projectId: s.projectId,
       project: s.project,
       list: s.list,
+      pageOffset: s.pageOffset,
+      total: s.total,
+      committedCount: s.committedCount,
+      emptyCount: s.emptyCount,
       index: s.index,
       doc: s.doc,
     };
@@ -99,14 +108,21 @@ export class StudioSession {
   async load() {
     this.patch({ loadState: "loading" });
     try {
-      const [p, imgs] = await Promise.all([
+      const { index, pageLimit } = this.state;
+      const offset = Math.floor(index / pageLimit) * pageLimit;
+      const [p, page] = await Promise.all([
         studioApi.fetchProject(this.state.projectId),
-        studioApi.fetchImages(this.state.projectId),
+        studioApi.fetchImages(this.state.projectId, offset, pageLimit),
       ]);
       if (!p || typeof p !== "object" || !("id" in p)) throw new Error("project");
       this.patch({
         project: p,
-        list: imgs,
+        list: page.items,
+        pageOffset: page.offset,
+        total: page.total,
+        committedCount: page.committed,
+        emptyCount: page.empty,
+        index: page.total ? Math.min(index, page.total - 1) : 0,
         assistOn: p.type === "keypoints",
         assistedIds: new Set(),
         loadState: "ready",
@@ -115,6 +131,46 @@ export class StudioSession {
     } catch {
       this.patch({ loadState: "error" });
     }
+  }
+
+  private rowAt(index: number) {
+    const { list, pageOffset } = this.state;
+    return list[index - pageOffset];
+  }
+
+  private async ensurePage(index: number) {
+    const row = this.rowAt(index);
+    if (row) return row;
+    const { pageLimit, projectId } = this.state;
+    const offset = Math.floor(index / pageLimit) * pageLimit;
+    const page = await studioApi.fetchImages(projectId, offset, pageLimit);
+    this.patch({
+      list: page.items,
+      pageOffset: page.offset,
+      total: page.total,
+      committedCount: page.committed,
+      emptyCount: page.empty,
+    });
+    return page.items[index - page.offset];
+  }
+
+  async refreshCatalog(keepIndex = this.state.index) {
+    const { pageLimit, projectId } = this.state;
+    const offset = Math.floor(Math.max(0, keepIndex) / pageLimit) * pageLimit;
+    let page = await studioApi.fetchImages(projectId, offset, pageLimit);
+    if (!page.items.length && page.total && offset > 0) {
+      const last = Math.floor((page.total - 1) / pageLimit) * pageLimit;
+      page = await studioApi.fetchImages(projectId, last, pageLimit);
+    }
+    const index = page.total ? Math.min(keepIndex, page.total - 1) : 0;
+    this.patch({
+      list: page.items,
+      pageOffset: page.offset,
+      total: page.total,
+      committedCount: page.committed,
+      emptyCount: page.empty,
+      index,
+    });
   }
 
   private applyDoc(doc: Doc) {
@@ -130,8 +186,17 @@ export class StudioSession {
     const ac = new AbortController();
     this.imageAbort = ac;
 
-    const { list, index, project, projectId, assistOn, assistedIds } = this.state;
-    const iid = list[Math.min(index, Math.max(0, list.length - 1))]?.id;
+    const { index } = this.state;
+    let row;
+    try {
+      row = await this.ensurePage(index);
+    } catch {
+      if (!ac.signal.aborted) this.patch({ doc: null });
+      return;
+    }
+    if (ac.signal.aborted) return;
+    const { project, projectId, assistOn, assistedIds } = this.state;
+    const iid = row?.id;
     if (!iid) {
       this.patch({ doc: null });
       return;
@@ -185,25 +250,51 @@ export class StudioSession {
 
   // ── navigation ────────────────────────────────────────
 
-  setIndex(i: number) {
-    const n = this.state.list.length;
+  async openImageAt(i: number): Promise<string | null> {
+    const n = this.state.total;
     const next = n ? Math.min(Math.max(0, i), n - 1) : 0;
-    if (next === this.state.index) return;
-    this.patch({ index: next, doc: null, selected: null, urlSelected: null });
-    void this.loadCurrentImage();
+    if (!n) return null;
+    let row;
+    try {
+      row = await this.ensurePage(next);
+    } catch {
+      return null;
+    }
+    if (next !== this.state.index || this.state.doc?.id !== row?.id) {
+      this.patch({ index: next, doc: null, selected: null, urlSelected: null });
+      void this.loadCurrentImage();
+    }
+    return row?.id ?? null;
   }
 
-  nextOpen() {
-    const { list, index } = this.state;
-    if (!list.length) return;
-    const idx = Math.min(index, list.length - 1);
-    for (let k = 1; k < list.length; k++) {
-      const j = (idx + k) % list.length;
-      if (!list[j].committed) {
-        this.setIndex(j);
-        return;
-      }
+  setIndex(i: number) {
+    void this.openImageAt(i);
+  }
+
+  async openImageById(id: string): Promise<string | null> {
+    const local = this.state.list.findIndex((row) => row.id === id);
+    if (local >= 0) return await this.openImageAt(this.state.pageOffset + local);
+    try {
+      const located = await studioApi.locateImage(this.state.projectId, id);
+      if (!Number.isInteger(located.index)) return null;
+      return await this.openImageAt(located.index);
+    } catch {
+      return null;
     }
+  }
+
+  async nextOpen(): Promise<string | null> {
+    const result = await studioApi.nextUncommittedImage(this.state.projectId, this.state.index);
+    if (result.ok && Number.isInteger(result.data.index)) {
+      return await this.openImageAt(result.data.index);
+    }
+    // Compatibility path for a briefly mixed frontend/backend deploy and local API mocks.
+    const { list, pageOffset, index } = this.state;
+    for (let step = 1; step < list.length; step++) {
+      const local = ((index - pageOffset + step) % list.length + list.length) % list.length;
+      if (!list[local].committed) return await this.openImageAt(pageOffset + local);
+    }
+    return null;
   }
 
   async waitForImage(imageId: string, ms = 2500): Promise<boolean> {
@@ -236,6 +327,7 @@ export class StudioSession {
     const previousUrlSelected = this.state.urlSelected;
     const next: Doc = { ...d, objects };
     const empty = objects.length === 0;
+    const wasEmpty = this.state.list.find((x) => x.id === d.id)?.empty ?? false;
     const list = this.state.list.map((x) => (x.id === d.id ? { ...x, empty } : x));
     const selected =
       this.state.selected && objects.some((o) => o.id === this.state.selected)
@@ -246,6 +338,7 @@ export class StudioSession {
     this.patch({
       doc: next,
       list,
+      emptyCount: this.state.emptyCount + (empty === wasEmpty ? 0 : empty ? 1 : -1),
       selected,
       urlSelected: options?.selectFallback === false ? this.state.urlSelected : selected,
     });
@@ -256,6 +349,7 @@ export class StudioSession {
         this.patch({
           doc: d,
           list: previousList,
+          emptyCount: this.state.emptyCount + (empty === wasEmpty ? 0 : empty ? -1 : 1),
           selected: previousSelected,
           urlSelected: previousUrlSelected,
         });
@@ -318,7 +412,6 @@ export class StudioSession {
 
   async commitCurrent(): Promise<CommitResult> {
     const d = this.state.doc;
-    const ls = this.state.list;
     if (!d) return { ok: false, error: "no_image" };
     const status = commitStatus(d.objects);
     if (!status.can_commit) {
@@ -338,14 +431,18 @@ export class StudioSession {
         history: body.history ?? d.history,
       };
       const list = this.state.list.map((x) => (x.id === d.id ? { ...x, committed: true } : x));
-      this.patch({ doc: nextDoc, list });
+      this.patch({
+        doc: nextDoc,
+        list,
+        committedCount: this.state.committedCount + (first ? 1 : 0),
+      });
       if (!first) {
         this.showToast("Updated", { undo: { kind: "objects", objects: prev }, holdMs: 5000 });
         return { ok: true, advanced: false };
       }
       this.showToast("Committed", { holdMs: 1200 });
       const i = this.state.index;
-      const advancedTo = Math.min(i + 1, Math.max(0, ls.length - 1));
+      const advancedTo = Math.min(i + 1, Math.max(0, this.state.total - 1));
       if (advancedTo !== i) this.setIndex(advancedTo);
       return { ok: true, advanced: advancedTo !== i };
     } catch {
@@ -355,25 +452,21 @@ export class StudioSession {
 
   async deleteCurrent(): Promise<DeleteImageResult> {
     const d = this.state.doc;
-    const ls = this.state.list;
-    if (!d || !ls.length) return { ok: false, error: "no_image" };
+    if (!d || !this.state.total) return { ok: false, error: "no_image" };
     const iid = d.id;
     const at = this.state.index;
     const ok = await studioApi.deleteImage(this.state.projectId, iid);
     if (!ok) return { ok: false, error: "delete_failed" };
-    const next = ls.filter((x) => x.id !== iid);
-    const ni = Math.min(at, Math.max(0, next.length - 1));
     this.patch({
-      list: next,
       selected: null,
       urlSelected: null,
       edit: null,
       histOpen: false,
       commentsOpen: false,
       doc: null,
-      index: ni,
     });
-    if (next.length) void this.loadCurrentImage();
+    await this.refreshCatalog(at);
+    if (this.state.total) void this.loadCurrentImage();
     this.showToast("Deleted", { undo: { kind: "image", id: iid, index: at }, holdMs: 5000 });
     return { ok: true, deleted_id: iid };
   }
@@ -393,16 +486,9 @@ export class StudioSession {
       this.showToast("Restore failed", { holdMs: 1500 });
       return true;
     }
-    const ls = this.state.list;
-    if (!ls.some((x) => x.id === item.id)) {
-      const next = [...ls];
-      next.splice(Math.min(u.index, next.length), 0, item);
-      this.patch({ list: next, index: u.index });
-      void this.loadCurrentImage();
-    } else {
-      this.patch({ index: u.index });
-      void this.loadCurrentImage();
-    }
+    await this.refreshCatalog(u.index);
+    this.patch({ index: u.index });
+    void this.loadCurrentImage();
     this.showToast("Restored", { holdMs: 1200 });
     return true;
   }
@@ -476,11 +562,11 @@ export class StudioSession {
   }
 
   async afterUpload(added: ImgRow[]) {
-    const imgs = await studioApi.fetchImages(this.state.projectId);
-    this.patch({ list: imgs, uploadOpen: false });
+    this.patch({ uploadOpen: false });
     if (added[0]?.id) {
-      const j = imgs.findIndex((x) => x.id === added[0].id);
-      if (j >= 0) this.setIndex(j);
+      await this.openImageById(added[0].id);
+    } else {
+      await this.refreshCatalog();
     }
     this.showToast(`Added ${added.length}`, { holdMs: 1200 });
   }
@@ -650,8 +736,8 @@ export class StudioSession {
   }
 
   clampIndexToList() {
-    const { list, index } = this.state;
-    if (list.length && index >= list.length) this.patch({ index: list.length - 1 });
+    const { total, index } = this.state;
+    if (total && index >= total) this.patch({ index: total - 1 });
   }
 }
 

@@ -3,6 +3,15 @@ import type { AnnObj, Doc, Project, ToolId } from "../geometry/doc";
 
 export type ImgRow = { id: string; filename: string; committed?: boolean; empty?: boolean };
 
+export type ImagePage = {
+  items: ImgRow[];
+  total: number;
+  committed: number;
+  empty: number;
+  offset: number;
+  limit: number;
+};
+
 export type LoadState = "loading" | "ready" | "error";
 
 export type ToastUndo =
@@ -13,6 +22,11 @@ export type StudioState = {
   projectId: string;
   project: Project | null;
   list: ImgRow[];
+  pageOffset: number;
+  pageLimit: number;
+  total: number;
+  committedCount: number;
+  emptyCount: number;
   index: number;
   doc: Doc | null;
   selected: string | null;
@@ -50,6 +64,10 @@ export type StudioSnapshot = {
   projectId: string;
   project: Project | null;
   list: ImgRow[];
+  pageOffset: number;
+  total: number;
+  committedCount: number;
+  emptyCount: number;
   index: number;
   doc: Doc | null;
 };

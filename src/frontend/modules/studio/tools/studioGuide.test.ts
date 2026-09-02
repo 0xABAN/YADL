@@ -14,6 +14,10 @@ const snap: StudioSnapshot = {
   projectId: "p",
   project: { id: "p", name: "n", type: "keypoints", template: "face", classes: [] },
   list: [],
+  pageOffset: 0,
+  total: 0,
+  committedCount: 0,
+  emptyCount: 0,
   index: 0,
   doc: null,
 };

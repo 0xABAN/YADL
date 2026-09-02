@@ -1,7 +1,7 @@
 import { api, apiResult } from "@/shared/api/client";
 import { readComments } from "./geometry/comment";
 import { readObjects, writeObjects, type AnnObj, type Doc, type Project } from "./geometry/doc";
-import type { ImgRow } from "./session/types";
+import type { ImagePage, ImgRow } from "./session/types";
 
 export function parseDoc(d: Record<string, unknown>): Doc {
   const objects = readObjects(d.objects);
@@ -25,10 +25,34 @@ export async function fetchProject(id: string): Promise<Project> {
   return api<Project>(`/projects/${id}`);
 }
 
-export async function fetchImages(id: string): Promise<ImgRow[]> {
-  const imgs = await api<unknown>(`/projects/${id}/images`);
-  if (!Array.isArray(imgs)) throw new Error("images");
-  return imgs as ImgRow[];
+export async function fetchImages(id: string, offset = 0, limit = 100): Promise<ImagePage> {
+  const value = await api<unknown>(`/projects/${id}/images?offset=${offset}&limit=${limit}`);
+  // Transitional normalization keeps local mocks and older backends usable during deploys.
+  if (Array.isArray(value)) {
+    const items = value as ImgRow[];
+    return {
+      items,
+      total: items.length,
+      committed: items.filter((x) => x.committed).length,
+      empty: items.filter((x) => x.empty).length,
+      offset: 0,
+      limit,
+    };
+  }
+  if (!value || typeof value !== "object" || !("items" in value)) throw new Error("images");
+  return value as ImagePage;
+}
+
+export async function locateImage(projectId: string, imageId: string) {
+  return api<{ index: number; item: ImgRow }>(
+    `/projects/${projectId}/images/locate?image_id=${encodeURIComponent(imageId)}`,
+  );
+}
+
+export async function nextUncommittedImage(projectId: string, afterIndex: number) {
+  return apiResult<{ index: number; item: ImgRow }>(
+    `/projects/${projectId}/images/next-uncommitted?after_index=${afterIndex}`,
+  );
 }
 
 export async function fetchImage(projectId: string, imageId: string): Promise<Doc> {

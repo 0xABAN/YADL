@@ -10,7 +10,7 @@ from pathlib import Path
 from psycopg.types.json import Json
 
 from backend.domain.export import export_line, named
-from backend.infra.db import ROOT, execute, fetch, fetchone
+from backend.infra.db import ROOT, execute, fetch, fetchone, iterate
 from backend.infra.s3 import delete as s3_delete, presign_get, put
 
 def as_project(row: dict) -> dict:
@@ -148,7 +148,7 @@ def github_user(github_id: str, email: str | None, name: str | None) -> dict:
 
 def list_projects(uid: str) -> list[dict]:
     return [as_project(r) for r in fetch(
-        "select id, name, type, template, classes from projects where owner_id=%s order by created_at desc limit 50",
+        "select id, name, type, template, classes from projects where owner_id=%s order by created_at desc",
         (uid,),
     )]
 
@@ -246,7 +246,7 @@ def _image_item(r: dict) -> dict:
     }
 
 
-def list_images(pid: str, uid: str) -> list[dict] | None:
+def list_images(pid: str, uid: str, *, offset: int = 0, limit: int = 100) -> dict | None:
     if not get_project(pid, uid):
         return None
     rows = fetch(
@@ -254,10 +254,26 @@ def list_images(pid: str, uid: str) -> list[dict] | None:
                   (coalesce(objects, '[]'::jsonb) = '[]'::jsonb) as empty
            from images
            where project_id=%s and deleted_at is null
-           order by created_at, id limit 500""",
-        (pid,),
+           order by created_at, id limit %s offset %s""",
+        (pid, limit, offset),
     )
-    return [_image_item(r) for r in rows]
+    counts = fetchone(
+        """select count(*)::int as total,
+                  count(*) filter (where committed)::int as committed,
+                  count(*) filter (
+                    where coalesce(objects, '[]'::jsonb) = '[]'::jsonb
+                  )::int as empty
+           from images where project_id=%s and deleted_at is null""",
+        (pid,),
+    ) or {"total": 0, "committed": 0, "empty": 0}
+    return {
+        "items": [_image_item(r) for r in rows],
+        "total": int(counts["total"]),
+        "committed": int(counts["committed"]),
+        "empty": int(counts["empty"]),
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 def list_project_comments(pid: str, uid: str) -> list[dict] | None:
@@ -268,7 +284,7 @@ def list_project_comments(pid: str, uid: str) -> list[dict] | None:
         """select id, filename, comments
            from images
            where project_id=%s and deleted_at is null
-           order by created_at, id limit 500""",
+           order by created_at, id""",
         (pid,),
     )
     out = []
@@ -292,6 +308,43 @@ def count_images(pid: str, uid: str) -> int | None:
         (pid,),
     )
     return int(row["n"]) if row else 0
+
+
+def locate_image(pid: str, iid: str, uid: str) -> dict | None:
+    if not get_project(pid, uid):
+        return None
+    row = fetchone(
+        """select ranked.* from (
+             select id, filename, committed,
+                    (coalesce(objects, '[]'::jsonb) = '[]'::jsonb) as empty,
+                    (row_number() over (order by created_at, id) - 1)::int as index
+             from images where project_id=%s and deleted_at is null
+           ) ranked where id=%s""",
+        (pid, iid),
+    )
+    if not row:
+        return None
+    return {"index": int(row["index"]), "item": _image_item(row)}
+
+
+def next_uncommitted_image(pid: str, uid: str, after_index: int) -> dict | None:
+    if not get_project(pid, uid):
+        return None
+    row = fetchone(
+        """with ranked as (
+             select id, filename, committed,
+                    (coalesce(objects, '[]'::jsonb) = '[]'::jsonb) as empty,
+                    (row_number() over (order by created_at, id) - 1)::int as index
+             from images where project_id=%s and deleted_at is null
+           )
+           select * from ranked where not committed
+           order by case when index > %s then 0 else 1 end, index
+           limit 1""",
+        (pid, after_index),
+    )
+    if not row:
+        return None
+    return {"index": int(row["index"]), "item": _image_item(row)}
 
 
 def image_row(pid: str, iid: str, uid: str, *, gone: bool = False) -> dict | None:
@@ -414,24 +467,25 @@ def empty_images(pid: str, uid: str) -> list[dict] | None:
     )
 
 
-def export_jsonl(pid: str, uid: str) -> tuple[str, str] | None:
+def export_jsonl(pid: str, uid: str):
     proj = get_project(pid, uid)
     if not proj:
         return None
-    rows = fetch(
+    rows = iterate(
         """select filename, objects, committed from images
            where project_id=%s and deleted_at is null order by created_at, id""",
         (pid,),
     )
-    lines = []
-    for row in rows:
-        if not row["committed"]:
-            continue
-        for o in row["objects"] or []:
-            line = export_line(row["filename"], o if isinstance(o, dict) else {})
-            if line:
-                lines.append(line)
-    return proj["name"], ("\n".join(lines) + ("\n" if lines else ""))
+    def chunks():
+        for row in rows:
+            if not row["committed"]:
+                continue
+            for o in row["objects"] or []:
+                line = export_line(row["filename"], o if isinstance(o, dict) else {})
+                if line:
+                    yield line + "\n"
+
+    return proj["name"], chunks()
 
 
 def add_images(pid: str, uid: str, files: list[tuple[str, bytes, str]]) -> list[dict] | None:

@@ -5,7 +5,7 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from backend.api.deps import uid
@@ -23,6 +23,8 @@ from backend.infra.store import (
     get_project,
     list_images,
     list_project_comments,
+    locate_image,
+    next_uncommitted_image,
     put_objects,
     restore_image,
 )
@@ -40,7 +42,7 @@ OK = {
     ".heif": "image/heif",
 }
 VIDEO = {".mp4", ".mov", ".webm", ".mkv"}
-MAX_N, MAX_B = 500, 100 * 1024 * 1024
+MAX_B = 100 * 1024 * 1024
 
 
 class CommentIn(BaseModel):
@@ -107,7 +109,7 @@ def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
                     continue
                 data = z.read(info)
                 n += len(data)
-                if n > MAX_B or len(out) >= MAX_N:
+                if n > MAX_B:
                     raise HTTPException(400, "files")
                 out.append((fn, data, ct))
         return out
@@ -116,12 +118,12 @@ def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
 
 
 def frames_from_video(
-    name: str, body: bytes, interval: float, room: int
+    name: str, body: bytes, interval: float, room: int | None = None
 ) -> list[tuple[str, bytes, str]]:
-    """ffmpeg fixed-interval JPEGs. room = slots left under MAX_N."""
+    """Extract fixed-interval JPEGs; ``room`` remains for bounded callers/tests."""
     if not 0.1 <= interval <= 5:
         raise HTTPException(400, "interval")
-    if room <= 0:
+    if room is not None and room <= 0:
         raise HTTPException(400, "files")
     ext = Path(name).suffix.lower() or ".mp4"
     stem = Path(name).stem or "video"
@@ -156,7 +158,7 @@ def frames_from_video(
             raise HTTPException(400, "video") from e
         out: list[tuple[str, bytes, str]] = []
         for i, p in enumerate(sorted(root.glob("f_*.jpg"))):
-            if i >= room:
+            if room is not None and i >= room:
                 break
             t = i * interval
             fn = f"{stem}_t{t:g}.jpg"
@@ -167,11 +169,34 @@ def frames_from_video(
 
 
 @router.get("/projects/{pid}/images")
-def images(pid: str, user: str = Depends(uid)):
-    rows = list_images(pid, user)
+def images(
+    pid: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    user: str = Depends(uid),
+):
+    rows = list_images(pid, user, offset=offset, limit=limit)
     if rows is None:
         raise HTTPException(404)
     return rows
+
+
+@router.get("/projects/{pid}/images/locate")
+def locate(pid: str, image_id: str, user: str = Depends(uid)):
+    row = locate_image(pid, image_id, user)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@router.get("/projects/{pid}/images/next-uncommitted")
+def next_uncommitted(pid: str, after_index: int = Query(ge=0), user: str = Depends(uid)):
+    if count_images(pid, user) is None:
+        raise HTTPException(404)
+    row = next_uncommitted_image(pid, user, after_index)
+    if not row:
+        raise HTTPException(404, "no_uncommitted")
+    return row
 
 
 @router.post("/projects/{pid}/images/presign")
@@ -180,12 +205,6 @@ def presign_uploads(pid: str, body: PresignIn, user: str = Depends(uid)):
     if not get_project(pid, user):
         raise HTTPException(404)
     if not body.files:
-        raise HTTPException(400, "files")
-    n = count_images(pid, user) or 0
-    room = MAX_N - n
-    if room <= 0:
-        raise HTTPException(400, "files")
-    if len(body.files) > room:
         raise HTTPException(400, "files")
     total = 0
     out = []
@@ -215,11 +234,9 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
     """After browser PUTs to S3: register images or expand video/zip."""
     if not 0.1 <= body.interval <= 5:
         raise HTTPException(400, "interval")
-    n = count_images(pid, user)
-    if n is None:
+    if count_images(pid, user) is None:
         raise HTTPException(404)
-    room = MAX_N - n
-    if room <= 0 or not body.files:
+    if not body.files:
         raise HTTPException(400, "files")
 
     prefix = f"{user}/{pid}/"
@@ -243,14 +260,11 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
                 s3.download(key, path)
                 raw = path.read_bytes()
                 if kind == "video":
-                    left = room - len(blobs) - len(direct)
-                    blobs.extend(frames_from_video(name, raw, body.interval, left))
+                    blobs.extend(frames_from_video(name, raw, body.interval, None))
                 else:
                     blobs.extend(flatten(name, raw))
             s3.delete(key)
         else:
-            raise HTTPException(400, "files")
-        if len(blobs) + len(direct) > room:
             raise HTTPException(400, "files")
 
     rows: list[dict] = []
@@ -260,8 +274,6 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
             raise HTTPException(404)
         rows.extend(got)
     if blobs:
-        if len(blobs) > room - len(rows):
-            raise HTTPException(400, "files")
         got = add_images(pid, user, blobs)
         if got is None:
             raise HTTPException(404)
@@ -281,12 +293,8 @@ async def upload(
     """Legacy multipart path (local/scripts). Prefer presign + complete."""
     if not 0.1 <= interval <= 5:
         raise HTTPException(400, "interval")
-    n = count_images(pid, user)
-    if n is None:
+    if count_images(pid, user) is None:
         raise HTTPException(404)
-    room = MAX_N - n
-    if room <= 0:
-        raise HTTPException(400, "files")
 
     blobs: list[tuple[str, bytes, str]] = []
     total_in = 0
@@ -298,12 +306,9 @@ async def upload(
         name = f.filename or ""
         ext = Path(name).suffix.lower()
         if ext in VIDEO:
-            left = room - len(blobs)
-            blobs.extend(frames_from_video(name, body, interval, left))
+            blobs.extend(frames_from_video(name, body, interval, None))
         else:
             blobs.extend(flatten(name, body))
-        if len(blobs) > room:
-            raise HTTPException(400, "files")
     if not blobs:
         raise HTTPException(400, "files")
     rows = add_images(pid, user, blobs)
