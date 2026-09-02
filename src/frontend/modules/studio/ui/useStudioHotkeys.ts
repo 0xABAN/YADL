@@ -6,6 +6,7 @@ import type { StudioSession } from "../session";
 
 /** Global studio keyboard shortcuts (label, nav, commit, undo toast, rail). */
 export function useStudioHotkeys(session: StudioSession, opts?: { toggleRail?: () => void }) {
+  const toggleRail = opts?.toggleRail;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -18,7 +19,7 @@ export function useStudioHotkeys(session: StudioSession, opts?: { toggleRail?: (
       }
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
-        opts?.toggleRail?.();
+        toggleRail?.();
         return;
       }
       if (e.metaKey || e.ctrlKey) return;
@@ -88,5 +89,5 @@ export function useStudioHotkeys(session: StudioSession, opts?: { toggleRail?: (
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [session, opts?.toggleRail]);
+  }, [session, toggleRail]);
 }

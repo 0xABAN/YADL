@@ -48,10 +48,13 @@ export default function Boxes({
   const onSelectRef = useRef(onSelect);
   const onEditRef = useRef(onEdit);
   const gest = useRef<Gest | null>(null);
-  live.current = objects;
-  onChangeRef.current = onChange;
-  onSelectRef.current = onSelect;
-  onEditRef.current = onEdit;
+
+  useEffect(() => {
+    live.current = objects;
+    onChangeRef.current = onChange;
+    onSelectRef.current = onSelect;
+    onEditRef.current = onEdit;
+  }, [objects, onChange, onSelect, onEdit]);
 
   const abort = () => {
     if (gest.current && gest.current.t !== "draw") onChangeRef.current(live.current, false);

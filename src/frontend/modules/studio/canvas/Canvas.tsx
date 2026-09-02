@@ -113,7 +113,7 @@ const TOOLS = [
   },
 ] as const;
 
-export default function Canvas({
+function CanvasView({
   src,
   alt = "Sample",
   objects = [],
@@ -168,27 +168,28 @@ export default function Canvas({
 }) {
   const shown = SHOWN[projectType];
   const [zoom, setZoom] = useState(0);
-  const [tool, setToolInner] = useState<ToolId>(() => toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]));
+  const [toolInner, setToolInner] = useState<ToolId>(() => toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]));
+  const tool = toolProp ?? toolInner;
   const [scaleLim, setScaleLim] = useState({ min: FALLBACK_MIN, max: FALLBACK_MAX, wheel: 0.02, btn: 0.1 });
   const [tip, setTip] = useState<string | null>(null);
   const [imgReady, setImgReady] = useState(false);
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
   const zpp = useRef<ReactZoomPanPinchContentRef | null>(null);
   const undo = useRef<AnnObj[][]>([]);
   const redo = useRef<AnnObj[][]>([]);
   const [hist, setHist] = useState({ u: 0, r: 0 });
   const live = useRef(objects);
-  live.current = objects;
   const tickHist = () => setHist({ u: undo.current.length, r: redo.current.length });
-  const onImageSizeRef = useRef(onImageSize);
-  onImageSizeRef.current = onImageSize;
 
   useEffect(() => {
-    onImageSizeRef.current?.(imgSize);
-  }, [imgSize]);
+    live.current = objects;
+  }, [objects]);
+
+  useEffect(() => {
+    onImageSize?.(imgSize);
+  }, [imgSize, onImageSize]);
 
   const fitScale = useRef<number | null>(null);
   /** User panned or zoomed — skip auto-refit on resize until Reset. */
@@ -256,28 +257,6 @@ export default function Canvas({
   }, [imgSize]);
 
   useEffect(() => {
-    if (toolProp) setToolInner(toolProp);
-  }, [toolProp]);
-
-  useEffect(() => {
-    const t = toolProp ?? readTool(projectType, DEFAULT_TOOL[projectType]);
-    setToolInner(t);
-    onTool?.(t);
-  }, [projectType]); // eslint-disable-line react-hooks/exhaustive-deps -- only flip tool when project type changes
-
-  useEffect(() => {
-    undo.current = [];
-    redo.current = [];
-    setHist({ u: 0, r: 0 });
-    setZoom(0);
-    setImgSize(null);
-  }, [src]);
-
-  useEffect(() => {
-    setImgReady(false);
-    setImgSize(null);
-    viewDirty.current = false;
-    fitScale.current = null;
     if (!src) return;
     let dead = false;
     const im = new window.Image();
@@ -486,8 +465,10 @@ export default function Canvas({
               <i />
               <i />
               {src ? (
+                // The annotation canvas must render the original bitmap pixels;
+                // Next image optimization would change the geometry reference.
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  ref={imgRef}
                   src={src}
                   alt={alt}
                   draggable={false}
@@ -702,4 +683,9 @@ export default function Canvas({
       </div>
     </>
   );
+}
+
+export default function Canvas(props: Parameters<typeof CanvasView>[0]) {
+  const key = `${props.projectType ?? "keypoints"}:${props.src ?? ""}`;
+  return <CanvasView key={key} {...props} />;
 }

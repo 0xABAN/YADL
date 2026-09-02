@@ -138,7 +138,7 @@ function StudioBody() {
   const toggleRail = useCallback(() => setRailOn((v) => !v), []);
   useStudioHotkeys(session, { toggleRail });
 
-  const objects = doc?.objects ?? [];
+  const objects = useMemo(() => doc?.objects ?? [], [doc?.objects]);
   const editing = edit && edit !== "new" ? objects.find((o) => o.id === edit) : undefined;
   const classes = (project?.classes ?? []).filter((c) => named(c));
   const canCommit = objects.some((o) => named(o.label));
@@ -299,28 +299,32 @@ function StudioBody() {
         commentsOpen={commentsOpen}
         commentCount={doc?.comments?.length ?? 0}
       />
-      <Synthetic open={synthOpen} pos={synthPos} onClose={() => session.closeSynthetic()} />
-      <Comments
-        open={commentsOpen}
-        pos={commentsPos}
-        side={commentsSide}
-        comments={doc?.comments ?? []}
-        objects={objects}
-        classes={classes}
-        selectedId={selected}
-        onClose={() => session.closeComments()}
-        onAdd={async (body) => {
-          await session.addComment(body);
-        }}
-        onDelete={async (cid) => {
-          await session.deleteComment(cid);
-        }}
-        onSelect={(oid) => {
-          session.setSelected(oid);
-          session.setTab("objects");
-        }}
-        relTime={relTime}
-      />
+      {synthOpen && synthPos && (
+        <Synthetic open pos={synthPos} onClose={() => session.closeSynthetic()} />
+      )}
+      {commentsOpen && commentsPos && (
+        <Comments
+          open
+          pos={commentsPos}
+          side={commentsSide}
+          comments={doc?.comments ?? []}
+          objects={objects}
+          classes={classes}
+          selectedId={selected}
+          onClose={() => session.closeComments()}
+          onAdd={async (body) => {
+            await session.addComment(body);
+          }}
+          onDelete={async (cid) => {
+            await session.deleteComment(cid);
+          }}
+          onSelect={(oid) => {
+            session.setSelected(oid);
+            session.setTab("objects");
+          }}
+          relTime={relTime}
+        />
+      )}
       <HistoryPanel
         open={histOpen}
         pos={histPos}

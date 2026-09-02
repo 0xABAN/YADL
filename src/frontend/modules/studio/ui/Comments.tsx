@@ -124,12 +124,7 @@ export default function Comments({
   }, [at, ranked, pick, live]);
 
   useEffect(() => {
-    if (!open) {
-      setParts([]);
-      setLive("");
-      setAt(false);
-      return;
-    }
+    if (!open) return;
     const t = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(t);
   }, [open]);
@@ -160,11 +155,6 @@ export default function Comments({
     window.addEventListener("pointermove", onMove);
     return () => window.removeEventListener("pointermove", onMove);
   }, [open, onClose]);
-
-  const rankKey = ranked.map((r) => r.o.id).join(",");
-  useEffect(() => {
-    setPick(0);
-  }, [live, at, rankKey]);
 
   if (!open || !pos) return null;
 
@@ -197,6 +187,7 @@ export default function Comments({
   };
 
   const onType = (v: string) => {
+    setPick(0);
     if (at) {
       setLive(v);
       return;

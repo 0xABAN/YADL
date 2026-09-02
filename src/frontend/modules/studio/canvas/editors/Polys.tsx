@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as PE, type RefObject } from "react";
 import { classColor, newId, type PolyObj, type Pt } from "../../geometry/doc";
 import { atRect, eqPoly, nearPx, onSeg, ptStyle, ptsStr, shiftPoly, tinyPoly, trackPointer } from "../../geometry/geom";
 
@@ -39,9 +39,12 @@ export default function Polys({
   const snap = useRef<PolyObj[]>([]);
   const draftRef = useRef<Pt[] | null>(null);
   const selVert = useRef<{ i: number; j: number } | null>(null);
-  live.current = objects;
 
-  const abort = () => {
+  useEffect(() => {
+    live.current = objects;
+  }, [objects]);
+
+  const abort = useCallback(() => {
     if (gest.current && gest.current.t !== "draw") onChange(snap.current, false);
     gest.current = null;
     draftRef.current = null;
@@ -49,9 +52,9 @@ export default function Polys({
     setCursor(null);
     setHold(null);
     setVertHold(null);
-  };
+  }, [onChange]);
 
-  const close = () => {
+  const close = useCallback(() => {
     const d = draftRef.current;
     const r = frameRef.current?.getBoundingClientRect();
     gest.current = null;
@@ -71,9 +74,9 @@ export default function Polys({
     onChange([...live.current, obj], true);
     onSelect(obj.id);
     onEdit(obj.id);
-  };
+  }, [frameRef, onChange, onSelect, onEdit]);
 
-  const popDraft = () => {
+  const popDraft = useCallback(() => {
     const d = draftRef.current;
     if (!d) return;
     if (d.length <= 1) {
@@ -83,12 +86,12 @@ export default function Polys({
     const n = d.slice(0, -1);
     draftRef.current = n;
     setDraft(n);
-  };
+  }, [abort]);
 
   useEffect(() => {
     if (active && !locked) return;
     if (gest.current || draftRef.current) abort();
-  }, [active, locked]);
+  }, [active, locked, abort]);
 
   useEffect(() => {
     if (hold !== "draw") return;
@@ -136,7 +139,7 @@ export default function Polys({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, locked, onChange]);
+  }, [active, locked, onChange, abort, close, popDraft]);
 
   const start = (e: PE<Element>, g: Exclude<Gest, { t: "draw" }>) => {
     if (locked || !active || draftRef.current) return;

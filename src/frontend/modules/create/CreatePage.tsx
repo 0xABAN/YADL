@@ -77,10 +77,13 @@ export default function New() {
   const [pendingDel, setPendingDel] = useState<Project | null>(null);
   const ex = useRotatingIndex(EXAMPLES.length);
   const rowsRef = useRef(rows);
-  rowsRef.current = rows;
   const sheetRef = useRef<HTMLDivElement>(null);
   const sideRef = useRef<HTMLDivElement>(null);
   const guide = useSheetGuide(sheetRef, sideRef);
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -97,12 +100,12 @@ export default function New() {
   useEffect(() => {
     void fetchProjects().then((r) => {
       if (!r.ok) {
-        if (r.error === "auth_required") location.href = "/auth";
+        if (r.error === "auth_required") router.replace("/auth");
         return;
       }
       setRows(r.projects);
     });
-  }, []);
+  }, [router]);
 
   const create = () => {
     const n = name.trim();

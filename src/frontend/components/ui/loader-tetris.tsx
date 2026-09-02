@@ -5,6 +5,7 @@ import {
   type CSSProperties,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -400,15 +401,18 @@ export function TetrisLoader({
 
   const reduced = useReducedMotion();
   const [round, setRound] = useState(0);
-  const [game, setGame] = useState<TetrisFrames | null>(null);
+  // Each completed round intentionally invalidates this randomized frame set.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const game = useMemo(() => generateTetrisFrames(width, height), [width, height, round]);
 
   const completeRef = useRef(onComplete);
-  completeRef.current = onComplete;
+  useEffect(() => {
+    completeRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
-    setGame(generateTetrisFrames(width, height));
     frame.current = 0;
-  }, [width, height, round]);
+  }, [game]);
 
   const paint = useCallback(
     (dots: HTMLDivElement[], index: number) => {
@@ -423,7 +427,6 @@ export function TetrisLoader({
   );
 
   useEffect(() => {
-    if (!game) return;
     const grid = gridRef.current;
     if (!grid) return;
     const dots = Array.from(grid.children) as HTMLDivElement[];

@@ -17,11 +17,7 @@ export default function Synthetic({
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) {
-      setPrompt("");
-      setNote(null);
-      return;
-    }
+    if (!open) return;
     const t = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(t);
   }, [open]);

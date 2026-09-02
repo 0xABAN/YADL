@@ -36,7 +36,6 @@ export default function UploadPage() {
   const [pid, setPid] = useState<string | null>(null);
   const [upMsg, setUpMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [qrUrl, setQrUrl] = useState("");
   const [ready, setReady] = useState(false);
   const ex = useRotatingIndex(DATA.length);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -76,17 +75,17 @@ export default function UploadPage() {
     void boot();
   }, []);
 
-  useEffect(() => {
-    if (!ready || typeof window === "undefined") return;
-    const path = pid
-      ? uploadPath({ id: pid })
-      : uploadPath({
-          name: name.trim() || undefined,
-          type,
-          template: type === "keypoints" ? template : undefined,
-        });
-    setQrUrl(`${window.location.origin}${path}`);
-  }, [ready, pid, name, type, template]);
+  const qrUrl = ready && typeof window !== "undefined"
+    ? `${window.location.origin}${
+        pid
+          ? uploadPath({ id: pid })
+          : uploadPath({
+              name: name.trim() || undefined,
+              type,
+              template: type === "keypoints" ? template : undefined,
+            })
+      }`
+    : "";
 
   const send = async (files: File[], opts: SubmitOpts) => {
     if (!files.length || busy) return;
