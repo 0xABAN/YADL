@@ -197,3 +197,71 @@ test("Generate data remains usable at a narrow in-app-browser width", async ({ p
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(620);
   await expect(panel.getByRole("button", { name: "Create job" })).toBeEnabled();
 });
+
+test("an empty project can open Generate data and start AI generation", async ({ page }) => {
+  let submitted: Record<string, unknown> | null = null;
+  await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api/, "");
+    if (path === `/projects/${PID}`) {
+      return route.fulfill({ json: { id: PID, name: "Empty", type: "boxes", classes: [] } });
+    }
+    if (path === `/projects/${PID}/images`) {
+      return route.fulfill({ json: [] });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs` && request.method() === "GET") {
+      return route.fulfill({
+        json: {
+          items: [],
+          total: 0,
+          offset: 0,
+          limit: 20,
+          status_counts: { active: 0, succeeded: 0, partially_succeeded: 0, failed: 0 },
+        },
+      });
+    }
+    if (path === `/projects/${PID}/augmentation-jobs` && request.method() === "POST") {
+      submitted = request.postDataJSON() as Record<string, unknown>;
+      return route.fulfill({
+        status: 201,
+        json: {
+          id: "empty-project-job",
+          project_id: PID,
+          mode: "text_to_image",
+          config: submitted,
+          status: "queued",
+          requested_count: 1,
+          progress: {
+            queued: 1,
+            running: 0,
+            succeeded: 0,
+            failed: 0,
+            cancelled: 0,
+            submission_unknown: 0,
+          },
+          cancel_requested: false,
+          created_at: "2026-09-02T12:00:00Z",
+          started_at: null,
+          finished_at: null,
+          items: [],
+        },
+      });
+    }
+    return route.fulfill({ status: 404 });
+  });
+
+  await page.goto(`/studio/${PID}`);
+  await expect(page.getByRole("button", { name: "Generate data" })).toBeVisible();
+  await page.getByRole("button", { name: "Generate data" }).click();
+  const panel = page.getByRole("dialog", { name: "Generate data" });
+  await expect(panel).toBeVisible();
+  await panel.getByRole("tab", { name: "Generate" }).click();
+  await panel.getByLabel("Prompt").fill("A neutral test image");
+  await panel.getByRole("button", { name: "Create job" }).click();
+  await expect(panel.getByText("Queued 1 output.")).toBeVisible();
+  expect(submitted).toMatchObject({
+    mode: "text_to_image",
+    prompt: "A neutral test image",
+    count: 1,
+  });
+});

@@ -420,6 +420,7 @@ export type StudioToolsDeps = {
     itemOffset?: number,
     itemLimit?: number,
   ) => Promise<AugmentationJob>;
+  refreshCatalog: () => Promise<void>;
   cancelAugmentationJob: (jobId: string) => Promise<AugmentationJob>;
   retryAugmentationJob: (jobId: string) => Promise<AugmentationJob>;
 };
@@ -495,6 +496,8 @@ function boundedInt(value: unknown, fallback: number, minimum: number, maximum: 
 function jobId(args: Record<string, unknown>) {
   return String(args.job_id ?? "").trim();
 }
+
+const ACTIVE_JOB_STATUSES = new Set(["queued", "running"]);
 
 async function safeJobCall<T>(action: () => Promise<T>, error: string) {
   try {
@@ -723,10 +726,13 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         const offset = boundedInt(args.item_offset, 0, 0, Number.MAX_SAFE_INTEGER);
         const limit = boundedInt(args.item_limit, 100, 1, 200);
         if (offset === null || limit === null) return { error: "bad_pagination" };
-        return safeJobCall(
-          () => deps.getAugmentationJob(id, offset, limit),
-          "augmentation_get_failed",
-        );
+        return safeJobCall(async () => {
+          const job = await deps.getAugmentationJob(id, offset, limit);
+          if (job.progress.succeeded > 0 && !ACTIVE_JOB_STATUSES.has(job.status)) {
+            await deps.refreshCatalog();
+          }
+          return job;
+        }, "augmentation_get_failed");
       },
     },
     {

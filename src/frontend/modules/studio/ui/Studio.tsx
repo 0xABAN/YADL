@@ -153,6 +153,7 @@ function StudioBody() {
             itemOffset,
             itemLimit,
           ),
+        refreshCatalog: () => session.refreshCatalog(),
         cancelAugmentationJob: (jobId) =>
           cancelAugmentationJob(session.getState().projectId, jobId),
         retryAugmentationJob: (jobId) =>
@@ -289,9 +290,9 @@ function StudioBody() {
           onAssistReseed={() => void session.reseedAssist()}
           commentsOpen={!!doc && commentsOpen}
           commentCount={doc?.comments?.length ?? 0}
-          syntheticOpen={!!doc && synthOpen}
+          syntheticOpen={synthOpen}
           onComment={doc ? (btn) => session.toggleComments(btn, true) : () => {}}
-          onSynthetic={doc ? (btn) => session.toggleSynthetic(btn) : () => {}}
+          onSynthetic={(btn) => session.toggleSynthetic(btn)}
           onEdit={doc ? (oid) => session.editObject(oid) : () => {}}
           railOn={railOn}
           onToggleRail={toggleRail}

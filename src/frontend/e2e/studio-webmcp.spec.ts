@@ -28,13 +28,18 @@ function hand(rig: unknown, id = "hand-1") {
 async function mockStudio(
   page: Page,
   initialObjects: unknown[],
-  options: { failNextSave?: boolean; failClasses?: boolean } = {},
+  options: {
+    failNextSave?: boolean;
+    failClasses?: boolean;
+    succeedAugmentationOnGet?: boolean;
+  } = {},
 ) {
   let objects = initialObjects;
   let failNextSave = options.failNextSave ?? false;
   let comments: { id: string; body: string; at: string }[] = [];
   let augmentationBody: Record<string, unknown> | null = null;
   let augmentationStatus = "queued";
+  let augmentationOutputReady = false;
   const augmentationJob = () => ({
     id: "job-1",
     project_id: PID,
@@ -45,7 +50,7 @@ async function mockStudio(
     progress: {
       queued: augmentationStatus === "queued" ? 1 : 0,
       running: 0,
-      succeeded: 0,
+      succeeded: augmentationStatus === "succeeded" ? 1 : 0,
       failed: 0,
       cancelled: augmentationStatus === "cancelled" ? 1 : 0,
       submission_unknown: 0,
@@ -53,8 +58,21 @@ async function mockStudio(
     cancel_requested: augmentationStatus === "cancelled",
     created_at: "2026-09-02T12:00:00Z",
     started_at: null,
-    finished_at: null,
-    items: [],
+    finished_at: augmentationStatus === "succeeded" ? "2026-09-02T12:00:01Z" : null,
+    items: augmentationOutputReady
+      ? [
+          {
+            id: "augmentation-item",
+            ordinal: 0,
+            source_image_id: IID,
+            status: "succeeded",
+            attempts: 1,
+            error: null,
+            provider_prediction_id: null,
+            output_image_id: "augmentation-output",
+          },
+        ]
+      : [],
     item_offset: 0,
     item_limit: 100,
   });
@@ -77,7 +95,21 @@ async function mockStudio(
       });
     }
     if (path === `/projects/${PID}/images` && method === "GET") {
-      return route.fulfill({ json: [{ id: IID, filename: "hand.jpg", committed: false, empty: false }] });
+      return route.fulfill({
+        json: [
+          { id: IID, filename: "hand.jpg", committed: false, empty: false },
+          ...(augmentationOutputReady
+            ? [
+                {
+                  id: "augmentation-output",
+                  filename: "augmentation.png",
+                  committed: false,
+                  empty: true,
+                },
+              ]
+            : []),
+        ],
+      });
     }
     if (path === `/projects/${PID}/images/${IID}` && method === "GET") {
       return route.fulfill({ json: imageDoc() });
@@ -127,6 +159,10 @@ async function mockStudio(
       });
     }
     if (path === `/projects/${PID}/augmentation-jobs/job-1` && method === "GET") {
+      if (options.succeedAugmentationOnGet) {
+        augmentationStatus = "succeeded";
+        augmentationOutputReady = true;
+      }
       return route.fulfill({ json: augmentationJob() });
     }
     if (path === `/projects/${PID}/augmentation-jobs/job-1/cancel` && method === "POST") {
@@ -154,7 +190,11 @@ async function mockStudio(
 async function openStudio(
   page: Page,
   initialObjects: unknown[],
-  options: { failNextSave?: boolean; failClasses?: boolean } = {},
+  options: {
+    failNextSave?: boolean;
+    failClasses?: boolean;
+    succeedAugmentationOnGet?: boolean;
+  } = {},
 ) {
   await installWebMcpHost(page);
   await mockStudio(page, initialObjects, options);
@@ -563,6 +603,28 @@ test("all augmentation WebMCP tools share the durable job contract", async ({ pa
   });
   expect(await callTool(page, "get_studio")).toMatchObject({
     augmentation_jobs: { active: 1 },
+  });
+});
+
+test("get_augmentation_job refreshes completed outputs without moving the canvas", async ({
+  page,
+}) => {
+  await openStudio(page, [hand(REST_RIG)], { succeedAugmentationOnGet: true });
+  await callTool(page, "create_augmentation_job", {
+    mode: "transform",
+    source_image_ids: [IID],
+    variants_per_source: 1,
+    seed: 42,
+    pipeline: [{ op: "flip", axis: "horizontal" }],
+  });
+
+  expect(await callTool(page, "get_augmentation_job", { job_id: "job-1" })).toMatchObject({
+    status: "succeeded",
+    progress: { succeeded: 1 },
+  });
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    progress: { n: 2, empty: 1 },
+    current: { id: IID },
   });
 });
 
