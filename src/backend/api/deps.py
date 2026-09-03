@@ -20,6 +20,10 @@ def cookie_secure() -> bool:
     return origin().startswith("https://")
 
 
+def _deployed() -> bool:
+    return bool(os.environ.get("RAILWAY_ENVIRONMENT")) or os.environ.get("ENV") == "production"
+
+
 def mint(uid: str) -> str:
     exp = str(int(time.time()) + 30 * 86400)
     msg = f"{uid}.{exp}"
@@ -45,7 +49,7 @@ def uid(
 ) -> str:
     if sid and (u := read_sid(sid)):
         return u
-    if x_user_id:
+    if x_user_id and not _deployed():
         return x_user_id
     raise HTTPException(401)
 
@@ -80,8 +84,7 @@ def gh_callback() -> str:
 
 def require_session_secret() -> None:
     """Prod (Railway or ENV=production) must set a real SESSION_SECRET."""
-    prod = bool(os.environ.get("RAILWAY_ENVIRONMENT")) or os.environ.get("ENV") == "production"
-    if not prod:
+    if not _deployed():
         return
     s = os.environ.get("SESSION_SECRET") or ""
     if not s or s in ("dev", "change-me"):

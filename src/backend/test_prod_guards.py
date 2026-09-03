@@ -4,6 +4,9 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+from fastapi import HTTPException
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -32,6 +35,30 @@ def main() -> None:
     os.environ["SESSION_SECRET"] = "not-a-default-secret"
     deps.require_session_secret()
     print("ok")
+
+
+def test_header_identity_is_local_only() -> None:
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("RAILWAY_ENVIRONMENT", None)
+        os.environ.pop("ENV", None)
+        assert deps.uid(sid=None, x_user_id="local-user") == "local-user"
+
+        os.environ["ENV"] = "production"
+        try:
+            deps.uid(sid=None, x_user_id="spoofed-user")
+            raise AssertionError("expected production header auth to fail")
+        except HTTPException as exc:
+            assert exc.status_code == 401
+
+        assert deps.uid(sid=deps.mint("session-user"), x_user_id="spoofed-user") == "session-user"
+
+        os.environ.pop("ENV", None)
+        os.environ["RAILWAY_ENVIRONMENT"] = "production"
+        try:
+            deps.uid(sid=None, x_user_id="spoofed-user")
+            raise AssertionError("expected Railway header auth to fail")
+        except HTTPException as exc:
+            assert exc.status_code == 401
 
 
 if __name__ == "__main__":
