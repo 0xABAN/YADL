@@ -595,10 +595,9 @@ export class StudioSession {
 
   async afterUpload(added: ImgRow[]) {
     this.patch({ uploadOpen: false });
+    await this.refreshCatalog();
     if (added[0]?.id) {
       await this.openImageById(added[0].id);
-    } else {
-      await this.refreshCatalog();
     }
     this.showToast(`Added ${added.length}`, { holdMs: 1200 });
   }
