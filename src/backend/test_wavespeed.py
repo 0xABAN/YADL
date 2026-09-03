@@ -6,6 +6,7 @@ import hmac
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -100,10 +101,66 @@ def test_explicit_rate_limit_is_not_marked_ambiguous() -> None:
         assert exc.status == 429
 
 
+def test_malformed_successful_submission_response_is_ambiguous() -> None:
+    client = WaveSpeedClient(api_key="test", request_json=lambda *_args: [])  # type: ignore[arg-type]
+    try:
+        client.submit(TEXT_MODEL, {"prompt": "x"})
+        raise AssertionError("expected ambiguous submission")
+    except AmbiguousSubmissionError:
+        pass
+
+
+def test_malformed_result_outputs_are_treated_as_empty() -> None:
+    client = WaveSpeedClient(
+        api_key="test",
+        request_json=lambda *_args: {
+            "data": {"id": "pred-1", "status": "completed", "outputs": 17}
+        },
+    )
+    result = client.result("pred-1")
+    assert result.status == "completed"
+    assert result.output_urls == []
+
+
+def test_non_json_submission_response_is_ambiguous() -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b"not json"
+
+    client = WaveSpeedClient(api_key="test")
+    with patch("backend.infra.wavespeed.urllib.request.urlopen", return_value=Response()):
+        try:
+            client.submit(TEXT_MODEL, {"prompt": "x"})
+            raise AssertionError("expected ambiguous submission")
+        except AmbiguousSubmissionError:
+            pass
+
+
+def test_malformed_result_envelope_raises_provider_error() -> None:
+    client = WaveSpeedClient(
+        api_key="test", request_json=lambda *_args: {"data": ["not", "an", "object"]}
+    )
+    try:
+        client.result("pred-1")
+        raise AssertionError("expected provider error")
+    except WaveSpeedError as error:
+        assert "malformed" in str(error)
+
+
 if __name__ == "__main__":
     test_webhook_signature_uses_raw_body_and_rejects_stale_or_tampered_data()
     test_payloads_pin_models_and_callback_item_identity()
     test_client_extracts_prediction_id_and_result_urls()
     test_submit_never_retries_an_ambiguous_post()
     test_explicit_rate_limit_is_not_marked_ambiguous()
+    test_malformed_successful_submission_response_is_ambiguous()
+    test_malformed_result_outputs_are_treated_as_empty()
+    test_non_json_submission_response_is_ambiguous()
+    test_malformed_result_envelope_raises_provider_error()
     print("ok")

@@ -128,7 +128,8 @@ class WaveSpeedClient:
             if exc.status is None:
                 raise AmbiguousSubmissionError(str(exc)) from exc
             raise
-        prediction_id = str((response.get("data") or {}).get("id") or "")
+        data = response.get("data") if isinstance(response, dict) else None
+        prediction_id = str(data.get("id") or "") if isinstance(data, dict) else ""
         if not prediction_id:
             raise AmbiguousSubmissionError("WaveSpeed response omitted the prediction id")
         return prediction_id
@@ -139,6 +140,8 @@ class WaveSpeedClient:
         outputs = data.get("outputs") or data.get("output") or []
         if isinstance(outputs, str):
             outputs = [outputs]
+        elif not isinstance(outputs, list):
+            outputs = []
         error = data.get("error")
         return PredictionResult(
             id=str(data.get("id") or prediction_id),
