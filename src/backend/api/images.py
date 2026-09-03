@@ -1,12 +1,16 @@
 import subprocess
 import tempfile
 import uuid
+import warnings
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from PIL import Image, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field
 
 from backend.api.deps import uid
@@ -27,8 +31,11 @@ from backend.infra.store import (
     locate_image,
     next_uncommitted_image,
     put_objects,
+    registered_image_keys,
     restore_image,
 )
+
+register_heif_opener()
 
 router = APIRouter(tags=["images"])
 
@@ -70,6 +77,10 @@ class CompleteIn(BaseModel):
     interval: float = 1.0
 
 
+class DiscardIn(BaseModel):
+    keys: list[str] = Field(min_length=1)
+
+
 class FromUrlIn(BaseModel):
     url: str
     interval: float = 1.0
@@ -107,6 +118,19 @@ def _kind(name: str) -> str | None:
     return None
 
 
+def _upload_key(prefix: str, key: str, name: str) -> bool:
+    if not key.startswith(prefix) or ".." in key:
+        return False
+    parts = key[len(prefix) :].split("/")
+    if len(parts) != 2 or parts[1] != name:
+        return False
+    try:
+        uuid.UUID(parts[0])
+    except ValueError:
+        return False
+    return True
+
+
 def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
     ext = Path(name).suffix.lower()
     if ext == ".zip":
@@ -125,14 +149,19 @@ def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
                 ct = OK.get(Path(fn).suffix.lower())
                 if not ct:
                     continue
-                data = z.read(info)
-                n += len(data)
+                n += info.file_size
                 if n > MAX_B:
                     raise HTTPException(400, "files")
+                data = z.read(info)
+                verify_image(BytesIO(data), fn)
                 out.append((fn, data, ct))
         return out
     ct = OK.get(ext)
-    return [(Path(name).name or "image.jpg", body, ct)] if ct else []
+    if not ct:
+        return []
+    filename = Path(name).name or "image.jpg"
+    verify_image(BytesIO(body), filename)
+    return [(filename, body, ct)]
 
 
 def youtube_url(raw: str) -> str:
@@ -204,6 +233,22 @@ def frames_from_video(name: str, body: bytes, interval: float) -> list[tuple[str
         src = Path(td) / f"in{ext}"
         src.write_bytes(body)
         return frames_from_path(src, stem, interval)
+
+
+def verify_image(source, name: str) -> None:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(source) as image:
+                image.verify()
+    except (
+        UnidentifiedImageError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+        OSError,
+        ValueError,
+    ):
+        raise HTTPException(400, f"corrupt:{name}") from None
 
 
 def frames_from_youtube(url: str, interval: float) -> list[tuple[str, bytes, str]]:
@@ -300,8 +345,10 @@ def presign_uploads(pid: str, body: PresignIn, user: str = Depends(uid)):
         if not _kind(name):
             raise HTTPException(400, "files")
         total += f.size
-        if f.size <= 0 or total > MAX_B:
-            raise HTTPException(400, "files")
+        if f.size <= 0:
+            raise HTTPException(400, f"empty:{name}")
+        if total > MAX_B:
+            raise HTTPException(400, f"too_large:{name}")
         ct = _ctype(name, f.content_type)
         iid = str(uuid.uuid4())
         key = f"{user}/{pid}/{iid}/{name}"
@@ -329,18 +376,42 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
     prefix = f"{user}/{pid}/"
     blobs: list[tuple[str, bytes, str]] = []
     direct: list[tuple[str, str]] = []
+    expanded: list[str] = []
+
+    for f in body.files:
+        name = Path(f.name).name or "file"
+        if not _kind(name):
+            raise HTTPException(400, "files")
+        if not _upload_key(prefix, f.key, name):
+            raise HTTPException(400, "key")
+
+    workers = min(8, len(body.files))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        present = list(pool.map(s3.exists, (f.key for f in body.files)))
+    for f, exists in zip(body.files, present, strict=True):
+        if not exists:
+            name = Path(f.name).name or "file"
+            raise HTTPException(400, f"missing:{name}")
+
+    image_files = [f for f in body.files if _kind(f.name) == "image"]
+
+    def validate_image(f: CompleteFile) -> tuple[str, str]:
+        name = Path(f.name).name or "file"
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / name
+            s3.download(f.key, path)
+            verify_image(path, name)
+        return name, f.key
+
+    if image_files:
+        with ThreadPoolExecutor(max_workers=min(8, len(image_files))) as pool:
+            direct.extend(pool.map(validate_image, image_files))
 
     for f in body.files:
         name = Path(f.name).name or "file"
         key = f.key
-        if not key.startswith(prefix) or ".." in key:
-            raise HTTPException(400, "key")
-        if not s3.exists(key):
-            raise HTTPException(400, "missing")
         kind = _kind(name)
-        if kind == "image":
-            direct.append((name, key))
-        elif kind in ("video", "zip"):
+        if kind in ("video", "zip"):
             ext = Path(name).suffix.lower() or (".mp4" if kind == "video" else ".zip")
             with tempfile.TemporaryDirectory() as td:
                 path = Path(td) / f"in{ext}"
@@ -350,8 +421,8 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
                     blobs.extend(frames_from_video(name, raw, body.interval))
                 else:
                     blobs.extend(flatten(name, raw))
-            s3.delete(key)
-        else:
+            expanded.append(key)
+        elif kind != "image":
             raise HTTPException(400, "files")
 
     rows: list[dict] = []
@@ -367,7 +438,24 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
         rows.extend(got)
     if not rows:
         raise HTTPException(400, "files")
+    for key in expanded:
+        s3.delete(key)
     return rows
+
+
+@router.delete("/projects/{pid}/images/uploads")
+def discard_uploads(pid: str, body: DiscardIn, user: str = Depends(uid)):
+    """Remove an interrupted batch's unregistered presigned objects."""
+    if count_images(pid, user) is None:
+        raise HTTPException(404)
+    prefix = f"{user}/{pid}/"
+    if any(not _upload_key(prefix, key, Path(key).name) for key in body.keys):
+        raise HTTPException(400, "key")
+    if registered_image_keys(pid, user, body.keys):
+        raise HTTPException(409, "registered")
+    for key in body.keys:
+        s3.delete(key)
+    return {"deleted": len(body.keys)}
 
 
 @router.post("/projects/{pid}/images/from_url")

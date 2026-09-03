@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image
 
 from backend.api.images import flatten, frames_from_video
 
@@ -40,7 +43,9 @@ def test_frames_interval():
 
 
 def test_flatten_image():
-    blobs = flatten("x.png", b"\x89PNG\r\n\x1a\n")
+    body = BytesIO()
+    Image.new("RGB", (2, 2), "red").save(body, "PNG")
+    blobs = flatten("x.png", body.getvalue())
     assert len(blobs) == 1 and blobs[0][2] == "image/png"
 
 
