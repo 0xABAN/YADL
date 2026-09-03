@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { useParams } from "next/navigation";
-import Studio from "@/components/Studio";
+import Studio from "@/modules/studio/ui/Studio";
 import { TetrisLoaderCard } from "@/components/ui/loader-tetris-card";
 
 function Body() {

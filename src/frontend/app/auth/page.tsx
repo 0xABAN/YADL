@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import Auth from "@/components/Auth";
+import Auth from "@/modules/auth/Auth";
 
 export default function Home() {
   return (
