@@ -304,10 +304,11 @@ def mark_submitting(item_id: str) -> None:
 
 def mark_provider_pending(item_id: str, prediction_id: str, payload: dict | None = None) -> None:
     execute(
-        """update augmentation_items set status='provider_pending',
+        """update augmentation_items
+           set status=case when status='cancelled' then status else 'provider_pending' end,
              provider_prediction_id=coalesce(provider_prediction_id, %s),
              provider_payload=coalesce(%s, provider_payload), updated_at=now()
-           where id=%s and status in ('running','submitting')""",
+           where id=%s and status in ('running','submitting','cancelled')""",
         (prediction_id, Json(payload) if payload is not None else None, item_id),
     )
 
@@ -319,6 +320,8 @@ def record_provider_result(item_id: str, payload: dict) -> bool:
     outputs = data.get("outputs") or data.get("output") or []
     if isinstance(outputs, str):
         outputs = [outputs]
+    elif not isinstance(outputs, list):
+        outputs = []
     error = data.get("error") or data.get("message")
     row = fetchone(
         "select job_id, status, provider_prediction_id from augmentation_items where id=%s",
@@ -328,7 +331,7 @@ def record_provider_result(item_id: str, payload: dict) -> bool:
         return False
     if row.get("provider_prediction_id") and prediction_id != str(row["provider_prediction_id"]):
         return False
-    if row["status"] in {"succeeded", "cancelled"}:
+    if row["status"] not in {"submitting", "provider_pending", "submission_unknown"}:
         return True
     if status in {"completed", "succeeded", "success"}:
         if not outputs or not isinstance(outputs[0], str):
@@ -383,12 +386,28 @@ def claim_output_item() -> dict | None:
             return row
 
 
-def finalize_item(item: dict, body: bytes, content_type: str) -> None:
+def finalize_item(item: dict, body: bytes, content_type: str) -> bool:
     from backend.infra import s3
 
-    s3.put(item["output_s3_key"], body, content_type)
+    finalized = False
     with pool().connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                "select cancel_requested from augmentation_jobs where id=%s for update",
+                (str(item["job_id"]),),
+            )
+            job = cur.fetchone()
+            cur.execute(
+                "select status from augmentation_items where id=%s and job_id=%s for update",
+                (str(item["id"]), str(item["job_id"])),
+            )
+            current = cur.fetchone()
+            if not job or job["cancel_requested"] or not current or current["status"] not in {
+                "running",
+                "ingesting",
+            }:
+                return False
+            s3.put(item["output_s3_key"], body, content_type)
             cur.execute(
                 """insert into images (id, project_id, s3_key, filename, objects, committed)
                    values (%s,%s,%s,%s,%s,false) on conflict (id) do nothing""",
@@ -405,13 +424,16 @@ def finalize_item(item: dict, body: bytes, content_type: str) -> None:
                      finished_at=now(), updated_at=now() where id=%s""",
                 (str(item["id"]),),
             )
+            finalized = True
     refresh_job_status(str(item["job_id"]))
+    return finalized
 
 
 def fail_item(item_id: str, job_id: str, error: str, status: str = "failed") -> None:
     execute(
         """update augmentation_items set status=%s, error=%s,
-             finished_at=now(), updated_at=now() where id=%s""",
+             finished_at=now(), updated_at=now()
+           where id=%s and status not in ('succeeded','cancelled')""",
         (status, error[:2000], item_id),
     )
     refresh_job_status(job_id)
@@ -420,7 +442,7 @@ def fail_item(item_id: str, job_id: str, error: str, status: str = "failed") -> 
 def cancel_claimed_item(item_id: str, job_id: str) -> None:
     execute(
         """update augmentation_items set status='cancelled', error=null,
-             finished_at=now(), updated_at=now() where id=%s""",
+             finished_at=now(), updated_at=now() where id=%s and status != 'succeeded'""",
         (item_id,),
     )
     refresh_job_status(job_id)
@@ -436,6 +458,15 @@ def recover_stale_items(minutes: int = 10) -> int:
     )
     for job_id in {str(row["job_id"]) for row in rows}:
         refresh_job_status(job_id)
+    ingesting = fetch(
+        """update augmentation_items set status='output_ready',
+             error='worker interrupted during ingestion; safely requeued', updated_at=now()
+           where status='ingesting' and updated_at < now() - (%s * interval '1 minute')
+           returning job_id""",
+        (minutes,),
+    )
+    for job_id in {str(row["job_id"]) for row in ingesting}:
+        refresh_job_status(job_id)
     uncertain = fetch(
         """update augmentation_items set status='submission_unknown',
              error='worker interrupted during provider submission; explicit retry required',
@@ -446,7 +477,7 @@ def recover_stale_items(minutes: int = 10) -> int:
     )
     for job_id in {str(row["job_id"]) for row in uncertain}:
         refresh_job_status(job_id)
-    return len(rows) + len(uncertain)
+    return len(rows) + len(ingesting) + len(uncertain)
 
 
 def refresh_job_status(job_id: str) -> str:
