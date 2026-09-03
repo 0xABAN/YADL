@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from psycopg.errors import ForeignKeyViolation
 from psycopg.types.json import Json
 
 from backend.domain.export import export_line, named
@@ -501,17 +502,43 @@ def export_jsonl(pid: str, uid: str):
 def add_images(pid: str, uid: str, files: list[tuple[str, bytes, str]]) -> list[dict] | None:
     if not get_project(pid, uid):
         return None
-    out = []
+    out: list[dict] = []
+    ids: list[str] = []
+    keys: list[str] = []
+    filenames: list[str] = []
     for name, body, ctype in files:
-        iid = uuid.uuid4()
+        iid = str(uuid.uuid4())
         filename = Path(name).name or "image.jpg"
         key = f"{uid}/{pid}/{iid}/{filename}"
-        put(key, body, ctype)
-        execute(
-            "insert into images (id, project_id, s3_key, filename) values (%s,%s,%s,%s)",
-            (str(iid), pid, key, filename),
+        try:
+            put(key, body, ctype)
+        except Exception:
+            for uploaded in [*keys, key]:
+                s3_delete(uploaded)
+            raise
+        ids.append(iid)
+        keys.append(key)
+        filenames.append(filename)
+        out.append({"id": iid, "filename": filename})
+    try:
+        inserted = ids and fetchone(
+            """insert into images (id, project_id, s3_key, filename)
+               select data.id::uuid, owned.id, data.s3_key, data.filename
+               from unnest(%s::text[], %s::text[], %s::text[])
+                    as data(id, s3_key, filename)
+               cross join (
+                 select id from projects where id=%s::uuid and owner_id=%s
+               ) as owned
+               on conflict (id) do nothing
+               returning id""",
+            (ids, keys, filenames, pid, uid),
         )
-        out.append({"id": str(iid), "filename": filename})
+    except ForeignKeyViolation:
+        inserted = None
+    if ids and not inserted:
+        for key in keys:
+            s3_delete(key)
+        return None
     return out
 
 
@@ -520,7 +547,10 @@ def add_image_keys(pid: str, uid: str, items: list[tuple[str, str]]) -> list[dic
     if not get_project(pid, uid):
         return None
     prefix = f"{uid}/{pid}/"
-    out = []
+    out: list[dict] = []
+    ids: list[str] = []
+    keys: list[str] = []
+    filenames: list[str] = []
     for name, key in items:
         if not key.startswith(prefix):
             return None
@@ -528,12 +558,46 @@ def add_image_keys(pid: str, uid: str, items: list[tuple[str, str]]) -> list[dic
         # id from key path …/{iid}/filename when possible
         parts = key[len(prefix) :].split("/")
         iid = parts[0] if len(parts) >= 2 else str(uuid.uuid4())
-        execute(
-            "insert into images (id, project_id, s3_key, filename) values (%s,%s,%s,%s)",
-            (iid, pid, key, filename),
-        )
+        ids.append(iid)
+        keys.append(key)
+        filenames.append(filename)
         out.append({"id": iid, "filename": filename})
+    try:
+        inserted = ids and fetchone(
+            """insert into images (id, project_id, s3_key, filename)
+               select data.id::uuid, owned.id, data.s3_key, data.filename
+               from unnest(%s::text[], %s::text[], %s::text[])
+                    as data(id, s3_key, filename)
+               cross join (
+                 select id from projects where id=%s::uuid and owner_id=%s
+               ) as owned
+               on conflict (id) do update set id=excluded.id
+               where images.project_id=excluded.project_id
+                 and images.s3_key=excluded.s3_key
+                 and images.filename=excluded.filename
+               returning id""",
+            (ids, keys, filenames, pid, uid),
+        )
+    except ForeignKeyViolation:
+        inserted = None
+    if ids and not inserted:
+        for key in keys:
+            s3_delete(key)
+        return None
     return out
+
+
+def registered_image_keys(pid: str, uid: str, keys: list[str]) -> set[str]:
+    """Return requested S3 keys registered to an owned project, including deleted rows."""
+    if not keys:
+        return set()
+    rows = fetch(
+        """select i.s3_key from images i
+           join projects p on p.id=i.project_id
+           where p.id=%s::uuid and p.owner_id=%s and i.s3_key=any(%s::text[])""",
+        (pid, uid, keys),
+    )
+    return {str(row["s3_key"]) for row in rows}
 
 
 def seed_demo() -> None:
