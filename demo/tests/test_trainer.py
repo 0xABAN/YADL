@@ -4,7 +4,12 @@ import numpy as np
 
 from backend.train.data import HandDataset, HandSample
 from backend.train.model import HandSignClassifier
-from backend.train.trainer import TrainingConfig, train_classifier
+from backend.train.trainer import (
+    TrainingConfig,
+    classification_metrics,
+    fit_temperature,
+    train_classifier,
+)
 
 
 def _hand(label: str, index: int) -> np.ndarray:
@@ -49,6 +54,33 @@ def test_train_classifier_writes_loadable_artifact_with_episode_holdout(
     assert result.validated_classes == ("fist", "open")
     assert result.unvalidated_classes == ()
     assert result.validation_accuracy >= 0.75
-    assert HandSignClassifier.load(artifact, device="cpu").predict(
-        _hand("open", 99), handedness="Right"
-    ).label == "open"
+    assert set(result.per_class_recall) == {"fist", "open"}
+    assert result.validation_balanced_accuracy is not None
+    assert not result.approved
+    assert (
+        HandSignClassifier.load(artifact, device="cpu")
+        .predict(_hand("open", 99), handedness="Right")
+        .label
+        == "open"
+    )
+
+
+def test_classification_metrics_report_precision_recall_and_balanced_accuracy() -> None:
+    metrics = classification_metrics(
+        np.array([0, 0, 1, 1]),
+        np.array([0, 1, 1, 1]),
+        classes=("fist", "neutral"),
+    )
+
+    assert metrics["per_class_precision"] == {"fist": 1.0, "neutral": 2 / 3}
+    assert metrics["per_class_recall"] == {"fist": 0.5, "neutral": 1.0}
+    assert metrics["balanced_accuracy"] == 0.75
+
+
+def test_temperature_fit_softens_overconfident_validation_logits() -> None:
+    logits = np.array([[5.0, 0.0], [5.0, 0.0]], dtype=np.float32)
+    targets = np.array([0, 1], dtype=np.int64)
+
+    temperature = fit_temperature(logits, targets)
+
+    assert temperature > 1.0
