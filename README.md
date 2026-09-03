@@ -2,7 +2,7 @@
 
 <p align=center>
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=python,typescript,fastapi,nextjs,react,postgres,aws,docker,vercel" alt="python, typescript, fastapi, nextjs, react, postgres, aws, docker, vercel" />
+    <img src="https://skillicons.dev/icons?i=python,typescript,fastapi,nextjs,react,postgres,aws,docker,vercel,pytorch,opencv,apple" alt="python, typescript, fastapi, nextjs, react, postgres, aws, docker, vercel, pytorch, opencv, apple" />
   </a>
 </p>
 
@@ -42,7 +42,7 @@ flowchart TD
 
 ## WebMCP tools
 
-YADL registers **15 WebMCP tools** on the open page (`document.modelContext`): project setup, studio navigation, labels, commit, comments, plus a 3-tool geometry pack for the active style (boxes, polygons, or keypoints).
+YADL defines **26 unique WebMCP tools** across the app. The create page exposes 3; Studio exposes 17 at once—14 shared tools plus a 3-tool geometry pack for the active style (boxes, polygons, or keypoints).
 
 ### Example: keypoints
 
