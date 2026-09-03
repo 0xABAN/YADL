@@ -111,6 +111,40 @@ for (const vp of [
   });
 }
 
+for (const vp of [
+  { w: 1066, h: 776 },
+  { w: 900, h: 700 },
+]) {
+  test(`footer keeps every action visible at ${vp.w}x${vp.h}`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.w, height: vp.h });
+    await mockStudio(page);
+    await page.goto(`/studio/${PID}`);
+    await expect(page.locator(".world img.ready")).toBeVisible({ timeout: 15_000 });
+
+    const layout = await page.evaluate(() => {
+      const shell = document.querySelector<HTMLElement>(".shell");
+      const footer = document.querySelector<HTMLElement>(".shell footer");
+      const controls = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".foot-tools button, .pager button, .actions button",
+        ),
+      );
+      return {
+        shellFits: !!shell && shell.scrollWidth <= shell.clientWidth,
+        footerFits: !!footer && footer.getBoundingClientRect().right <= window.innerWidth,
+        controlsFit: controls.every((control) => {
+          const rect = control.getBoundingClientRect();
+          return rect.left >= 0 && rect.right <= window.innerWidth;
+        }),
+      };
+    });
+
+    expect(layout.shellFits).toBe(true);
+    expect(layout.footerFits).toBe(true);
+    expect(layout.controlsFit).toBe(true);
+  });
+}
+
 test("dots cover full main (no edge gap)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockStudio(page);

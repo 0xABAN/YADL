@@ -295,7 +295,7 @@ button.studio-back {
   position: relative;
   height: 100%;
   display: grid;
-  grid-template: 1fr auto / var(--rail-col) 1fr;
+  grid-template: minmax(0, 1fr) auto / var(--rail-col) minmax(0, 1fr);
   transition: grid-template-columns 0.22s ease;
 }
 /* Ctrl/Cmd+B — collapse labels rail; tools + footer ride column 2 leftward */
@@ -447,6 +447,23 @@ aside, .shell footer, .stack { z-index: 1 }
   height: var(--foot-h);
   margin: 0 16px calc(var(--rail-pad) / 2) var(--rail-pad);
   padding: 0 14px;
+}
+
+@media (max-width: 1200px) {
+  .shell footer { --foot-gap: 8px; }
+  .shell footer .file-wrap { display: none; }
+}
+
+@media (max-width: 960px) {
+  .shell footer .act-link {
+    width: 28px;
+    gap: 0;
+    font-size: 0;
+  }
+  .shell footer .act-link svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 .rail-head {
