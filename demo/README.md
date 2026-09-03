@@ -1,6 +1,6 @@
-# YADL hand-sign model
+# YADL hand-sign demo
 
-This standalone demo trains a compact PyTorch classifier from committed YADL hand landmarks. It does not depend on the application backend package and does not read image bytes.
+This standalone demo trains a compact PyTorch classifier from committed YADL hand landmarks and runs it against one local webcam. It does not depend on the application backend package and never sends webcam frames over the network.
 
 ## Train
 
@@ -16,7 +16,16 @@ uv run yadl-train \
 
 Training refuses CPU execution. Use `--device cuda` on a CUDA machine; `--device auto` selects MPS first, then CUDA, and fails if neither accelerator is available. The command reads `DATABASE_URL` from the process environment or the repository-level `.env` without displaying it.
 
-The artifact contains the model weights, ordered class names, model dimensions, and preprocessing contract. Generated artifacts are intentionally ignored by Git.
+The artifact contains the model weights, ordered class names, model dimensions, preprocessing contract, calibration, decision policy, validation results, and source provenance. Generated artifacts are intentionally ignored by Git.
+
+Additional landmark-only capture sessions can be merged without uploading images:
+
+```bash
+uv run yadl-train \
+  --project-id a397a808-14ef-4528-b822-9a92bfac7c3e \
+  --supplement capture.jsonl \
+  --device mps
+```
 
 ## Inference API
 
