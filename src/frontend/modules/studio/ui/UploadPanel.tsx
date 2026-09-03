@@ -205,22 +205,23 @@ function UploadPanel({
           <b>Supported</b>
           {formats} · YouTube URL
         </div>
+        <label className="yt-url">
+          <span className="yt-url-label">Or paste a YouTube link</span>
+          <input
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="https://youtube.com/watch?v=…"
+            value={yt}
+            disabled={busy}
+            onChange={(e) => setYt(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onDragOver={(e) => e.stopPropagation()}
+          />
+        </label>
+        {ytBad && <small className="err">Public YouTube links only.</small>}
       </div>
-
-      <label className="yt-url">
-        <span className="yt-url-label">YouTube URL</span>
-        <input
-          type="url"
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="https://youtube.com/watch?v=…"
-          value={yt}
-          disabled={busy}
-          onChange={(e) => setYt(e.target.value)}
-        />
-      </label>
-      {ytBad && <small className="err">Public YouTube links only.</small>}
 
       {rows.length > 0 && (
         <div className="file-list">
