@@ -6,6 +6,7 @@ import {
   createAugmentationJob,
   fetchAugmentationJob,
   fetchAugmentationJobs,
+  fetchImages,
   retryAugmentationJob,
   type AugmentationJob,
   type AugmentationMode,
@@ -37,6 +38,7 @@ function clonePipeline(pipeline: TransformOperation[]) {
 
 function outputIds(job: AugmentationJob) {
   return (job.items ?? [])
+    .filter((item) => item.status === "succeeded")
     .map((item) => item.output_image_id)
     .filter((id): id is string => Boolean(id));
 }
@@ -108,9 +110,11 @@ export default function Synthetic({
   onOpenImage: (imageId: string) => Promise<string | null>;
 }) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
-  const { projectId, list, doc } = useStudioState();
+  const { projectId, list, pageOffset, total, doc } = useStudioState();
   const [mode, setMode] = useState<AugmentationMode>("transform");
   const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
+  const [sourcePage, setSourcePage] = useState({ items: list, offset: pageOffset, total });
+  const [sourcesLoading, setSourcesLoading] = useState(false);
   const [sources, setSources] = useState<ReadonlySet<string>>(
     () => new Set(doc?.id ? [doc.id] : []),
   );
@@ -128,7 +132,7 @@ export default function Synthetic({
   const [polling, setPolling] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const seenTerminal = useRef(new Set<string>());
+  const refreshedOutputCounts = useRef(new Map<string, number>());
 
   useEffect(() => {
     if (!open) return;
@@ -138,6 +142,18 @@ export default function Synthetic({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  const loadSourcePage = async (offset: number) => {
+    setSourcesLoading(true);
+    try {
+      const page = await fetchImages(projectId, Math.max(0, offset), 100);
+      setSourcePage({ items: page.items, offset: page.offset, total: page.total });
+    } catch {
+      setNote("Couldn’t load that source page. Try again.");
+    } finally {
+      setSourcesLoading(false);
+    }
+  };
 
   const loadJobs = useCallback(async () => {
     try {
@@ -156,12 +172,14 @@ export default function Synthetic({
       );
       setJobs(detailed);
       setPolling(page.status_counts.active > 0);
-      const newlyTerminal = detailed.filter(
-        (job) => !ACTIVE.has(job.status) && !seenTerminal.current.has(job.id),
+      const withNewOutputs = detailed.filter(
+        (job) => job.progress.succeeded > (refreshedOutputCounts.current.get(job.id) ?? 0),
       );
-      if (newlyTerminal.length) {
-        newlyTerminal.forEach((job) => seenTerminal.current.add(job.id));
-        if (newlyTerminal.some((job) => job.progress.succeeded > 0)) await onCatalogChange();
+      if (withNewOutputs.length) {
+        await onCatalogChange();
+        withNewOutputs.forEach((job) =>
+          refreshedOutputCounts.current.set(job.id, job.progress.succeeded),
+        );
       }
     } catch {
       setNote("Couldn’t load generation jobs.");
@@ -184,7 +202,6 @@ export default function Synthetic({
     if (mode !== "transform") promptRef.current?.focus();
   }, [mode]);
 
-  const selectedRows = useMemo(() => list.filter((row) => sources.has(row.id)), [list, sources]);
   const selectedPreset = useMemo(
     () =>
       Object.entries(PRESETS).find(
@@ -266,32 +283,69 @@ export default function Synthetic({
             <legend>Sources</legend>
             <div className="synth-source-summary">
               <span>
-                {selectedRows.length} selected{doc?.image ? ` · ${doc.image}` : ""}
+                {sources.size} selected{doc?.image ? ` · ${doc.image}` : ""}
               </span>
-              <button type="button" onClick={() => setSourcePickerOpen((value) => !value)}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (sourcePickerOpen) setSourcePickerOpen(false);
+                  else {
+                    setSourcePickerOpen(true);
+                    void loadSourcePage(pageOffset);
+                  }
+                }}
+              >
                 {sourcePickerOpen ? "Done" : "Choose"}
               </button>
             </div>
             {sourcePickerOpen && (
-              <div className="synth-sources">
-                {list.map((row) => (
-                  <label key={row.id}>
-                    <input
-                      type="checkbox"
-                      checked={sources.has(row.id)}
-                      onChange={() =>
-                        setSources((current) => {
-                          const next = new Set(current);
-                          if (next.has(row.id)) next.delete(row.id);
-                          else next.add(row.id);
-                          return next;
-                        })
-                      }
-                    />
-                    <span>{row.filename}</span>
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="synth-sources">
+                  {sourcePage.items.map((row) => (
+                    <label key={row.id}>
+                      <input
+                        type="checkbox"
+                        checked={sources.has(row.id)}
+                        onChange={() =>
+                          setSources((current) => {
+                            const next = new Set(current);
+                            if (next.has(row.id)) next.delete(row.id);
+                            else next.add(row.id);
+                            return next;
+                          })
+                        }
+                      />
+                      <span>{row.filename}</span>
+                    </label>
+                  ))}
+                </div>
+                <small>
+                  {sourcePage.total
+                    ? `${sourcePage.offset + 1}–${sourcePage.offset + sourcePage.items.length} of ${sourcePage.total}`
+                    : "No source images"}
+                </small>
+                <div className="synth-job-actions">
+                  <button
+                    type="button"
+                    aria-label="Previous sources"
+                    disabled={sourcesLoading || sourcePage.offset === 0}
+                    onClick={() => void loadSourcePage(sourcePage.offset - 100)}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next sources"
+                    disabled={
+                      sourcesLoading ||
+                      sourcePage.offset + sourcePage.items.length >= sourcePage.total
+                    }
+                    onClick={() => void loadSourcePage(sourcePage.offset + sourcePage.items.length)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
             )}
           </fieldset>
         )}
@@ -531,8 +585,12 @@ export default function Synthetic({
                     <button
                       type="button"
                       onClick={async () => {
-                        await cancelAugmentationJob(projectId, job.id);
-                        await loadJobs();
+                        try {
+                          await cancelAugmentationJob(projectId, job.id);
+                          await loadJobs();
+                        } catch {
+                          setNote("Couldn’t cancel the job. Try again.");
+                        }
                       }}
                     >
                       Cancel
@@ -544,8 +602,12 @@ export default function Synthetic({
                     <button
                       type="button"
                       onClick={async () => {
-                        await retryAugmentationJob(projectId, job.id);
-                        await loadJobs();
+                        try {
+                          await retryAugmentationJob(projectId, job.id);
+                          await loadJobs();
+                        } catch {
+                          setNote("Couldn’t retry the job. Try again.");
+                        }
                       }}
                     >
                       Retry
