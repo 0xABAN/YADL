@@ -169,7 +169,7 @@ function UploadPanel({
           if (!busy) add(e.dataTransfer.files);
         }}
       >
-        <p className="lead">Drag and drop to upload, or:</p>
+        <p className="lead">Drag and drop files</p>
         <div className="picks">
           <label className={busy ? "pick off" : "pick"}>
             Select files
