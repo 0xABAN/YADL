@@ -522,10 +522,11 @@ def add_images(pid: str, uid: str, files: list[tuple[str, bytes, str]]) -> list[
         out.append({"id": iid, "filename": filename})
     try:
         inserted = ids and fetchone(
-            """insert into images (id, project_id, s3_key, filename)
-               select data.id::uuid, owned.id, data.s3_key, data.filename
+            """insert into images (id, project_id, s3_key, filename, created_at)
+               select data.id::uuid, owned.id, data.s3_key, data.filename,
+                      statement_timestamp() + (data.ordinal - 1) * interval '1 microsecond'
                from unnest(%s::text[], %s::text[], %s::text[])
-                    as data(id, s3_key, filename)
+                    with ordinality as data(id, s3_key, filename, ordinal)
                cross join (
                  select id from projects where id=%s::uuid and owner_id=%s
                ) as owned
@@ -564,10 +565,11 @@ def add_image_keys(pid: str, uid: str, items: list[tuple[str, str]]) -> list[dic
         out.append({"id": iid, "filename": filename})
     try:
         inserted = ids and fetchone(
-            """insert into images (id, project_id, s3_key, filename)
-               select data.id::uuid, owned.id, data.s3_key, data.filename
+            """insert into images (id, project_id, s3_key, filename, created_at)
+               select data.id::uuid, owned.id, data.s3_key, data.filename,
+                      statement_timestamp() + (data.ordinal - 1) * interval '1 microsecond'
                from unnest(%s::text[], %s::text[], %s::text[])
-                    as data(id, s3_key, filename)
+                    with ordinality as data(id, s3_key, filename, ordinal)
                cross join (
                  select id from projects where id=%s::uuid and owner_id=%s
                ) as owned

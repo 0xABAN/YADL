@@ -309,6 +309,9 @@ def test_registers_a_large_presigned_batch_in_one_database_round_trip() -> None:
 
     assert rows is not None and len(rows) == 100
     fetchone.assert_called_once()
+    sql = fetchone.call_args.args[0].lower()
+    assert "with ordinality" in sql
+    assert "created_at" in sql
 
 
 def test_add_images_handles_project_deletion_during_registration() -> None:
@@ -388,6 +391,9 @@ def test_add_images_registers_extracted_frames_in_one_database_round_trip() -> N
         rows = store.add_images("project", "owner", files)
 
     assert rows is not None and len(rows) == 100
+    sql = fetchone.call_args.args[0].lower()
+    assert "with ordinality" in sql
+    assert "created_at" in sql
     execute.assert_not_called()
     fetchone.assert_called_once()
 
