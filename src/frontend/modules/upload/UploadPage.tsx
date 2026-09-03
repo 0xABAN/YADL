@@ -8,7 +8,7 @@ import UploadPanel, { type SubmitOpts } from "@/modules/studio/ui/UploadPanel";
 import QrCard from "@/modules/studio/ui/QrCard";
 import { createProject, parseProjectType, parseTemplate } from "@/modules/create/projectsApi";
 import { uploadPath } from "@/modules/create/projectRoutes";
-import { uploadFiles, uploadFromUrl } from "@/modules/create/upload";
+import { uploadError, uploadFiles, uploadFromUrl } from "@/modules/create/upload";
 import { useRotatingIndex } from "@/modules/create/useRotatingIndex";
 import { useSheetGuide } from "@/modules/create/useSheetGuide";
 import { apiResult } from "@/shared/api/client";
@@ -18,18 +18,6 @@ const DATA = [
   "files", "samples", "examples", "batches", "media", "captures",
   "scans", "snaps", "assets", "inputs", "sets", "packs", "lots",
 ];
-
-function upErr(status: number, detail?: string): string {
-  const d = (detail || "").toLowerCase();
-  if (status === 409 || d.includes("taken")) return "Name already exists.";
-  if (d.includes("ffmpeg")) return "Video tools unavailable (ffmpeg).";
-  if (d.includes("yt-dlp")) return "YouTube tools unavailable (yt-dlp).";
-  if (d.includes("private")) return "Video is private or login-only.";
-  if (d.includes("youtube") || d === "url") return "Could not fetch that YouTube link.";
-  if (d.includes("video")) return "Could not read video.";
-  if (d.includes("files") || status === 400) return "Upload rejected (type, size, or count).";
-  return "Upload failed.";
-}
 
 export default function UploadPage() {
   const router = useRouter();
@@ -111,7 +99,7 @@ export default function UploadPage() {
           signal: opts.signal,
         });
         if (!res.ok) {
-          setUpMsg(res.error === "name_taken" ? "Name already exists." : upErr(res.status ?? 0, String(res.detail ?? "")));
+          setUpMsg(res.error === "name_taken" ? "Name already exists." : uploadError(res.status ?? 0, String(res.detail ?? "")));
           return;
         }
         id = res.project.id;
@@ -124,7 +112,7 @@ export default function UploadPage() {
             ? String((json as { detail: unknown }).detail)
             : undefined;
         if (createdHere) void apiResult(`/projects/${id}`, { method: "DELETE", raw: true });
-        setUpMsg(upErr(status, detail));
+        setUpMsg(uploadError(status, detail));
       };
       if (yt) {
         const up = await uploadFromUrl(`/api/projects/${id}/images`, yt, {

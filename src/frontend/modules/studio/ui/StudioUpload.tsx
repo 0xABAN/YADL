@@ -2,20 +2,15 @@
 
 import { imagesUploadUrl } from "../api";
 import { useStudioSession, useStudioState } from "../session";
-import { uploadFiles, uploadFromUrl } from "@/modules/create/upload";
+import { uploadError, uploadFiles, uploadFromUrl } from "@/modules/create/upload";
 import UploadPanel from "./UploadPanel";
 
-function uploadErrDetail(json: unknown): string {
+function errorOf(status: number, json: unknown): string {
   const detail =
     json && typeof json === "object" && json !== null && "detail" in json
-      ? String((json as { detail: unknown }).detail).toLowerCase()
+      ? String((json as { detail: unknown }).detail)
       : "";
-  if (detail.includes("ffmpeg")) return "Video tools unavailable (ffmpeg).";
-  if (detail.includes("yt-dlp")) return "YouTube tools unavailable (yt-dlp).";
-  if (detail.includes("private")) return "Video is private or login-only.";
-  if (detail.includes("youtube") || detail === "url") return "Could not fetch that YouTube link.";
-  if (detail.includes("video")) return "Could not read video.";
-  return "Upload rejected (type, size, or count).";
+  return uploadError(status, detail);
 }
 
 export default function StudioUpload() {
@@ -58,7 +53,7 @@ export default function StudioUpload() {
                   onProgress: opts.onProgress,
                 });
                 if (!r.ok) {
-                  session.setUploadErr(uploadErrDetail(r.json));
+                  session.setUploadErr(errorOf(r.status, r.json));
                   return;
                 }
                 if (Array.isArray(r.json)) added.push(...(r.json as typeof added));
@@ -70,7 +65,7 @@ export default function StudioUpload() {
                   onProgress: opts.onProgress,
                 });
                 if (!r.ok) {
-                  session.setUploadErr(uploadErrDetail(r.json));
+                  session.setUploadErr(errorOf(r.status, r.json));
                   return;
                 }
                 if (Array.isArray(r.json)) added.push(...(r.json as typeof added));
