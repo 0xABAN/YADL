@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.domain.augment import InvalidImageError, apply_pipeline, plan_items
+from backend.infra.wavespeed import AmbiguousSubmissionError, PredictionResult, WaveSpeedError
 
 
 def _png() -> bytes:
@@ -199,6 +201,127 @@ def test_worker_surfaces_corrupt_transform_sources() -> None:
     assert "decoded" in failed.call_args.args[2]
 
 
+def _generation_item() -> dict:
+    return {
+        "id": "item",
+        "job_id": "job",
+        "mode": "text_to_image",
+        "config": {"prompt": "a test image"},
+        "source_s3_key": None,
+        "ordinal": 0,
+    }
+
+
+def test_worker_does_not_submit_a_generation_already_cancelled() -> None:
+    from backend import worker
+
+    client = worker.WaveSpeedClient()
+    with (
+        patch.dict(os.environ, {"WAVESPEED_CALLBACK_BASE_URL": "https://example.test"}),
+        patch.object(worker.jobs, "claim_item", return_value=_generation_item()),
+        patch.object(worker.jobs, "item_cancelled", return_value=True),
+        patch.object(worker.jobs, "mark_submitting"),
+        patch.object(worker.jobs, "mark_provider_pending"),
+        patch.object(worker.jobs, "cancel_claimed_item") as cancelled,
+        patch.object(worker.jobs, "fail_item"),
+        patch.object(worker, "WaveSpeedClient", return_value=client) as client_type,
+        patch.object(client, "submit") as submit,
+    ):
+        assert worker.run_once() is True
+    submit.assert_not_called()
+    client_type.assert_not_called()
+    cancelled.assert_called_once_with("item", "job")
+
+
+def test_worker_deletes_prediction_when_cancelled_during_submission() -> None:
+    from backend import worker
+
+    client = worker.WaveSpeedClient()
+    with (
+        patch.dict(os.environ, {"WAVESPEED_CALLBACK_BASE_URL": "https://example.test"}),
+        patch.object(worker.jobs, "claim_item", return_value=_generation_item()),
+        patch.object(worker.jobs, "item_cancelled", side_effect=[False, True]),
+        patch.object(worker.jobs, "mark_submitting"),
+        patch.object(worker.jobs, "mark_provider_pending") as pending,
+        patch.object(worker.jobs, "cancel_claimed_item") as cancelled,
+        patch.object(worker.jobs, "fail_item"),
+        patch.object(worker, "WaveSpeedClient", return_value=client),
+        patch.object(client, "submit", return_value="prediction") as submit,
+        patch.object(client, "delete") as delete,
+    ):
+        assert worker.run_once() is True
+    submit.assert_called_once()
+    pending.assert_called_once_with("item", "prediction")
+    cancelled.assert_called_once_with("item", "job")
+    delete.assert_called_once_with(["prediction"])
+
+
+def test_worker_marks_ambiguous_submission_for_explicit_retry() -> None:
+    from backend import worker
+
+    client = worker.WaveSpeedClient()
+    with (
+        patch.dict(os.environ, {"WAVESPEED_CALLBACK_BASE_URL": "https://example.test"}),
+        patch.object(worker.jobs, "claim_item", return_value=_generation_item()),
+        patch.object(worker.jobs, "item_cancelled", return_value=False),
+        patch.object(worker.jobs, "mark_submitting"),
+        patch.object(worker.jobs, "fail_item") as failed,
+        patch.object(worker, "WaveSpeedClient", return_value=client),
+        patch.object(client, "submit", side_effect=AmbiguousSubmissionError("timed out")) as submit,
+    ):
+        assert worker.run_once() is True
+    submit.assert_called_once()
+    failed.assert_called_once_with("item", "job", "timed out", status="submission_unknown")
+
+
+def test_worker_marks_known_provider_failure_as_failed() -> None:
+    from backend import worker
+
+    client = worker.WaveSpeedClient()
+    error = WaveSpeedError("rate limited", status=429)
+    with (
+        patch.dict(os.environ, {"WAVESPEED_CALLBACK_BASE_URL": "https://example.test"}),
+        patch.object(worker.jobs, "claim_item", return_value=_generation_item()),
+        patch.object(worker.jobs, "item_cancelled", return_value=False),
+        patch.object(worker.jobs, "mark_submitting"),
+        patch.object(worker.jobs, "fail_item") as failed,
+        patch.object(worker, "WaveSpeedClient", return_value=client),
+        patch.object(client, "submit", side_effect=error),
+    ):
+        assert worker.run_once() is True
+    failed.assert_called_once_with("item", "job", "rate limited")
+
+
+def test_worker_reconciles_a_lost_callback_without_resubmitting() -> None:
+    from backend import worker
+
+    pending_item = {"id": "item", "provider_prediction_id": "prediction"}
+    provider_payload = {
+        "data": {"id": "prediction", "status": "completed", "outputs": ["https://cdn/output"]}
+    }
+    result = PredictionResult(
+        id="prediction",
+        status="completed",
+        output_urls=["https://cdn/output"],
+        error=None,
+        payload=provider_payload,
+    )
+    client = worker.WaveSpeedClient()
+    with (
+        patch.object(worker.jobs, "claim_item", return_value=None),
+        patch.object(worker.jobs, "claim_output_item", return_value=None),
+        patch.object(worker.jobs, "pending_predictions", return_value=[pending_item]),
+        patch.object(worker.jobs, "record_provider_result") as record,
+        patch.object(worker, "WaveSpeedClient", return_value=client),
+        patch.object(client, "result", return_value=result) as get_result,
+        patch.object(client, "submit") as submit,
+    ):
+        assert worker.run_once() is True
+    get_result.assert_called_once_with("prediction")
+    record.assert_called_once_with("item", provider_payload)
+    submit.assert_not_called()
+
+
 if __name__ == "__main__":
     test_seeded_noise_is_deterministic_and_seed_sensitive()
     test_pipeline_order_is_observable()
@@ -210,4 +333,9 @@ if __name__ == "__main__":
     test_job_contract_rejects_duplicate_sources()
     test_job_contract_rejects_whitespace_only_generation_prompt()
     test_worker_surfaces_corrupt_transform_sources()
+    test_worker_does_not_submit_a_generation_already_cancelled()
+    test_worker_deletes_prediction_when_cancelled_during_submission()
+    test_worker_marks_ambiguous_submission_for_explicit_retry()
+    test_worker_marks_known_provider_failure_as_failed()
+    test_worker_reconciles_a_lost_callback_without_resubmitting()
     print("ok")

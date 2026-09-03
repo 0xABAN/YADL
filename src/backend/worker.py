@@ -58,6 +58,9 @@ def run_once() -> bool:
 def _submit_generation(item: dict) -> None:
     item_id = str(item["id"])
     job_id = str(item["job_id"])
+    if jobs.item_cancelled(item_id):
+        jobs.cancel_claimed_item(item_id, job_id)
+        return
     base = os.environ.get("WAVESPEED_CALLBACK_BASE_URL", "").rstrip("/")
     if not base:
         jobs.fail_item(item_id, job_id, "WAVESPEED_CALLBACK_BASE_URL is missing")
@@ -77,6 +80,12 @@ def _submit_generation(item: dict) -> None:
         jobs.fail_item(item_id, job_id, str(exc) or exc.__class__.__name__)
         return
     jobs.mark_provider_pending(item_id, prediction_id)
+    if jobs.item_cancelled(item_id):
+        jobs.cancel_claimed_item(item_id, job_id)
+        try:
+            client.delete([prediction_id])
+        except Exception as exc:
+            jobs.note_cancel_failure(job_id, f"provider cancellation failed: {exc}")
 
 
 def _reconcile_one() -> bool:
