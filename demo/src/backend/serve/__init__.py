@@ -1,0 +1,1 @@
+"""Local webcam gesture service."""
