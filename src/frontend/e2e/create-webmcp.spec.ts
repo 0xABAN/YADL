@@ -62,6 +62,7 @@ test("valid create and open calls return actionable destinations", async ({ page
 
   expect(await callTool(page, "create_project", { name: created.name, type: "keypoints", template: "hand" })).toMatchObject({
     project: created,
+    upload_url: "/upload?id=created-1",
     studio_url: "/studio/created-1",
   });
   await expect(page.getByRole("link", { name: "Created by agent Keypoints" })).toBeVisible();

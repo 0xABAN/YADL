@@ -11,7 +11,7 @@
     },
     {
       "name": "create_project",
-      "description": "Create a labeling project. type is boxes, polygons, or keypoints. For keypoints, pass template hand|pose|face (default hand). Does not upload media — returns studio_url; a human adds files in the product UI.",
+      "description": "Create a labeling project. type is boxes, polygons, or keypoints. For keypoints, pass template hand|pose|face (default hand). Returns upload_url for the required next step; media upload is human UI, not WebMCP.",
       "inputSchema": {
         "type": "object",
         "properties": {
