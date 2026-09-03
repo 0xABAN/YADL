@@ -4,13 +4,18 @@ version = "0.1.0"
 description = "GPU-accelerated hand-sign classifier trained from YADL landmarks"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+  "mediapipe>=0.10.35,<0.11",
   "numpy>=1.26",
+  "opencv-contrib-python>=4.10",
   "psycopg[binary]>=3.3",
+  "pyobjc-framework-applicationservices>=11; sys_platform == 'darwin'",
+  "pyobjc-framework-quartz>=11; sys_platform == 'darwin'",
   "torch>=2.4",
 ]
 
 [project.scripts]
 yadl-train = "backend.train.cli:main"
+yadl-gestures = "backend.serve.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.3"]
