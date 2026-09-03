@@ -34,7 +34,6 @@ const POLYGON_POINTS = {
   ],
 } as const;
 
-/** Schema-only export for webmcp-evals (boxes pack). */
 export const BOX_TOOL_SCHEMAS = {
   tools: [
     {

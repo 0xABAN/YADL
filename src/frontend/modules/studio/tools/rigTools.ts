@@ -31,7 +31,6 @@ const ROOT_PROPS = {
   additionalProperties: false,
 } as const;
 
-/** Schema-only export for webmcp-evals. */
 export const RIG_TOOL_SCHEMAS = {
   tools: [
     {
