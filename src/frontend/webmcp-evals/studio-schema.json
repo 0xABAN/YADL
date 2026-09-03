@@ -11,7 +11,7 @@
     },
     {
       "name": "get_studio",
-      "description": "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, invalid_reasons, unlabeled ids, export_url.",
+      "description": "Snapshot of the open Studio: project, progress, current image, and the loaded image_page with source ids for augmentation. Objects omit geometry.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -161,7 +161,7 @@
     },
     {
       "name": "create_augmentation_job",
-      "description": "Create a durable transform, text-to-image, or image-edit job. Outputs are empty, uncommitted project images and never inherit source annotations.",
+      "description": "Create a durable transform, text-to-image, or image-edit job. Returns a compact job summary; inspect items with get_augmentation_job. Outputs never inherit annotations.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -172,7 +172,8 @@
           "source_image_ids": {
             "type": "array",
             "minItems": 1,
-            "items": { "type": "string" },
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 },
             "description": "Project image ids used as sources"
           },
           "variants_per_source": { "type": "integer", "minimum": 1 },
@@ -294,15 +295,40 @@
         "oneOf": [
           {
             "properties": { "mode": { "const": "transform" } },
-            "required": ["mode", "source_image_ids", "variants_per_source", "seed", "pipeline"]
+            "required": ["mode", "source_image_ids", "variants_per_source", "seed", "pipeline"],
+            "not": {
+              "anyOf": [
+                { "required": ["count"] },
+                { "required": ["prompt"] },
+                { "required": ["aspect_ratio"] },
+                { "required": ["resolution"] },
+                { "required": ["quality"] },
+                { "required": ["output_format"] }
+              ]
+            }
           },
           {
             "properties": { "mode": { "const": "text_to_image" } },
-            "required": ["mode", "prompt", "count"]
+            "required": ["mode", "prompt", "count"],
+            "not": {
+              "anyOf": [
+                { "required": ["source_image_ids"] },
+                { "required": ["variants_per_source"] },
+                { "required": ["seed"] },
+                { "required": ["pipeline"] }
+              ]
+            }
           },
           {
             "properties": { "mode": { "const": "image_edit" } },
-            "required": ["mode", "prompt", "source_image_ids", "variants_per_source"]
+            "required": ["mode", "prompt", "source_image_ids", "variants_per_source"],
+            "not": {
+              "anyOf": [
+                { "required": ["count"] },
+                { "required": ["seed"] },
+                { "required": ["pipeline"] }
+              ]
+            }
           }
         ],
         "additionalProperties": false

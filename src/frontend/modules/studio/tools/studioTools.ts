@@ -6,6 +6,7 @@ import type {
 } from "../api";
 import { commitStatus, named, type AnnObj, type Doc, type Project } from "../geometry/doc";
 import type { AutoLabelStatus } from "../session/types";
+import { ApiError } from "@/shared/api/client";
 import type { WebMcpTool } from "@/shared/webmcp";
 
 export type StudioImgRow = {
@@ -60,7 +61,8 @@ export const STUDIO_GUIDE = [
 const sourceIds = {
   type: "array",
   minItems: 1,
-  items: { type: "string" },
+  uniqueItems: true,
+  items: { type: "string", minLength: 1 },
   description: "Project image ids used as sources",
 } as const;
 
@@ -193,7 +195,7 @@ export const STUDIO_TOOL_SCHEMAS = {
     {
       name: "get_studio",
       description:
-        "Snapshot of the open Studio: project, progress, current image (objects without geometry), can_commit, invalid_reasons, unlabeled ids, export_url.",
+        "Snapshot of the open Studio: project, progress, current image, and the loaded image_page with source ids for augmentation. Objects omit geometry.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     },
     {
@@ -292,7 +294,7 @@ export const STUDIO_TOOL_SCHEMAS = {
     {
       name: "create_augmentation_job",
       description:
-        "Create a durable transform, text-to-image, or image-edit job. Outputs are empty, uncommitted project images and never inherit source annotations.",
+        "Create a durable transform, text-to-image, or image-edit job. Returns a compact job summary; inspect items with get_augmentation_job. Outputs never inherit annotations.",
       inputSchema: {
         type: "object",
         properties: {
@@ -315,14 +317,27 @@ export const STUDIO_TOOL_SCHEMAS = {
           {
             properties: { mode: { const: "transform" } },
             required: ["mode", "source_image_ids", "variants_per_source", "seed", "pipeline"],
+            not: {
+              anyOf: ["count", "prompt", "aspect_ratio", "resolution", "quality", "output_format"].map(
+                (key) => ({ required: [key] }),
+              ),
+            },
           },
           {
             properties: { mode: { const: "text_to_image" } },
             required: ["mode", "prompt", "count"],
+            not: {
+              anyOf: ["source_image_ids", "variants_per_source", "seed", "pipeline"].map((key) => ({
+                required: [key],
+              })),
+            },
           },
           {
             properties: { mode: { const: "image_edit" } },
             required: ["mode", "prompt", "source_image_ids", "variants_per_source"],
+            not: {
+              anyOf: ["count", "seed", "pipeline"].map((key) => ({ required: [key] })),
+            },
           },
         ],
         additionalProperties: false,
@@ -479,6 +494,18 @@ function studioPayload(snap: StudioSnapshot, augmentationJobs: AugmentationJobPa
       committed: snap.committedCount,
       empty: snap.emptyCount,
     },
+    image_page: {
+      offset: snap.pageOffset,
+      total: snap.total,
+      has_more: snap.pageOffset + snap.list.length < snap.total,
+      items: snap.list.map((row, localIndex) => ({
+        id: row.id,
+        filename: row.filename,
+        index: snap.pageOffset + localIndex,
+        committed: Boolean(row.committed),
+        empty: Boolean(row.empty),
+      })),
+    },
     current: currentSummary(snap),
     augmentation_jobs: augmentationJobs,
     export_url: `/api/projects/${snap.projectId}/export`,
@@ -496,14 +523,174 @@ function jobId(args: Record<string, unknown>) {
   return String(args.job_id ?? "").trim();
 }
 
-const ACTIVE_JOB_STATUSES = new Set(["queued", "running"]);
-
 async function safeJobCall<T>(action: () => Promise<T>, error: string) {
   try {
     return await action();
-  } catch {
-    return { error };
+  } catch (cause) {
+    if (cause instanceof ApiError) {
+      const reason =
+        cause.status === 401
+          ? "auth_required"
+          : cause.status === 404
+            ? "not_found_or_not_owned"
+            : cause.status === 409
+              ? "job_state_conflict"
+              : cause.status === 422
+                ? "invalid_request"
+                : cause.status === 429
+                  ? "rate_limited"
+                  : cause.status >= 500
+                    ? "service_unavailable"
+                    : "request_failed";
+      return { error, status: cause.status, reason };
+    }
+    return { error, reason: "network_or_service_error" };
   }
+}
+
+function inapplicable(args: Record<string, unknown>, keys: readonly string[]) {
+  const present = keys.filter((key) => args[key] !== undefined).sort();
+  return present.length ? { error: "inapplicable_arguments", keys: present } : null;
+}
+
+function validSources(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((id) => typeof id === "string" && id.trim().length > 0) &&
+    new Set(value).size === value.length
+  );
+}
+
+const NUMBER_RANGES: Record<string, [number, number, boolean?]> = {
+  probability: [0, 1],
+  rotate_degrees: [-360, 360],
+  translate_x: [-1, 1],
+  translate_y: [-1, 1],
+  scale: [0, 10, true],
+  shear_degrees: [-89, 89],
+  x: [0, 1],
+  y: [0, 1],
+  width: [0, 1, true],
+  height: [0, 1, true],
+  brightness: [0, 4],
+  contrast: [0, 4],
+  hue_degrees: [-180, 180],
+  saturation: [0, 4],
+  radius: [0, 100],
+  sigma: [0, 255],
+  quality: [1, 100],
+};
+
+const OP_FIELDS: Record<string, readonly string[]> = {
+  flip: ["axis", "probability"],
+  affine: ["rotate_degrees", "translate_x", "translate_y", "scale", "shear_degrees", "probability"],
+  crop_resize: ["x", "y", "width", "height", "probability"],
+  brightness_contrast: ["brightness", "contrast", "probability"],
+  hue_saturation: ["hue_degrees", "saturation", "probability"],
+  blur: ["radius", "probability"],
+  noise: ["sigma", "probability"],
+  compression: ["quality", "probability"],
+};
+
+function invalidPipeline(value: unknown) {
+  if (!Array.isArray(value) || !value.length) return { error: "bad_pipeline" };
+  for (const [operation_index, valueAtIndex] of value.entries()) {
+    if (!valueAtIndex || typeof valueAtIndex !== "object" || Array.isArray(valueAtIndex)) {
+      return { error: "bad_pipeline", operation_index, field: "op" };
+    }
+    const operation = valueAtIndex as Record<string, unknown>;
+    const op = typeof operation.op === "string" ? operation.op : "";
+    const fields = OP_FIELDS[op];
+    if (!fields) return { error: "bad_pipeline", operation_index, field: "op" };
+    const unexpected = Object.keys(operation)
+      .filter((field) => field !== "op" && !fields.includes(field))
+      .sort()[0];
+    if (unexpected) return { error: "bad_pipeline", operation_index, field: unexpected };
+    if (op === "flip" && operation.axis !== undefined && !["horizontal", "vertical"].includes(String(operation.axis))) {
+      return { error: "bad_pipeline", operation_index, field: "axis" };
+    }
+    for (const field of fields) {
+      if (field === "axis" || operation[field] === undefined) continue;
+      const number = operation[field];
+      const range = NUMBER_RANGES[field];
+      if (
+        typeof number !== "number" ||
+        !Number.isFinite(number) ||
+        number < range[0] ||
+        number > range[1] ||
+        (range[2] && number === range[0]) ||
+        (op === "compression" && field === "quality" && !Number.isInteger(number))
+      ) {
+        return { error: "bad_pipeline", operation_index, field };
+      }
+    }
+    if (op === "crop_resize") {
+      const x = typeof operation.x === "number" ? operation.x : 0;
+      const y = typeof operation.y === "number" ? operation.y : 0;
+      const width = typeof operation.width === "number" ? operation.width : 1;
+      const height = typeof operation.height === "number" ? operation.height : 1;
+      if (x + width > 1) return { error: "bad_pipeline", operation_index, field: "width" };
+      if (y + height > 1) return { error: "bad_pipeline", operation_index, field: "height" };
+    }
+  }
+  return null;
+}
+
+function validateAugmentationArgs(args: Record<string, unknown>) {
+  const mode = args.mode;
+  if (!["transform", "text_to_image", "image_edit"].includes(String(mode))) {
+    return { error: "bad_mode" };
+  }
+  if (mode === "transform") {
+    const extra = inapplicable(args, ["count", "prompt", "aspect_ratio", "resolution", "quality", "output_format"]);
+    if (extra) return extra;
+    if (!validSources(args.source_image_ids)) return { error: "bad_source_image_ids" };
+    if (!Number.isInteger(args.variants_per_source) || Number(args.variants_per_source) < 1) {
+      return { error: "bad_variants_per_source" };
+    }
+    if (!Number.isInteger(args.seed)) return { error: "bad_seed" };
+    return invalidPipeline(args.pipeline);
+  }
+
+  const extra = inapplicable(
+    args,
+    mode === "text_to_image"
+      ? ["source_image_ids", "variants_per_source", "seed", "pipeline"]
+      : ["count", "seed", "pipeline"],
+  );
+  if (extra) return extra;
+  const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
+  if (!prompt || prompt.length > 32000) return { error: "bad_prompt" };
+  if (mode === "text_to_image") {
+    if (!Number.isInteger(args.count) || Number(args.count) < 1) return { error: "bad_count" };
+  } else {
+    if (!validSources(args.source_image_ids)) return { error: "bad_source_image_ids" };
+    if (!Number.isInteger(args.variants_per_source) || Number(args.variants_per_source) < 1) {
+      return { error: "bad_variants_per_source" };
+    }
+  }
+  const options = {
+    aspect_ratio: ["1:1", "3:2", "2:3", "16:9", "9:16"],
+    resolution: ["1k", "2k", "4k"],
+    quality: ["low", "medium", "high"],
+    output_format: ["png", "jpeg", "webp"],
+  } as const;
+  for (const [field, allowed] of Object.entries(options)) {
+    if (args[field] !== undefined && !(allowed as readonly unknown[]).includes(args[field])) {
+      return { error: "bad_image_option", field };
+    }
+  }
+  return null;
+}
+
+function jobMutationSummary(job: AugmentationJob) {
+  const { items, ...summary } = job;
+  return {
+    ...summary,
+    items_omitted: items?.length ?? 0,
+    inspect_with: { tool: "get_augmentation_job", arguments: { job_id: job.id } },
+  };
 }
 
 function pickOneSelector(args: Record<string, unknown>): {
@@ -525,7 +712,7 @@ function pickOneSelector(args: Record<string, unknown>): {
 }
 
 export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
-  const refreshedTerminalJobs = new Set<string>();
+  const refreshedOutputCounts = new Map<string, number>();
   const schemas = STUDIO_TOOL_SCHEMAS.tools;
   return [
     {
@@ -700,11 +887,14 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
     },
     {
       ...schemas[9],
-      execute: async (args) =>
-        safeJobCall(
-          () => deps.createAugmentationJob(args as unknown as AugmentationRequest),
+      execute: async (args) => {
+        const invalid = validateAugmentationArgs(args);
+        if (invalid) return invalid;
+        return safeJobCall(
+          async () => jobMutationSummary(await deps.createAugmentationJob(args as unknown as AugmentationRequest)),
           "augmentation_create_failed",
-        ),
+        );
+      },
     },
     {
       ...schemas[10],
@@ -728,13 +918,10 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
         if (offset === null || limit === null) return { error: "bad_pagination" };
         return safeJobCall(async () => {
           const job = await deps.getAugmentationJob(id, offset, limit);
-          if (
-            job.progress.succeeded > 0 &&
-            !ACTIVE_JOB_STATUSES.has(job.status) &&
-            !refreshedTerminalJobs.has(job.id)
-          ) {
+          const refreshed = refreshedOutputCounts.get(job.id) ?? 0;
+          if (job.progress.succeeded > refreshed) {
             await deps.refreshCatalog();
-            refreshedTerminalJobs.add(job.id);
+            refreshedOutputCounts.set(job.id, job.progress.succeeded);
           }
           return job;
         }, "augmentation_get_failed");
@@ -745,7 +932,10 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       execute: async (args) => {
         const id = jobId(args);
         if (!id) return { error: "bad_job_id" };
-        return safeJobCall(() => deps.cancelAugmentationJob(id), "augmentation_cancel_failed");
+        return safeJobCall(
+          async () => jobMutationSummary(await deps.cancelAugmentationJob(id)),
+          "augmentation_cancel_failed",
+        );
       },
     },
     {
@@ -753,7 +943,10 @@ export function studioPageTools(deps: StudioToolsDeps): WebMcpTool[] {
       execute: async (args) => {
         const id = jobId(args);
         if (!id) return { error: "bad_job_id" };
-        return safeJobCall(() => deps.retryAugmentationJob(id), "augmentation_retry_failed");
+        return safeJobCall(
+          async () => jobMutationSummary(await deps.retryAugmentationJob(id)),
+          "augmentation_retry_failed",
+        );
       },
     },
   ];

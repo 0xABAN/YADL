@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  studioPageTools,
+  type StudioToolsDeps,
+} from "../modules/studio/tools/studioTools";
 import { callTool, getToolSchema, installWebMcpHost, waitForTool } from "./support/webmcp";
 
 const PID = "p_webmcp";
@@ -32,6 +36,7 @@ async function mockStudio(
     failNextSave?: boolean;
     failClasses?: boolean;
     succeedAugmentationOnGet?: boolean;
+    incrementAugmentationOnGet?: boolean;
   } = {},
 ) {
   let objects = initialObjects;
@@ -39,18 +44,18 @@ async function mockStudio(
   let comments: { id: string; body: string; at: string }[] = [];
   let augmentationBody: Record<string, unknown> | null = null;
   let augmentationStatus = "queued";
-  let augmentationOutputReady = false;
+  let augmentationOutputCount = 0;
   const augmentationJob = () => ({
     id: "job-1",
     project_id: PID,
     mode: augmentationBody?.mode ?? "transform",
     config: augmentationBody ?? {},
     status: augmentationStatus,
-    requested_count: 1,
+    requested_count: options.incrementAugmentationOnGet ? 3 : 1,
     progress: {
       queued: augmentationStatus === "queued" ? 1 : 0,
-      running: 0,
-      succeeded: augmentationStatus === "succeeded" ? 1 : 0,
+      running: augmentationStatus === "running" ? 1 : 0,
+      succeeded: augmentationOutputCount,
       failed: 0,
       cancelled: augmentationStatus === "cancelled" ? 1 : 0,
       submission_unknown: 0,
@@ -59,20 +64,16 @@ async function mockStudio(
     created_at: "2026-09-02T12:00:00Z",
     started_at: null,
     finished_at: augmentationStatus === "succeeded" ? "2026-09-02T12:00:01Z" : null,
-    items: augmentationOutputReady
-      ? [
-          {
-            id: "augmentation-item",
-            ordinal: 0,
-            source_image_id: IID,
-            status: "succeeded",
-            attempts: 1,
-            error: null,
-            provider_prediction_id: null,
-            output_image_id: "augmentation-output",
-          },
-        ]
-      : [],
+    items: Array.from({ length: augmentationOutputCount }, (_, index) => ({
+      id: `augmentation-item-${index + 1}`,
+      ordinal: index,
+      source_image_id: IID,
+      status: "succeeded",
+      attempts: 1,
+      error: null,
+      provider_prediction_id: null,
+      output_image_id: `augmentation-output-${index + 1}`,
+    })),
     item_offset: 0,
     item_limit: 100,
   });
@@ -98,16 +99,12 @@ async function mockStudio(
       return route.fulfill({
         json: [
           { id: IID, filename: "hand.jpg", committed: false, empty: false },
-          ...(augmentationOutputReady
-            ? [
-                {
-                  id: "augmentation-output",
-                  filename: "augmentation.png",
-                  committed: false,
-                  empty: true,
-                },
-              ]
-            : []),
+          ...Array.from({ length: augmentationOutputCount }, (_, index) => ({
+            id: `augmentation-output-${index + 1}`,
+            filename: `augmentation-${index + 1}.png`,
+            committed: false,
+            empty: true,
+          })),
         ],
       });
     }
@@ -161,7 +158,10 @@ async function mockStudio(
     if (path === `/projects/${PID}/augmentation-jobs/job-1` && method === "GET") {
       if (options.succeedAugmentationOnGet) {
         augmentationStatus = "succeeded";
-        augmentationOutputReady = true;
+        augmentationOutputCount = 1;
+      } else if (options.incrementAugmentationOnGet) {
+        augmentationStatus = "running";
+        augmentationOutputCount = Math.min(2, augmentationOutputCount + 1);
       }
       return route.fulfill({ json: augmentationJob() });
     }
@@ -194,6 +194,7 @@ async function openStudio(
     failNextSave?: boolean;
     failClasses?: boolean;
     succeedAugmentationOnGet?: boolean;
+    incrementAugmentationOnGet?: boolean;
   } = {},
 ) {
   await installWebMcpHost(page);
@@ -386,6 +387,23 @@ test("Studio and rig schemas reject coercible wrong types at the app boundary", 
   expect(await callTool(page, "set_rig", { root: { x: "0.8" } })).toEqual({
     error: "invalid_arguments",
     details: ["$.root.x: expected number"],
+  });
+});
+
+test("get_studio exposes the loaded image page for augmentation source discovery", async ({
+  page,
+}) => {
+  await openStudio(page, [hand(REST_RIG)]);
+
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    image_page: {
+      offset: 0,
+      total: 1,
+      has_more: false,
+      items: [
+        { id: IID, filename: "hand.jpg", index: 0, committed: false, empty: false },
+      ],
+    },
   });
 });
 
@@ -590,6 +608,11 @@ test("all augmentation WebMCP tools share the durable job contract", async ({ pa
     pipeline: [{ op: "flip", axis: "horizontal" }],
   });
   expect(created).toMatchObject({ id: "job-1", mode: "transform", status: "queued" });
+  expect(created).not.toHaveProperty("items");
+  expect(created).toMatchObject({
+    items_omitted: 0,
+    inspect_with: { tool: "get_augmentation_job", arguments: { job_id: "job-1" } },
+  });
 
   expect(await callTool(page, "list_augmentation_jobs", { limit: 20 })).toMatchObject({
     total: 1,
@@ -635,6 +658,36 @@ test("get_augmentation_job refreshes completed outputs without moving the canvas
   });
 });
 
+test("get_augmentation_job refreshes outputs that complete while the job is still running", async ({
+  page,
+}) => {
+  await openStudio(page, [hand(REST_RIG)], { incrementAugmentationOnGet: true });
+  await callTool(page, "create_augmentation_job", {
+    mode: "transform",
+    source_image_ids: [IID],
+    variants_per_source: 2,
+    seed: 42,
+    pipeline: [{ op: "flip", axis: "horizontal" }],
+  });
+
+  expect(await callTool(page, "get_augmentation_job", { job_id: "job-1" })).toMatchObject({
+    status: "running",
+    progress: { running: 1, succeeded: 1 },
+  });
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    progress: { n: 2, empty: 1 },
+    current: { id: IID },
+  });
+  expect(await callTool(page, "get_augmentation_job", { job_id: "job-1" })).toMatchObject({
+    status: "running",
+    progress: { running: 1, succeeded: 2 },
+  });
+  expect(await callTool(page, "get_studio")).toMatchObject({
+    progress: { n: 3, empty: 2 },
+    current: { id: IID },
+  });
+});
+
 test("augmentation tools return explicit errors for missing ids and API failures", async ({ page }) => {
   await openStudio(page, [hand(REST_RIG)]);
 
@@ -649,10 +702,94 @@ test("augmentation tools return explicit errors for missing ids and API failures
   ).toEqual({ error: "bad_pagination" });
   expect(await callTool(page, "cancel_augmentation_job", { job_id: "missing" })).toEqual({
     error: "augmentation_cancel_failed",
+    status: 404,
+    reason: "not_found_or_not_owned",
   });
   expect(await callTool(page, "retry_augmentation_job", { job_id: "missing" })).toEqual({
     error: "augmentation_retry_failed",
+    status: 404,
+    reason: "not_found_or_not_owned",
   });
+});
+
+test("create_augmentation_job rejects invalid mode-specific values before the API call", async ({
+  page,
+}) => {
+  await openStudio(page, [hand(REST_RIG)]);
+  let posts = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname.endsWith(`/projects/${PID}/augmentation-jobs`)
+    ) {
+      posts += 1;
+    }
+  });
+
+  expect(await callTool(page, "create_augmentation_job", { mode: "unknown" })).toEqual({
+    error: "bad_mode",
+  });
+  expect(
+    await callTool(page, "create_augmentation_job", {
+      mode: "transform",
+      source_image_ids: [],
+      variants_per_source: 1,
+      seed: 0,
+      pipeline: [{ op: "flip" }],
+    }),
+  ).toEqual({ error: "bad_source_image_ids" });
+  expect(
+    await callTool(page, "create_augmentation_job", {
+      mode: "text_to_image",
+      prompt: "new sample",
+      count: 1,
+      source_image_ids: [IID],
+    }),
+  ).toEqual({ error: "inapplicable_arguments", keys: ["source_image_ids"] });
+  expect(
+    await callTool(page, "create_augmentation_job", {
+      mode: "transform",
+      source_image_ids: [IID],
+      variants_per_source: 1,
+      seed: 0,
+      pipeline: [{ op: "noise", sigma: 300 }],
+    }),
+  ).toEqual({ error: "bad_pipeline", operation_index: 0, field: "sigma" });
+  expect(
+    await callTool(page, "create_augmentation_job", {
+      mode: "transform",
+      source_image_ids: [IID],
+      variants_per_source: 1,
+      seed: 0,
+      pipeline: [{ op: "noise", sigma: 5, surprise: true }],
+    }),
+  ).toEqual({
+    error: "invalid_arguments",
+    details: ["$.pipeline[0].surprise: unexpected property"],
+  });
+  expect(posts).toBe(0);
+});
+
+test("augmentation execution rejects unknown operation fields without host schema validation", async () => {
+  let creates = 0;
+  const tools = studioPageTools({
+    createAugmentationJob: async () => {
+      creates += 1;
+      throw new Error("should not create");
+    },
+  } as unknown as StudioToolsDeps);
+  const create = tools.find((tool) => tool.name === "create_augmentation_job")!;
+
+  await expect(
+    create.execute({
+      mode: "transform",
+      source_image_ids: [IID],
+      variants_per_source: 1,
+      seed: 0,
+      pipeline: [{ op: "noise", sigma: 5, surprise: true }],
+    }),
+  ).resolves.toEqual({ error: "bad_pipeline", operation_index: 0, field: "surprise" });
+  expect(creates).toBe(0);
 });
 
 for (const outcome of ["completed", "no_detection", "failed"] as const) {
