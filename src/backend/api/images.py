@@ -4,6 +4,7 @@ import uuid
 import zipfile
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
@@ -69,6 +70,23 @@ class CompleteIn(BaseModel):
     interval: float = 1.0
 
 
+class FromUrlIn(BaseModel):
+    url: str
+    interval: float = 1.0
+
+
+# Public watch URLs only (no youtu.be user pages, no music.youtube playlists as hosts we expand).
+_YT_HOSTS = frozenset(
+    {
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be",
+        "www.youtu.be",
+    }
+)
+
+
 def _ctype(name: str, hinted: str = "") -> str:
     ext = Path(name).suffix.lower()
     if ext in VIDEO:
@@ -117,16 +135,32 @@ def flatten(name: str, body: bytes) -> list[tuple[str, bytes, str]]:
     return [(Path(name).name or "image.jpg", body, ct)] if ct else []
 
 
-def frames_from_video(name: str, body: bytes, interval: float) -> list[tuple[str, bytes, str]]:
-    """Extract fixed-interval JPEGs."""
+def youtube_url(raw: str) -> str:
+    """Normalize a public YouTube watch/share URL or raise 400."""
+    s = (raw or "").strip()
+    if not s:
+        raise HTTPException(400, "url")
+    if "://" not in s:
+        s = "https://" + s
+    try:
+        u = urlparse(s)
+    except ValueError as e:
+        raise HTTPException(400, "url") from e
+    if u.scheme not in ("http", "https") or not u.netloc:
+        raise HTTPException(400, "url")
+    host = u.hostname.casefold() if u.hostname else ""
+    if host not in _YT_HOSTS:
+        raise HTTPException(400, "url")
+    # Drop credentials / fragments; keep path+query (v= / shorts / youtu.be id).
+    return f"https://{host}{u.path or '/'}{('?' + u.query) if u.query else ''}"
+
+
+def frames_from_path(src: Path, stem: str, interval: float) -> list[tuple[str, bytes, str]]:
+    """Extract fixed-interval JPEGs from a local media file."""
     if not 0.1 <= interval <= 5:
         raise HTTPException(400, "interval")
-    ext = Path(name).suffix.lower() or ".mp4"
-    stem = Path(name).stem or "video"
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
-        src = root / f"in{ext}"
-        src.write_bytes(body)
         pat = root / "f_%06d.jpg"
         try:
             subprocess.run(
@@ -146,7 +180,7 @@ def frames_from_video(name: str, body: bytes, interval: float) -> list[tuple[str
                 ],
                 check=True,
                 capture_output=True,
-                timeout=600,
+                timeout=3600,
             )
         except FileNotFoundError as e:
             raise HTTPException(500, "ffmpeg") from e
@@ -160,6 +194,61 @@ def frames_from_video(name: str, body: bytes, interval: float) -> list[tuple[str
         if not out:
             raise HTTPException(400, "video")
         return out
+
+
+def frames_from_video(name: str, body: bytes, interval: float) -> list[tuple[str, bytes, str]]:
+    """Extract fixed-interval JPEGs from in-memory video bytes."""
+    ext = Path(name).suffix.lower() or ".mp4"
+    stem = Path(name).stem or "video"
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / f"in{ext}"
+        src.write_bytes(body)
+        return frames_from_path(src, stem, interval)
+
+
+def frames_from_youtube(url: str, interval: float) -> list[tuple[str, bytes, str]]:
+    """Download a public YouTube video and extract frames."""
+    if not 0.1 <= interval <= 5:
+        raise HTTPException(400, "interval")
+    try:
+        import yt_dlp  # type: ignore
+    except ImportError as e:
+        raise HTTPException(500, "yt-dlp") from e
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        outtmpl = str(root / "yt.%(ext)s")
+        opts = {
+            "outtmpl": outtmpl,
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            # Prefer a single progressive file ffmpeg can open without merge tools.
+            "format": "best[ext=mp4]/best[height<=1080]/best",
+            "retries": 3,
+        }
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+        except yt_dlp.utils.DownloadError as e:  # type: ignore[attr-defined]
+            msg = str(e).lower()
+            if "private" in msg or "login" in msg or "members-only" in msg:
+                raise HTTPException(400, "private") from e
+            raise HTTPException(400, "youtube") from e
+        except Exception as e:  # noqa: BLE001 — surface as bad source
+            raise HTTPException(400, "youtube") from e
+
+        files = sorted(root.glob("yt.*"))
+        if not files:
+            raise HTTPException(400, "youtube")
+        src = files[0]
+        title = ""
+        if isinstance(info, dict):
+            title = str(info.get("title") or info.get("id") or "youtube")
+        stem = Path(title).stem[:80] or "youtube"
+        for bad in '/\\:*?"<>|':
+            stem = stem.replace(bad, "_")
+        return frames_from_path(src, stem, interval)
 
 
 @router.get("/projects/{pid}/images")
@@ -274,6 +363,23 @@ def complete_uploads(pid: str, body: CompleteIn, user: str = Depends(uid)):
         rows.extend(got)
     if not rows:
         raise HTTPException(400, "files")
+    return rows
+
+
+@router.post("/projects/{pid}/images/from_url")
+def upload_from_url(pid: str, body: FromUrlIn, user: str = Depends(uid)):
+    """Pull a public YouTube URL, extract frames, register images."""
+    if not 0.1 <= body.interval <= 5:
+        raise HTTPException(400, "interval")
+    if count_images(pid, user) is None:
+        raise HTTPException(404)
+    url = youtube_url(body.url)
+    blobs = frames_from_youtube(url, body.interval)
+    rows = add_images(pid, user, blobs)
+    if rows is None:
+        raise HTTPException(404)
+    if not rows:
+        raise HTTPException(400, "video")
     return rows
 
 
