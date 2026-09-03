@@ -227,16 +227,20 @@ def frames_from_youtube(url: str, interval: float) -> list[tuple[str, bytes, str
             "format": "best[ext=mp4]/best[height<=1080]/best",
             "retries": 3,
         }
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-        except yt_dlp.utils.DownloadError as e:  # type: ignore[attr-defined]
-            msg = str(e).lower()
-            if "private" in msg or "login" in msg or "members-only" in msg:
-                raise HTTPException(400, "private") from e
-            raise HTTPException(400, "youtube") from e
-        except Exception as e:  # noqa: BLE001 — surface as bad source
-            raise HTTPException(400, "youtube") from e
+        for attempt in range(2):
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                break
+            except yt_dlp.utils.DownloadError as e:  # type: ignore[attr-defined]
+                msg = str(e).lower()
+                if "private" in msg or "login" in msg or "members-only" in msg:
+                    raise HTTPException(400, "private") from e
+                if attempt == 0 and ("not available" in msg or "unavailable" in msg):
+                    continue
+                raise HTTPException(400, "youtube") from e
+            except Exception as e:  # noqa: BLE001 — surface as bad source
+                raise HTTPException(400, "youtube") from e
 
         files = sorted(root.glob("yt.*"))
         if not files:
