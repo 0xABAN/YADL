@@ -52,7 +52,31 @@ export type UploadProgress =
 
 export type UploadResult = { ok: boolean; status: number; json: unknown };
 
+export function uploadError(status: number, detail = ""): string {
+  const raw = detail.trim();
+  const d = raw.toLowerCase();
+  if (d.startsWith("empty:")) return `Empty file: ${raw.slice(6)}.`;
+  if (d.startsWith("too_large:")) return `Upload exceeds 100 MB at ${raw.slice(10)}.`;
+  if (d.startsWith("corrupt:")) return `Could not read image: ${raw.slice(8)}.`;
+  if (d.startsWith("missing:")) return `Upload incomplete: ${raw.slice(8)} did not reach storage.`;
+  if (d.includes("ffmpeg")) return "Video tools unavailable (ffmpeg).";
+  if (d.includes("yt-dlp")) return "YouTube tools unavailable (yt-dlp).";
+  if (d.includes("private")) return "Video is private or login-only.";
+  if (d.includes("youtube") || d === "url") return "Could not fetch that YouTube link.";
+  if (d.includes("video")) return "Could not read video.";
+  if (d.includes("files") || status === 400) return "Upload rejected (type, size, or count).";
+  return "Upload failed.";
+}
+
 type PresignItem = { name: string; key: string; content_type: string; url: string };
+
+async function discardUploads(base: string, items: PresignItem[]): Promise<void> {
+  await fetch(`${base}/uploads`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keys: items.map((item) => item.key) }),
+  }).catch(() => undefined);
+}
 
 function putS3(
   url: string,
@@ -132,25 +156,51 @@ export async function uploadFiles(
   }
 
   const total = files.reduce((s, f) => s + f.size, 0);
-  let done = 0;
+  const loaded = files.map(() => 0);
+  let next = 0;
   opts.onProgress?.({ phase: "upload", loaded: 0, total });
 
+  const uploadAbort = new AbortController();
+  const abortUploads = () => uploadAbort.abort();
+  opts.signal?.addEventListener("abort", abortUploads);
+  if (opts.signal?.aborted) uploadAbort.abort();
+  const workers: Promise<void>[] = [];
   try {
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const item = items[i];
-      const before = done;
-      await putS3(item.url, file, item.content_type, {
-        signal: opts.signal,
-        onProgress: (loaded) =>
-          opts.onProgress?.({ phase: "upload", loaded: before + loaded, total }),
-      });
-      done += file.size;
-      opts.onProgress?.({ phase: "upload", loaded: done, total });
-    }
+    const worker = async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= files.length) return;
+        const file = files[i];
+        const item = items[i];
+        await putS3(item.url, file, item.content_type, {
+          signal: uploadAbort.signal,
+          onProgress: (n) => {
+            loaded[i] = n;
+            opts.onProgress?.({
+              phase: "upload",
+              loaded: loaded.reduce((sum, value) => sum + value, 0),
+              total,
+            });
+          },
+        });
+        loaded[i] = file.size;
+        opts.onProgress?.({
+          phase: "upload",
+          loaded: loaded.reduce((sum, value) => sum + value, 0),
+          total,
+        });
+      }
+    };
+    workers.push(...Array.from({ length: Math.min(4, files.length) }, worker));
+    await Promise.all(workers);
   } catch (e) {
+    uploadAbort.abort();
+    await Promise.allSettled(workers);
+    await discardUploads(base, items);
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     return { ok: false, status: 0, json: { error: String(e) } };
+  } finally {
+    opts.signal?.removeEventListener("abort", abortUploads);
   }
 
   opts.onProgress?.({ phase: "process" });
@@ -165,6 +215,7 @@ export async function uploadFiles(
     signal: opts.signal,
   });
   const json = await completeRes.json().catch(() => null);
+  if (!completeRes.ok && completeRes.status < 500) await discardUploads(base, items);
   return { ok: completeRes.ok, status: completeRes.status, json };
 }
 
