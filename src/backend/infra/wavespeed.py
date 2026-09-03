@@ -116,6 +116,8 @@ class WaveSpeedClient:
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")[:1000]
             raise WaveSpeedError(f"WaveSpeed HTTP {exc.code}: {detail}", status=exc.code) from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise WaveSpeedError("WaveSpeed returned invalid JSON") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise WaveSpeedError(f"WaveSpeed network error: {exc}") from exc
 
@@ -136,7 +138,9 @@ class WaveSpeedClient:
 
     def result(self, prediction_id: str) -> PredictionResult:
         response = self._request_json("GET", f"/predictions/{prediction_id}/result")
-        data = response.get("data") or {}
+        data = response.get("data") if isinstance(response, dict) else None
+        if not isinstance(data, dict):
+            raise WaveSpeedError("WaveSpeed returned a malformed prediction result")
         outputs = data.get("outputs") or data.get("output") or []
         if isinstance(outputs, str):
             outputs = [outputs]
