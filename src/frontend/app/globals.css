@@ -2383,28 +2383,44 @@ main.cross, main.cross:active { cursor: crosshair }
   padding: 4px;
 }
 .create .file-list li > button:hover, .studio-upload .file-list li > button:hover { color: #fff; }
+.create .drop-or, .studio-upload .drop-or {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
 .create .yt-url, .studio-upload .yt-url {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: min(100%, 420px);
-  margin: 4px 0 0;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
   text-align: left;
   font-size: 13px;
   color: #fff;
 }
 .create .yt-url-label, .studio-upload .yt-url-label {
+  font-size: 12px;
   font-weight: 500;
+  color: #fff;
 }
 .create .yt-url input, .studio-upload .yt-url input {
   display: block;
   width: 100%;
+  box-sizing: border-box;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 0;
-  background: #000;
+  background: #0a0a0a;
   color: #fff;
   font: inherit;
+  font-size: 13px;
+}
+.create .yt-url input::placeholder, .studio-upload .yt-url input::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 .create .yt-url input:focus, .studio-upload .yt-url input:focus {
   border-color: #fff;
@@ -2412,6 +2428,11 @@ main.cross, main.cross:active { cursor: crosshair }
 }
 .create .yt-url input:disabled, .studio-upload .yt-url input:disabled {
   opacity: 0.5;
+}
+.create .drop > .err, .studio-upload .drop > .err {
+  width: 100%;
+  text-align: left;
+  margin: -4px 0 0;
 }
 .create .interval, .studio-upload .interval {
   display: flex;

@@ -201,12 +201,9 @@ function UploadPanel({
             />
           </label>
         </div>
-        <div className="formats">
-          <b>Supported</b>
-          {formats} · YouTube URL
-        </div>
+        <p className="drop-or" aria-hidden="true">or</p>
         <label className="yt-url">
-          <span className="yt-url-label">Or paste a YouTube link</span>
+          <span className="yt-url-label">YouTube link</span>
           <input
             type="url"
             inputMode="url"
@@ -221,6 +218,10 @@ function UploadPanel({
           />
         </label>
         {ytBad && <small className="err">Public YouTube links only.</small>}
+        <div className="formats">
+          <b>Supported</b>
+          {formats}
+        </div>
       </div>
 
       {rows.length > 0 && (
