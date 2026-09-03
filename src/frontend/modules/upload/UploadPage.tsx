@@ -8,7 +8,7 @@ import UploadPanel, { type SubmitOpts } from "@/modules/studio/ui/UploadPanel";
 import QrCard from "@/modules/studio/ui/QrCard";
 import { createProject, parseProjectType, parseTemplate } from "@/modules/create/projectsApi";
 import { uploadPath } from "@/modules/create/projectRoutes";
-import { uploadFiles } from "@/modules/create/upload";
+import { uploadFiles, uploadFromUrl } from "@/modules/create/upload";
 import { useRotatingIndex } from "@/modules/create/useRotatingIndex";
 import { useSheetGuide } from "@/modules/create/useSheetGuide";
 import { apiResult } from "@/shared/api/client";
@@ -23,6 +23,9 @@ function upErr(status: number, detail?: string): string {
   const d = (detail || "").toLowerCase();
   if (status === 409 || d.includes("taken")) return "Name already exists.";
   if (d.includes("ffmpeg")) return "Video tools unavailable (ffmpeg).";
+  if (d.includes("yt-dlp")) return "YouTube tools unavailable (yt-dlp).";
+  if (d.includes("private")) return "Video is private or login-only.";
+  if (d.includes("youtube") || d === "url") return "Could not fetch that YouTube link.";
   if (d.includes("video")) return "Could not read video.";
   if (d.includes("files") || status === 400) return "Upload rejected (type, size, or count).";
   return "Upload failed.";
@@ -88,7 +91,8 @@ export default function UploadPage() {
     : "";
 
   const send = async (files: File[], opts: SubmitOpts) => {
-    if (!files.length || busy) return;
+    const yt = (opts.youtubeUrl || "").trim();
+    if ((!files.length && !yt) || busy) return;
     setBusy(true);
     setUpMsg(null);
     let id: string | null = pid;
@@ -114,19 +118,35 @@ export default function UploadPage() {
         createdHere = true;
         setPid(id);
       }
-      const up = await uploadFiles(`/api/projects/${id}/images`, files, {
-        interval: opts.interval,
-        signal: opts.signal,
-        onProgress: opts.onProgress,
-      });
-      if (!up.ok) {
+      const fail = (status: number, json: unknown) => {
         const detail =
-          up.json && typeof up.json === "object" && up.json !== null && "detail" in up.json
-            ? String((up.json as { detail: unknown }).detail)
+          json && typeof json === "object" && json !== null && "detail" in json
+            ? String((json as { detail: unknown }).detail)
             : undefined;
         if (createdHere) void apiResult(`/projects/${id}`, { method: "DELETE", raw: true });
-        setUpMsg(upErr(up.status, detail));
-        return;
+        setUpMsg(upErr(status, detail));
+      };
+      if (yt) {
+        const up = await uploadFromUrl(`/api/projects/${id}/images`, yt, {
+          interval: opts.interval,
+          signal: opts.signal,
+          onProgress: opts.onProgress,
+        });
+        if (!up.ok) {
+          fail(up.status, up.json);
+          return;
+        }
+      }
+      if (files.length) {
+        const up = await uploadFiles(`/api/projects/${id}/images`, files, {
+          interval: opts.interval,
+          signal: opts.signal,
+          onProgress: opts.onProgress,
+        });
+        if (!up.ok) {
+          fail(up.status, up.json);
+          return;
+        }
       }
       router.push(`/studio/${id}`);
     } catch (e) {

@@ -170,13 +170,48 @@ export async function uploadFiles(
 
 export function progressLabel(
   p: UploadProgress,
-  kind: { video?: boolean; zip?: boolean } = {},
+  kind: { video?: boolean; zip?: boolean; youtube?: boolean } = {},
 ): string {
   if (p.phase === "upload") {
     const pct = p.total ? Math.min(100, Math.round((100 * p.loaded) / p.total)) : 0;
     return `Uploading ${pct}% · ${fmtSize(p.loaded)} / ${fmtSize(p.total)}`;
   }
+  if (kind.youtube) return "Fetching YouTube…";
   if (kind.video) return "Extracting frames…";
   if (kind.zip) return "Unpacking zip…";
   return "Saving images…";
+}
+
+/** Server-side YouTube pull → frames (no browser bytes). */
+export async function uploadFromUrl(
+  url: string,
+  youtubeUrl: string,
+  opts: {
+    interval?: number;
+    signal?: AbortSignal;
+    onProgress?: (p: UploadProgress) => void;
+  } = {},
+): Promise<UploadResult> {
+  const base = url.replace(/\/$/, "");
+  const interval = opts.interval != null ? clampInterval(opts.interval) : 1;
+  opts.onProgress?.({ phase: "process" });
+  const res = await fetch(`${base}/from_url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: youtubeUrl.trim(), interval }),
+    signal: opts.signal,
+  });
+  const json = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, json };
+}
+
+export function youtubeHint(raw: string): boolean {
+  const s = raw.trim().toLowerCase();
+  if (!s) return false;
+  return (
+    s.includes("youtube.com/") ||
+    s.includes("youtu.be/") ||
+    s.startsWith("youtube.com") ||
+    s.startsWith("youtu.be")
+  );
 }

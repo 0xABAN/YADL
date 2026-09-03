@@ -2383,6 +2383,34 @@ main.cross, main.cross:active { cursor: crosshair }
   padding: 4px;
 }
 .create .file-list li > button:hover, .studio-upload .file-list li > button:hover { color: #fff; }
+.create .yt-url, .studio-upload .yt-url {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+  color: #fff;
+}
+.create .yt-url-label, .studio-upload .yt-url-label {
+  font-weight: 500;
+}
+.create .yt-url input, .studio-upload .yt-url input {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: #000;
+  color: #fff;
+  font: inherit;
+}
+.create .yt-url input:focus, .studio-upload .yt-url input:focus {
+  border-color: #fff;
+  outline: none;
+}
+.create .yt-url input:disabled, .studio-upload .yt-url input:disabled {
+  opacity: 0.5;
+}
 .create .interval, .studio-upload .interval {
   display: flex;
   flex-direction: column;

@@ -13,6 +13,7 @@ import {
   fmtSize,
   kindOf,
   progressLabel,
+  youtubeHint,
   type Kind,
   type UploadProgress,
 } from "@/modules/create/upload";
@@ -23,6 +24,7 @@ export type SubmitOpts = {
   interval: number;
   signal: AbortSignal;
   onProgress: (p: UploadProgress) => void;
+  youtubeUrl?: string;
 };
 
 function UploadPanel({
@@ -41,6 +43,7 @@ function UploadPanel({
   const [rows, setRows] = useState<Row[]>([]);
   const [over, setOver] = useState(false);
   const [skipped, setSkipped] = useState(0);
+  const [yt, setYt] = useState("");
   const [interval, setIntervalSec] = useState(1);
   const [prog, setProg] = useState<UploadProgress | null>(null);
   const urls = useRef<string[]>([]);
@@ -55,9 +58,12 @@ function UploadPanel({
 
   const hasVideo = rows.some((r) => r.kind === "video");
   const hasZip = rows.some((r) => r.kind === "zip");
+  const ytUrl = yt.trim();
+  const hasYt = youtubeHint(ytUrl);
+  const ytBad = ytUrl.length > 0 && !hasYt;
   const totalBytes = rows.reduce((n, r) => n + r.file.size, 0);
   const overSize = totalBytes > MAX_B;
-  const canSend = rows.length > 0 && !busy && !overSize;
+  const canSend = (rows.length > 0 || hasYt) && !busy && !overSize && !ytBad;
 
   const pct =
     prog?.phase === "upload" && prog.total
@@ -65,7 +71,9 @@ function UploadPanel({
       : prog?.phase === "process"
         ? 100
         : null;
-  const statusText = prog ? progressLabel(prog, { video: hasVideo, zip: hasZip }) : null;
+  const statusText = prog
+    ? progressLabel(prog, { video: hasVideo, zip: hasZip, youtube: hasYt && !rows.length })
+    : null;
 
   const add = (list: FileList | File[]) => {
     if (busy) return;
@@ -117,13 +125,19 @@ function UploadPanel({
     if (!canSend) return;
     const ac = new AbortController();
     abortRef.current = ac;
-    setProg({ phase: "upload", loaded: 0, total: totalBytes || 1 });
+    const onlyYt = hasYt && rows.length === 0;
+    setProg(
+      onlyYt
+        ? { phase: "process" }
+        : { phase: "upload", loaded: 0, total: totalBytes || 1 },
+    );
     try {
       await onSubmit(
         rows.map((r) => r.file),
         {
           interval: clampInterval(interval),
           signal: ac.signal,
+          youtubeUrl: hasYt ? ytUrl : undefined,
           onProgress: (next) => {
             if (next.phase === "process") abortRef.current = null;
             setProg(next);
@@ -189,9 +203,24 @@ function UploadPanel({
         </div>
         <div className="formats">
           <b>Supported</b>
-          {formats}
+          {formats} · YouTube URL
         </div>
       </div>
+
+      <label className="yt-url">
+        <span className="yt-url-label">YouTube URL</span>
+        <input
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="https://youtube.com/watch?v=…"
+          value={yt}
+          disabled={busy}
+          onChange={(e) => setYt(e.target.value)}
+        />
+      </label>
+      {ytBad && <small className="err">Public YouTube links only.</small>}
 
       {rows.length > 0 && (
         <div className="file-list">
@@ -228,7 +257,7 @@ function UploadPanel({
         </div>
       )}
 
-      {hasVideo && (
+      {(hasVideo || hasYt) && (
         <label className="interval">
           <span className="interval-label">
             Frame interval
@@ -263,7 +292,7 @@ function UploadPanel({
             <i style={pct != null && prog?.phase === "upload" ? { width: `${pct}%` } : undefined} />
           </div>
           <p className="up-status">{statusText ?? "Starting…"}</p>
-          {prog?.phase === "process" && hasVideo && (
+          {prog?.phase === "process" && (hasVideo || hasYt) && (
             <p className="up-hint">Long videos can take a minute.</p>
           )}
         </div>
