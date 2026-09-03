@@ -1,0 +1,29 @@
+[project]
+name = "yadl-hand-demo"
+version = "0.1.0"
+description = "GPU-accelerated hand-sign classifier trained from YADL landmarks"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "numpy>=1.26",
+  "psycopg[binary]>=3.3",
+  "torch>=2.4",
+]
+
+[project.scripts]
+yadl-train = "backend.train.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backend"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q -m 'not integration'"
+markers = ["integration: requires the live YADL database"]
