@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from backend.api.deps import uid
 from backend.infra.augmentation_store import (
@@ -25,7 +25,7 @@ router = APIRouter(tags=["augmentations"])
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
 class Flip(StrictModel):
@@ -51,6 +51,12 @@ class CropResize(StrictModel):
     width: float = Field(1, gt=0, le=1)
     height: float = Field(1, gt=0, le=1)
     probability: float = Field(1, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def fits_inside_image(self):
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("crop must fit inside the image")
+        return self
 
 
 class BrightnessContrast(StrictModel):
@@ -91,9 +97,18 @@ TransformOperation = Annotated[
 ]
 
 
+def _unique_sources(value: list[UUID]) -> list[UUID]:
+    if len(set(value)) != len(value):
+        raise ValueError("source_image_ids must not contain duplicates")
+    return value
+
+
+SourceImageIds = Annotated[list[UUID], AfterValidator(_unique_sources)]
+
+
 class TransformRequest(StrictModel):
     mode: Literal["transform"]
-    source_image_ids: list[UUID] = Field(min_length=1)
+    source_image_ids: SourceImageIds = Field(min_length=1)
     variants_per_source: int = Field(ge=1)
     seed: int = 0
     pipeline: list[TransformOperation] = Field(min_length=1)
@@ -114,7 +129,7 @@ class TextToImageRequest(WaveOptions):
 
 class ImageEditRequest(WaveOptions):
     mode: Literal["image_edit"]
-    source_image_ids: list[UUID] = Field(min_length=1)
+    source_image_ids: SourceImageIds = Field(min_length=1)
     variants_per_source: int = Field(ge=1)
 
 

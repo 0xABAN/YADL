@@ -150,11 +150,13 @@ def apply_pipeline(body: bytes, pipeline: list[dict[str, Any]], *, seed: int) ->
             if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > 1 or y + height > 1:
                 raise ValueError("crop must fit inside the image")
             original = image.size
+            left = min(original[0] - 1, math.floor(x * original[0]))
+            top = min(original[1] - 1, math.floor(y * original[1]))
             box = (
-                round(x * original[0]),
-                round(y * original[1]),
-                round((x + width) * original[0]),
-                round((y + height) * original[1]),
+                left,
+                top,
+                max(left + 1, math.ceil((x + width) * original[0])),
+                max(top + 1, math.ceil((y + height) * original[1])),
             )
             image = image.crop(box).resize(original, Image.Resampling.LANCZOS)
         elif kind == "brightness_contrast":

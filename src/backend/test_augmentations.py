@@ -23,6 +23,12 @@ def _png() -> bytes:
     return out.getvalue()
 
 
+def _solid_png(width: int, height: int) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (width, height), (40, 80, 120)).save(out, format="PNG")
+    return out.getvalue()
+
+
 def test_seeded_noise_is_deterministic_and_seed_sensitive() -> None:
     pipeline = [{"op": "noise", "sigma": 18}]
     first = apply_pipeline(_png(), pipeline, seed=41)
@@ -39,6 +45,17 @@ def test_pipeline_order_is_observable() -> None:
     cropped_then_flipped = apply_pipeline(_png(), [crop, flip], seed=1).body
     flipped_then_cropped = apply_pipeline(_png(), [flip, crop], seed=1).body
     assert cropped_then_flipped != flipped_then_cropped
+
+
+def test_crop_resize_keeps_at_least_one_pixel_for_tiny_images() -> None:
+    result = apply_pipeline(
+        _solid_png(1, 1),
+        [{"op": "crop_resize", "x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1}],
+        seed=1,
+    )
+    with Image.open(io.BytesIO(result.body)) as image:
+        assert image.size == (1, 1)
+        assert image.getpixel((0, 0)) == (40, 80, 120)
 
 
 def test_corrupt_image_is_rejected() -> None:
@@ -103,6 +120,65 @@ def test_job_contract_rejects_empty_sources_but_has_no_output_cap() -> None:
     assert value.count == 1001
 
 
+def test_job_contract_rejects_crop_extending_past_image_bounds() -> None:
+    from pydantic import TypeAdapter, ValidationError
+
+    from backend.api.augmentations import AugmentationRequest
+
+    try:
+        TypeAdapter(AugmentationRequest).validate_python(
+            {
+                "mode": "transform",
+                "source_image_ids": ["00000000-0000-0000-0000-000000000001"],
+                "variants_per_source": 1,
+                "pipeline": [
+                    {"op": "crop_resize", "x": 0.8, "y": 0, "width": 0.5, "height": 1}
+                ],
+            }
+        )
+        raise AssertionError("expected crop validation failure")
+    except ValidationError:
+        pass
+
+
+def test_job_contract_rejects_duplicate_sources() -> None:
+    from pydantic import TypeAdapter, ValidationError
+
+    from backend.api.augmentations import AugmentationRequest
+
+    source_id = "00000000-0000-0000-0000-000000000001"
+    for mode, extra in (
+        ("transform", {"pipeline": [{"op": "flip"}]}),
+        ("image_edit", {"prompt": "edit this image"}),
+    ):
+        try:
+            TypeAdapter(AugmentationRequest).validate_python(
+                {
+                    "mode": mode,
+                    "source_image_ids": [source_id, source_id],
+                    "variants_per_source": 1,
+                    **extra,
+                }
+            )
+            raise AssertionError("expected duplicate source validation failure")
+        except ValidationError:
+            pass
+
+
+def test_job_contract_rejects_whitespace_only_generation_prompt() -> None:
+    from pydantic import TypeAdapter, ValidationError
+
+    from backend.api.augmentations import AugmentationRequest
+
+    try:
+        TypeAdapter(AugmentationRequest).validate_python(
+            {"mode": "text_to_image", "prompt": "   ", "count": 1}
+        )
+        raise AssertionError("expected prompt validation failure")
+    except ValidationError:
+        pass
+
+
 def test_worker_surfaces_corrupt_transform_sources() -> None:
     from backend import worker
 
@@ -126,8 +202,12 @@ def test_worker_surfaces_corrupt_transform_sources() -> None:
 if __name__ == "__main__":
     test_seeded_noise_is_deterministic_and_seed_sensitive()
     test_pipeline_order_is_observable()
+    test_crop_resize_keeps_at_least_one_pixel_for_tiny_images()
     test_corrupt_image_is_rejected()
     test_item_plan_preallocates_stable_output_ids_and_keys()
     test_job_contract_rejects_empty_sources_but_has_no_output_cap()
+    test_job_contract_rejects_crop_extending_past_image_bounds()
+    test_job_contract_rejects_duplicate_sources()
+    test_job_contract_rejects_whitespace_only_generation_prompt()
     test_worker_surfaces_corrupt_transform_sources()
     print("ok")
