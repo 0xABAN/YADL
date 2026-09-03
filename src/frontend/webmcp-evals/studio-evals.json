@@ -91,6 +91,51 @@
     ]
   },
   {
+    "name": "Create a text-to-image augmentation job",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Generate three square high-quality PNG training images of a dog facing the camera."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_augmentation_job",
+        "arguments": {
+          "mode": "text_to_image",
+          "prompt": { "$contains": "dog" },
+          "count": 3,
+          "aspect_ratio": "1:1",
+          "quality": "high",
+          "output_format": "png"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Create an image-edit augmentation job",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Create two rainy-scene edits of source images img_1 and img_2 as WebP files."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_augmentation_job",
+        "arguments": {
+          "mode": "image_edit",
+          "prompt": { "$contains": "rain" },
+          "source_image_ids": ["img_1", "img_2"],
+          "variants_per_source": 2,
+          "output_format": "webp"
+        }
+      }
+    ]
+  },
+  {
     "name": "Create augmentation validation error",
     "messages": [
       {
