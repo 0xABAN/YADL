@@ -104,6 +104,10 @@ function StudioBody() {
   const onImageSize = useCallback((size: { w: number; h: number } | null) => {
     imageSizeRef.current = { imageId: session.getState().doc?.id ?? null, size };
   }, [session]);
+  const onImageReady = useCallback(
+    (imageId: string) => session.markImageRendered(imageId),
+    [session],
+  );
 
   useEffect(() => {
     if (loadState !== "ready") return;
@@ -293,6 +297,7 @@ function StudioBody() {
       />
       <div id="studio-main">
         <Canvas
+          imageId={doc?.id}
           src={doc?.url ?? undefined}
           alt={doc?.image || (total === 0 ? "No images" : "Sample")}
           objects={doc ? objects : []}
@@ -326,6 +331,7 @@ function StudioBody() {
           railOn={railOn}
           onToggleRail={toggleRail}
           onImageSize={onImageSize}
+          onImageReady={onImageReady}
           busy={canvasBusy}
         />
       </div>

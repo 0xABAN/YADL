@@ -68,10 +68,12 @@ function initial(projectId: string, boot?: Partial<StudioState>): StudioState {
 export class StudioSession {
   private state: StudioState;
   private listeners = new Set<() => void>();
+  private imageReadyListeners = new Set<() => void>();
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private undoTimer: ReturnType<typeof setTimeout> | null = null;
   private agentToastTimer: ReturnType<typeof setTimeout> | null = null;
   private imageAbort: AbortController | null = null;
+  private renderedImageId: string | null = null;
   private destroyed = false;
 
   constructor(projectId: string, boot?: Partial<StudioState>) {
@@ -108,6 +110,7 @@ export class StudioSession {
     if (this.undoTimer) clearTimeout(this.undoTimer);
     if (this.agentToastTimer) clearTimeout(this.agentToastTimer);
     this.listeners.clear();
+    this.imageReadyListeners.clear();
   }
 
   private patch(partial: Partial<StudioState> | ((s: StudioState) => Partial<StudioState>)) {
@@ -285,6 +288,7 @@ export class StudioSession {
       return null;
     }
     if (next !== this.state.index || this.state.doc?.id !== row?.id) {
+      this.renderedImageId = null;
       this.patch({
         index: next,
         doc: null,
@@ -294,6 +298,12 @@ export class StudioSession {
       void this.loadCurrentImage();
     }
     return row?.id ?? null;
+  }
+
+  markImageRendered(imageId: string) {
+    if (this.state.doc?.id !== imageId || this.renderedImageId === imageId) return;
+    this.renderedImageId = imageId;
+    for (const fn of this.imageReadyListeners) fn();
   }
 
   setIndex(i: number) {
@@ -327,7 +337,10 @@ export class StudioSession {
   }
 
   async waitForImage(imageId: string, ms = 2500): Promise<boolean> {
-    const ready = () => this.state.doc?.id === imageId && !this.state.assistBusy;
+    const ready = () =>
+      this.state.doc?.id === imageId &&
+      this.renderedImageId === imageId &&
+      !this.state.assistBusy;
     if (ready()) return true;
     return new Promise((resolve) => {
       let settled = false;
@@ -337,11 +350,14 @@ export class StudioSession {
         settled = true;
         if (timer) clearTimeout(timer);
         unsubscribe();
+        this.imageReadyListeners.delete(check);
         resolve(ready);
       };
-      const unsubscribe = this.subscribe(() => {
+      const check = () => {
         if (ready()) finish(true);
-      });
+      };
+      const unsubscribe = this.subscribe(check);
+      this.imageReadyListeners.add(check);
       timer = setTimeout(() => finish(false), ms);
       if (ready()) finish(true);
     });

@@ -114,6 +114,7 @@ const TOOLS = [
 ] as const;
 
 function CanvasView({
+  imageId,
   src,
   alt = "Sample",
   objects = [],
@@ -138,8 +139,10 @@ function CanvasView({
   railOn = true,
   onToggleRail,
   onImageSize,
+  onImageReady,
   busy = false,
 }: {
+  imageId?: string;
   src?: string;
   alt?: string;
   objects?: AnnObj[];
@@ -165,6 +168,8 @@ function CanvasView({
   onToggleRail?: () => void;
   /** Natural pixel size after decode; null when src clears / unknown. */
   onImageSize?: (size: { w: number; h: number } | null) => void;
+  /** Fires after the decoded bitmap has been fitted and painted. */
+  onImageReady?: (imageId: string) => void;
   /** Center tetris while project/image/assist settles. */
   busy?: boolean;
 }) {
@@ -192,6 +197,12 @@ function CanvasView({
   useEffect(() => {
     onImageSize?.(imgSize);
   }, [imgSize, onImageSize]);
+
+  useEffect(() => {
+    if (!imageId || !imgReady || !imgSize) return;
+    const frame = requestAnimationFrame(() => onImageReady?.(imageId));
+    return () => cancelAnimationFrame(frame);
+  }, [imageId, imgReady, imgSize, onImageReady]);
 
   const fitScale = useRef<number | null>(null);
   /** User panned or zoomed — skip auto-refit on resize until Reset. */
@@ -689,6 +700,6 @@ function CanvasView({
 }
 
 export default function Canvas(props: Parameters<typeof CanvasView>[0]) {
-  const key = `${props.projectType ?? "keypoints"}:${props.src ?? ""}`;
+  const key = `${props.projectType ?? "keypoints"}:${props.imageId ?? ""}:${props.src ?? ""}`;
   return <CanvasView key={key} {...props} />;
 }

@@ -207,13 +207,28 @@ async function openStudio(
   }
 }
 
-async function openTwoImageStudio(page: Page, secondDelayMs: number) {
+async function openTwoImageStudio(
+  page: Page,
+  secondDelayMs: number,
+  secondAssetDelayMs = 0,
+) {
   await installWebMcpHost(page);
   const docs = {
     "image-1": { ...hand(REST_RIG, "hand-1"), label: "first" },
     "image-2": { ...hand(REST_RIG, "hand-2"), label: "second" },
   };
   let deletedFirst = false;
+  let secondAssetFulfilled = false;
+  await page.route("**/slow-image.svg", async (route) => {
+    if (secondAssetDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, secondAssetDelayMs));
+    }
+    secondAssetFulfilled = true;
+    return route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="red"/></svg>',
+    });
+  });
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^\/api/, "");
@@ -237,7 +252,7 @@ async function openTwoImageStudio(page: Page, secondDelayMs: number) {
         json: {
           id: match[1],
           image: `${match[1]}.jpg`,
-          url: "/default.jpg",
+          url: match[1] === "image-2" && secondAssetDelayMs ? "/slow-image.svg" : "/default.jpg",
           committed: false,
           objects: [docs[match[1] as keyof typeof docs]],
           comments: [],
@@ -257,6 +272,8 @@ async function openTwoImageStudio(page: Page, secondDelayMs: number) {
   await page.goto(`/studio/${PID}`);
   await expect(page.locator(".world img")).toBeVisible({ timeout: 15_000 });
   await waitForTool(page, "open_image");
+  await expect(page).toHaveURL(/[?&]obj=hand-1/);
+  return { secondAssetFulfilled: () => secondAssetFulfilled };
 }
 
 async function openGeneratedStudio(
@@ -558,6 +575,15 @@ test("open_image reports a timeout without exposing the previous image document"
     loading: true,
     objects: [],
   });
+});
+
+test("open_image waits until the target bitmap is rendered", async ({ page }) => {
+  const asset = await openTwoImageStudio(page, 0, 500);
+
+  const result = await callTool(page, "open_image", { index: 1 });
+
+  expect(result).toMatchObject({ current: { id: "image-2", loading: false } });
+  expect(asset.secondAssetFulfilled()).toBe(true);
 });
 
 test("commit_image waits for and returns the advanced image", async ({ page }) => {
